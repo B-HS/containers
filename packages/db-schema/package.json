@@ -1,0 +1,18 @@
+{
+    "name": "@containers/db-schema",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./database": "./src/database.ts",
+        "./schema": "./src/schema.ts"
+    },
+    "scripts": {
+        "build": "bun build src/database.ts src/schema.ts --outdir dist --target bun",
+        "generate": "drizzle-kit generate --config drizzle.config.ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "drizzle-orm": "0.45.2"
+    }
+}

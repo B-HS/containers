@@ -1,0 +1,5 @@
+.git
+.next
+dist
+node_modules
+runtime

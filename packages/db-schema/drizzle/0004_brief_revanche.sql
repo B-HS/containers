@@ -1,0 +1,1 @@
+ALTER TABLE `user_role` ADD `disabled_at` integer;

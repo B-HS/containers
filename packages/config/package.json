@@ -1,0 +1,17 @@
+{
+    "name": "@containers/config",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./env": "./src/env.ts",
+        "./secret": "./src/secret.ts"
+    },
+    "scripts": {
+        "build": "bun build src/env.ts src/secret.ts --outdir dist --target bun",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "zod": "4.4.3"
+    }
+}

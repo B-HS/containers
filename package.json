@@ -1,0 +1,30 @@
+{
+    "name": "containers",
+    "version": "0.1.0",
+    "private": true,
+    "packageManager": "bun@1.3.14",
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "build": "bun run --filter '*' build",
+        "dev": "bun run --filter '*' dev",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "lint": "eslint .",
+        "test": "bun test",
+        "typecheck": "bun run --filter '*' typecheck",
+        "check": "bun run typecheck && bun run lint && bun run test && bun run build"
+    },
+    "devDependencies": {
+        "@eslint/js": "10.0.1",
+        "@types/bun": "1.3.14",
+        "drizzle-kit": "0.31.10",
+        "eslint": "10.8.0",
+        "globals": "17.8.0",
+        "prettier": "3.9.6",
+        "typescript": "5.9.3",
+        "typescript-eslint": "8.65.0"
+    }
+}

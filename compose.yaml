@@ -1,0 +1,200 @@
+name: containers
+
+services:
+    nginx:
+        build:
+            context: ./infra/nginx
+            dockerfile: Dockerfile
+        cap_drop:
+            - ALL
+        cap_add:
+            - CHOWN
+            - DAC_OVERRIDE
+            - SETGID
+            - SETUID
+        depends_on:
+            api:
+                condition: service_healthy
+            web:
+                condition: service_healthy
+        healthcheck:
+            test:
+                - CMD
+                - wget
+                - --quiet
+                - --spider
+                - '--header=Host: panel.containers.local'
+                - http://127.0.0.1:8080/ko
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        ports:
+            - 127.0.0.1:8080:8080
+        read_only: true
+        security_opt:
+            - no-new-privileges:true
+        tmpfs:
+            - /tmp
+            - /var/cache/nginx
+            - /var/run
+        volumes:
+            - nginx-config:/etc/nginx/managed
+            - nginx-logs:/var/log/nginx
+        networks:
+            - control
+            - edge
+            - ingress
+
+    web:
+        build:
+            context: .
+            dockerfile: apps/web/Dockerfile
+        environment:
+            API_INTERNAL_URL: http://api:3001
+        healthcheck:
+            test:
+                - CMD
+                - bun
+                - -e
+                - fetch('http://127.0.0.1:3000/ko').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        read_only: true
+        security_opt:
+            - no-new-privileges:true
+        tmpfs:
+            - /tmp
+        networks:
+            - ingress
+
+    api:
+        build:
+            context: .
+            dockerfile: apps/api/Dockerfile
+        environment:
+            AGENT_INTERNAL_URL: http://engine-agent:3002
+            AGENT_SHARED_SECRET_FILE: /credentials/agent-secret
+            ARTIFACT_ROOT: /artifacts
+            BACKUP_ROOT: /backups
+            API_PORT: 3001
+            AUTH_BASE_URL: http://127.0.0.1:8080
+            AUTH_SECRET_FILE: /data/auth-secret
+            AUTH_TRUSTED_ORIGINS: http://127.0.0.1:8080,http://localhost:8080
+            CONTROL_DB_PATH: /data/control.sqlite
+            CONTROL_MIGRATIONS_PATH: /app/drizzle
+            NGINX_STATUS_URL: http://nginx:8081/status
+            REGISTRY_CREDENTIAL_FILE: /credentials/registry-credentials.json
+            REGISTRY_CREDENTIAL_KEY_FILE: /credentials/registry-credential-key
+            PANEL_PUBLIC_URL: http://127.0.0.1:8080
+            TRAFFIC_WORKER_INTERNAL_URL: http://traffic-worker:3003
+            TRAFFIC_EXPORT_ROOT: /backups/traffic-exports
+        healthcheck:
+            test:
+                - CMD
+                - bun
+                - -e
+                - fetch('http://127.0.0.1:3001/api/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        read_only: true
+        security_opt:
+            - no-new-privileges:true
+        tmpfs:
+            - /home/bun/.bun:uid=1000,gid=1000,mode=0700
+            - /tmp
+        volumes:
+            - agent-credentials:/credentials
+            - artifacts:/artifacts
+            - backups:/backups
+            - control-data:/data
+        networks:
+            - ingress
+            - control
+
+    engine-agent:
+        build:
+            context: .
+            dockerfile: apps/engine-agent/Dockerfile
+        group_add:
+            - '0'
+        environment:
+            AGENT_PORT: 3002
+            AGENT_SHARED_SECRET_FILE: /credentials/agent-secret
+            ARTIFACT_ROOT: /artifacts
+            DOCKER_SOCKET_PATH: /var/run/docker.sock
+            NGINX_CONFIG_ROOT: /nginx-config
+            NGINX_STATUS_URL: http://nginx:8081/status
+        healthcheck:
+            test:
+                - CMD
+                - bun
+                - -e
+                - fetch('http://127.0.0.1:3002/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        read_only: true
+        security_opt:
+            - no-new-privileges:true
+        tmpfs:
+            - /tmp
+        volumes:
+            - agent-credentials:/credentials
+            - artifacts:/artifacts:ro
+            - nginx-config:/nginx-config
+            - /var/run/docker.sock:/var/run/docker.sock
+        networks:
+            - control
+
+    traffic-worker:
+        build:
+            context: .
+            dockerfile: apps/traffic-worker/Dockerfile
+        environment:
+            ACCESS_LOG_PATH: /var/log/nginx/access.jsonl
+            INGEST_CHECKPOINT_PATH: /data/ingest-checkpoint.json
+            AGENT_SHARED_SECRET_FILE: /credentials/agent-secret
+            BACKUP_ROOT: /backups
+            TRAFFIC_DB_PATH: /data/traffic.sqlite
+            TRAFFIC_EXPORT_ROOT: /backups/traffic-exports
+            TRAFFIC_RAW_RETENTION_DAYS: 14
+            TRAFFIC_WORKER_PORT: 3003
+        healthcheck:
+            test:
+                - CMD
+                - bun
+                - -e
+                - fetch('http://127.0.0.1:3003/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        read_only: true
+        security_opt:
+            - no-new-privileges:true
+        tmpfs:
+            - /tmp
+        volumes:
+            - agent-credentials:/credentials
+            - backups:/backups
+            - nginx-logs:/var/log/nginx:ro
+            - traffic-data:/data
+        networks:
+            - control
+
+networks:
+    control:
+        internal: true
+    edge:
+    ingress:
+        internal: true
+
+volumes:
+    agent-credentials:
+    artifacts:
+    backups:
+    control-data:
+    nginx-config:
+    nginx-logs:
+    traffic-data:

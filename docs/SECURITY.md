@@ -1,0 +1,149 @@
+# 보안 설계
+
+## 1. 최우선 전제
+
+Docker daemon을 제어할 수 있는 주체는 Docker Desktop Linux VM의 root-equivalent 권한을 가진다. macOS host root와 동일하지는 않지만 공유된 host path를 mount할 수 있으므로 웹 입력이 Docker socket에 도달하는 경로를 일반 CRUD API처럼 취급하면 안 된다. 보안 목표는 접근 지점을 하나로 격리하고 모든 작업을 인증·인가·검증·감사 가능한 typed operation으로 제한하는 것이다.
+
+## 2. 절대 불변식
+
+- `/var/run/docker.sock`은 `engine-agent`에만 mount한다.
+- Docker daemon TCP 2375를 열지 않는다. 원격 target은 SSH 또는 mutual TLS만 허용한다.
+- 외부 Nginx route는 Agent에 연결할 수 없다.
+- API가 임의 Docker CLI 문자열이나 호스트 셸 문자열을 받는 endpoint를 만들지 않는다.
+- exec 명령은 문자열이 아니라 `cmd: string[]`로 받는다. container 내부 셸 실행은 명시적 exec operation으로만 허용하며 host 셸은 break-glass에서도 금지한다.
+- 업로드 파일은 검증 전에 Docker load, build, import, extract하지 않는다.
+- host bind mount, privileged, host PID·IPC·network, device mapping, Docker socket 재마운트는 기본 거부한다.
+- 클라이언트 UI의 숨김 상태를 권한 판단으로 사용하지 않는다.
+- `.env`와 secret 값을 로그, audit payload, API 응답에 넣지 않는다.
+
+## 3. 위험도 등급
+
+| 등급            | 예                                                                              | 요구 절차                                             |
+| --------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| 조회            | list, inspect, stats, logs, events                                              | session 또는 read scope                               |
+| 일상 변경       | start, stop, restart, pause, route draft 저장                                   | operator 이상, audit                                  |
+| 파괴적          | container rm, image rmi, network·volume rm, prune                               | admin 이상, 영향 미리보기, 대상명 재입력              |
+| root-equivalent | privileged create, host bind, device, host namespaces, shell exec, build secret | owner, 최근 재인증, 시간 제한 break-glass, 별도 audit |
+| 시스템 전체     | system prune all, 다수 삭제, 전체 `nginx.conf` 적용                             | owner, dry-run 결과, 이중 확인, job 취소 지점         |
+
+API 키에는 root-equivalent scope를 기본 발급하지 않는다. owner가 명시적으로 허용해도 짧은 만료, 낮은 rate limit과 선택적 CIDR을 적용한다. 외부 API에는 Cloudflare Access service token을 요구하지 않는다.
+
+## 4. 인증·세션
+
+- Better Auth email/password를 기본으로 하고 최초 소유자 생성 후 bootstrap endpoint를 영구 잠근다.
+- 공개 signup은 비활성화하고 초대 token은 단회·짧은 만료로 둔다.
+- production cookie는 Secure, HttpOnly, SameSite=Lax 또는 Strict, 좁은 Path를 사용한다.
+- 비밀번호 재설정·로그인·API key 검증은 rate limit과 audit 대상이다.
+- destructive와 break-glass 작업은 최근 인증 시각을 확인하고 오래된 session이면 재인증한다.
+- Cloudflare Access는 관리 도메인 외곽 방어선으로 권장하되 애플리케이션 인증·인가를 대체하지 않는다.
+- 초대 링크는 token hash만 저장하고 단회, 짧은 만료, role 상한, 회수와 사용 audit를 제공한다.
+
+## 5. 권한 모델
+
+권한은 role과 capability를 함께 사용한다.
+
+- role: `owner`, `admin`, `operator`, `viewer`, `auditor`
+- resource: `container`, `image`, `network`, `volume`, `nginx`, `traffic`, `deployment`, `user`, `api-key`, `audit`, `system`
+- action: `read`, `create`, `update`, `execute`, `delete`, `prune`, `break-glass`
+
+Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 actor context를 받아 정책을 재확인한다. Agent는 API의 판정을 맹신하지 않고 operation별 허용 DTO와 internal service credential을 검증한다.
+
+## 6. API 키
+
+- Better Auth API key plugin 또는 동등한 검증된 구현을 사용한다.
+- key 원문은 생성 응답에서 한 번만 노출하고 DB에는 hash만 저장한다.
+- prefix, 이름, actor, scopes, expiresAt, revokedAt, lastUsedAt, rate limit, 선택적 CIDR를 저장한다.
+- query string으로 키를 받지 않고 `Authorization: Bearer` 또는 고정 전용 header 하나만 사용한다.
+- audit에는 key ID와 prefix만 남긴다.
+- key rotation은 신규 발급, 소비자 전환, 구키 revoke 순으로 무중단 수행한다.
+- 외부 `api` hostname에서는 session cookie를 인증 수단으로 사용하지 않고 브라우저 인증 endpoint도 노출하지 않는다.
+
+## 7. CSRF·CORS·Cloudflare 헤더
+
+- cookie 인증 mutation은 Origin과 Host를 검증하고 CSRF token 또는 Better Auth가 권장하는 방어를 적용한다.
+- 패널 API는 same-origin만 허용한다. 외부 API는 기본 CORS 비활성화이며 필요한 machine client origin만 명시적으로 허용한다.
+- `CF-Connecting-IP`, `CF-Ray`, `CF-IPCountry`는 요청이 cloudflared가 있는 내부 네트워크에서 들어왔고 예상 host인 경우만 신뢰한다.
+- 직접 origin 접근을 방화벽과 Docker network로 차단한다.
+- 관리 도메인과 wildcard workload 도메인의 cookie domain을 공유하지 않는다.
+
+### 구현된 edge·application 제한
+
+- Nginx는 `CF-Connecting-IP`가 있으면 이를, 없으면 직접 peer 주소를 rate key와 traffic `client_ip`로 사용한다. origin은 `127.0.0.1:8080`에만 bind하며 Cloudflare Tunnel 외 공개 listener를 두지 않는다.
+- 로그인은 Nginx의 `5 request/minute + burst 5`와 API의 source별 `10 request/minute`를 겹쳐 적용한다. 제한 초과 응답은 `429`와 `Retry-After`를 사용한다.
+- 일반 API는 Nginx에서 client별 `300 request/minute + burst 100`, API key는 애플리케이션에서 key별 기본 `120 request/minute`를 적용한다. API key 기본값은 환경 설정으로 낮출 수 있다.
+- 패널에는 CSP, COOP, Permissions-Policy, Referrer-Policy, HSTS, `nosniff`, frame deny를 모든 응답에 추가한다. 외부 API hostname에는 브라우저 실행 권한 없이 no-referrer, HSTS, `nosniff`, frame deny만 추가한다.
+- 전체 `nginx.conf` 편집은 위 rate zone·429·패널 보안 header token을 보호 계약으로 검사하므로 UI나 API에서 제거할 수 없다.
+- Cloudflare 헤더의 진위는 origin 비공개라는 배포 불변식에 의존한다. 로컬 listener에 직접 접근 가능한 macOS 프로세스는 헤더를 위조할 수 있으므로 이를 원격 신뢰 경계로 간주하지 않는다.
+
+## 8. 업로드 보안
+
+- Content-Length와 실제 수신 byte를 모두 제한한다.
+- 확장자, MIME, magic bytes, archive 구조를 교차 검증한다.
+- 경로 순회, absolute path, symlink·hardlink escape, 과도한 파일 수, 압축 비율, 중첩 archive를 거부한다.
+- quarantine 파일명은 서버 생성 ID만 사용하고 원본명은 metadata로만 보존한다.
+- SHA-256 digest를 계산하고 중복 업로드를 식별한다.
+- image load 전 manifest와 layer 개수·총 크기를 검사하고 load 후 image inspect와 scanner를 실행한다.
+- build context에서 secret 파일, host path ADD, remote URL ADD, privileged build option을 정책으로 차단한다.
+
+## 9. exec·로그·스트림 보안
+
+- exec는 container ID를 다시 inspect해 존재와 현재 상태를 확인한다.
+- 기본 user는 이미지·컨테이너 설정을 따르고 `root`와 `Privileged=true`는 break-glass다.
+- 환경변수 주입은 key allowlist와 값 길이 제한을 적용하고 audit에는 key만 남긴다.
+- idle timeout, max duration, max buffered output, 동시 session 수를 제한한다.
+- WebSocket 연결마다 session과 capability를 재검증하고 session revoke 시 종료한다.
+- logs는 secret pattern redaction을 제공하되 원본 Docker log를 영구 DB에 복제하지 않는 것을 기본으로 한다.
+
+## 10. Agent·컨테이너 hardening
+
+- Agent root filesystem은 read-only, writable tmpfs 최소화, no-new-privileges를 사용한다.
+- Docker socket 외 host path를 mount하지 않는다.
+- Agent port는 `internal: true` Docker network에서만 듣는다.
+- API와 Agent 사이 credential은 Docker secret으로 전달하고 정기 rotation한다.
+- private registry 비밀번호·access token은 Agent 전용 named volume에서 AES-256-GCM으로 암호화한다. API 응답·control DB·job payload·audit에는 원문을 기록하지 않는다.
+- registry credential은 선택한 image reference의 registry host와 정확히 일치할 때만 Docker Engine `X-Registry-Auth`로 사용한다.
+- Agent 요청은 request ID, timestamp, nonce, body digest를 서명해 replay를 막는다.
+- API, web, worker, nginx는 불필요한 Linux capability를 모두 drop한다.
+- production 이미지는 digest로 pin하고 SBOM·취약점 scan을 CI에서 수행한다.
+- Agent는 Docker Desktop에 공유된 임의 macOS host path를 받지 않고 제품이 소유한 named volume만 기본 허용한다.
+
+## 11. 감사 무결성
+
+- audit row는 append-only이며 애플리케이션에서 update·delete endpoint를 만들지 않는다.
+- actor, authMethod, source IP 정책값, user agent 요약, operation, target, request ID, job ID, before·after 요약, result, error code, duration을 기록한다.
+- secret, cookie, API key, full env, exec stdin, raw terminal output은 기록하지 않는다.
+- 각 row에 이전 row hash를 포함하는 tamper-evident chain을 선택적으로 적용하고 주기적으로 외부 저장소에 checkpoint를 내보낸다.
+- root 권한 공격자가 로컬 기록을 모두 바꿀 수 있다는 한계를 문서와 UI에 명시한다.
+
+## 12. 원본 IP 개인정보 통제
+
+- 원본 IP는 traffic raw row와 보안상 필요한 audit event에만 저장하고 rollup에는 원문을 복제하지 않는다.
+- traffic live SSE와 일반 CSV/NDJSON export는 Worker 경계에서 IP를 mask하고 user agent를 제외한다. export 생성·download는 owner/admin session과 audit를 요구한다.
+- 일반 목록은 mask하며 `auditor` 이상만 재인증과 조회 사유 입력 후 원문을 열람한다.
+- 원본 IP 조회와 export 시도 자체를 감사하고 bulk export는 owner 승인과 만료형 job으로 제한한다.
+- Discord 알림과 선택적 R2 외부 backup의 알림 metadata에는 원본 IP를 넣지 않는다. R2 backup 자체는 암호화와 retention을 적용한다.
+- raw row 14일, audit 1년 만료를 자동 purge하고 삭제 건수·완료 시각을 증거로 남긴다.
+
+## 13. 보안 테스트 게이트
+
+- role·scope 조합에 대한 deny-by-default matrix test
+- cookie CSRF, CORS, Host header, Cloudflare header spoofing test
+- Docker create 위험 옵션 우회와 Zod unknown field test
+- command injection, path traversal, archive bomb, symlink escape test
+- WebSocket 인증 만료·재사용·동시 연결 제한 test
+- API key hash·rotation·revoke·rate limit test
+- 로그와 audit의 secret redaction test
+- invalid Nginx config가 현재 서비스를 중단하지 않는 test
+- 원본 IP role, 재인증, masking, export, purge, backup·webhook 비노출 test
+- Access가 없는 외부 API hostname에서 session cookie가 인증되지 않는 test
+
+## 14. 로컬 백업 보안
+
+- 로컬 백업은 API와 Traffic Worker만 mount한 `backups` named volume에 저장하며 host path를 입력받지 않는다.
+- backup ID는 UUID, 복구·삭제 confirmation도 같은 UUID로 검증해 경로 입력 표면을 제거한다.
+- 생성 전에 live control DB FK를 검사하고, 복구 전에 control SQLite integrity·FK·table·column과 두 파일 SHA-256·byte 수를 모두 검증한다.
+- 복구는 Owner 최근 session 또는 명시적인 `backup:write` API key scope만 허용하고 create·restore·remove를 audit한다.
+- 복구 직전에 현재 control·traffic DB를 별도 recovery set으로 만든다. 두 DB 복구 중 실패하면 이 set으로 보상 복구를 시도한다.
+- 손상 backup은 복구할 수 없지만 정확한 UUID confirmation으로 삭제할 수 있다.
+- 로컬 snapshot 자체는 별도 파일 암호화를 하지 않는다. deployment secret 값은 DB 안에서 AES-256-GCM ciphertext지만 사용자·세션·password hash 등 민감 metadata가 있으므로 named volume 접근을 secret 수준으로 다룬다.
+- R2 전송을 구현할 때는 client-side envelope encryption, key rotation, object lock 또는 retention, multipart digest와 민감 metadata 제외가 선행되어야 한다.

@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@xterm/xterm/css/xterm.css';
+
+:root {
+    --background: oklch(0.955 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --foreground: oklch(0.145 0 0);
+    --muted: oklch(0.922 0 0);
+    --muted-foreground: oklch(0.45 0 0);
+    --sidebar: oklch(0.915 0 0);
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-foreground: var(--foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-sidebar: var(--sidebar);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --background: oklch(0.162 0 0);
+        --card: oklch(0.212 0 0);
+        --card-foreground: oklch(0.985 0 0);
+        --foreground: oklch(0.985 0 0);
+        --muted: oklch(0.26 0 0);
+        --muted-foreground: oklch(0.7 0 0);
+        --sidebar: oklch(0.098 0 0);
+    }
+}
+
+* {
+    border-radius: 0;
+}
+
+body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: Arial, Helvetica, sans-serif;
+}

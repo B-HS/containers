@@ -1,0 +1,32 @@
+{
+    "name": "@containers/contracts",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./api-key": "./src/api-key.ts",
+        "./audit": "./src/audit.ts",
+        "./backup": "./src/backup.ts",
+        "./deployment": "./src/deployment.ts",
+        "./deployment-secret": "./src/deployment-secret.ts",
+        "./engine": "./src/engine.ts",
+        "./engine-control": "./src/engine-control.ts",
+        "./engine-stream": "./src/engine-stream.ts",
+        "./health": "./src/health.ts",
+        "./internal-auth": "./src/internal-auth.ts",
+        "./maintenance": "./src/maintenance.ts",
+        "./nginx": "./src/nginx.ts",
+        "./operation-job": "./src/operation-job.ts",
+        "./registry-credential": "./src/registry-credential.ts",
+        "./upload": "./src/upload.ts",
+        "./traffic": "./src/traffic.ts",
+        "./user-management": "./src/user-management.ts"
+    },
+    "scripts": {
+        "build": "bun build src/api-key.ts src/audit.ts src/backup.ts src/deployment.ts src/deployment-secret.ts src/engine.ts src/engine-control.ts src/engine-stream.ts src/health.ts src/internal-auth.ts src/maintenance.ts src/nginx.ts src/operation-job.ts src/registry-credential.ts src/traffic.ts src/upload.ts src/user-management.ts --outdir dist --target bun",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "zod": "4.4.3"
+    }
+}

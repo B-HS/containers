@@ -1,0 +1,29 @@
+{
+    "name": "@containers/api",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./app": "./src/compose/create-app.ts"
+    },
+    "scripts": {
+        "build": "bun build src/server.ts --outdir dist --target bun",
+        "dev": "bun --watch src/server.ts",
+        "start": "bun dist/server.js",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@better-auth/drizzle-adapter": "1.6.25",
+        "@containers/config": "workspace:*",
+        "@containers/contracts": "workspace:*",
+        "@containers/db-schema": "workspace:*",
+        "better-auth": "1.6.25",
+        "drizzle-orm": "0.45.2",
+        "hono": "4.12.33",
+        "tar-stream": "3.2.0",
+        "zod": "4.4.3"
+    },
+    "devDependencies": {
+        "@types/tar-stream": "3.1.4"
+    }
+}
