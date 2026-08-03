@@ -4,19 +4,7 @@ A self-hosted Docker management panel that runs entirely on your own machine —
 
 ![Dashboard](screenshots/hero.png)
 
-## What it does
-
-- **Container control** — start/stop/restart/kill, create with resource limits, interactive terminal (WebSocket), logs, stats, top, and exec
-- **Nginx as code** — inspect and edit the live `nginx.conf` with a **GUI editor** (directive tooltips, server/location master-detail sidebar) or raw text, with `nginx -t` validation and atomic rollback on reload
-- **Deployments** — upload an OCI/Docker archive, define a manifest (image, secrets, health check, rollout), and blue-green release through the reverse proxy
-- **Registry** — authenticated image pull with encrypted credentials
-- **Traffic analytics** — real-time request log ingestion, p50/p95/p99, top paths, CSV/NDJSON export
-- **Backup & restore** — scheduled SQLite snapshots with integrity verification and rollback
-- **Security** — owner/admin/operator roles, API keys with scoped access, recent-login step-up on destructive ops, rate limiting, audit log, and a hard management-plane boundary between the control plane and user workloads
-
-## Tech stack
-
-Bun · Next.js (App Router) · Hono · Drizzle ORM + SQLite · Better Auth · Docker Engine API · Nginx
+It lets you control Docker containers, create and deploy them, inspect live traffic, and manage the Nginx reverse proxy (including a GUI config editor) — all through a single web panel on your own machine. It ships with role-based access control, encrypted credentials, automated backups, and rate limiting, so it behaves like a small production control plane rather than an admin toy.
 
 ## Requirements
 
