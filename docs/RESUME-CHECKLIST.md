@@ -6,7 +6,7 @@
 
 확인 시각: **2026-08-01 16:00 KST**
 
-- 작업 경로: `/Users/hyunseokbyun/development/containers`
+- 작업 경로: `/Users/gkn/containers`
 - 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `rest-work/deepseekv4`). 변경 범위는 `git status`·diff 로 판단한다.
 - Compose 5개 서비스 `nginx`, `web`, `api`, `engine-agent`, `traffic-worker`가 모두 healthy다.
 - `control.sqlite`, `traffic.sqlite`의 `PRAGMA integrity_check` 결과가 모두 `ok`다.
@@ -24,18 +24,18 @@
 
 ## 2. 새 환경에서 읽는 순서
 
-- [ ] `/Users/hyunseokbyun/development/llm-rules/docs/convention/`의 규칙을 전부 읽는다.
+- [ ] `/Users/gkn/.config/opencode/llm-rules/`의 규칙을 전부 읽는다.
 - [ ] 이 문서를 끝까지 읽는다.
 - [ ] [HANDOFF-STATUS.md](./HANDOFF-STATUS.md)의 구현 범위·한계·검증 증거를 읽는다.
 - [ ] [PROCESS.md](./PROCESS.md)의 마지막 활성 Phase를 읽는다.
 - [ ] [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md)과 [quality-assurance/ACCEPTANCE.md](./quality-assurance/ACCEPTANCE.md)에서 선택한 작업의 완료 조건을 확인한다.
 - [ ] 관련 최신 `acknowledge/` 문서를 읽는다. 현재 최신은 [0025](./acknowledge/0025-web-panel-sidebar-navigation.md)이다.
-- [ ] UI 변경이면 [SHADCN-COMPONENTS.md](./SHADCN-COMPONENTS.md)와 `/Users/hyunseokbyun/development/flunti-otel` 패턴을 먼저 확인한다.
+- [ ] UI 변경이면 [SHADCN-COMPONENTS.md](./SHADCN-COMPONENTS.md)와 `/Users/gkn/flunti-otel` 패턴을 먼저 확인한다.
 
 ## 3. 재개 직후 읽기 전용 점검
 
 ```sh
-cd /Users/hyunseokbyun/development/containers
+cd /Users/gkn/containers
 pwd
 docker compose ps
 curl -fsS http://127.0.0.1:8080/api/health

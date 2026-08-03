@@ -2,8 +2,8 @@
 
 ## 기준 문서
 
-- 코딩 규칙: `/Users/hyunseokbyun/development/llm-rules/docs/convention/`
-- 디자인·운영 레퍼런스: `/Users/hyunseokbyun/development/flunti-otel`
+- 코딩 규칙: `/Users/gkn/.config/opencode/llm-rules/`
+- 디자인·운영 레퍼런스: `/Users/gkn/flunti-otel`
 - 공식 문서 근거: [references/OFFICIAL-SOURCES.md](./references/OFFICIAL-SOURCES.md)
 - 현재 단계: 승인된 구현 계획에 따라 단계별 구현과 검증을 수행한다.
 - 안전 재개 단일 진입점: [RESUME-CHECKLIST.md](./RESUME-CHECKLIST.md)

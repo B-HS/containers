@@ -26,7 +26,7 @@
 20. [quality-assurance/DOCUMENT-AUDIT.md](./quality-assurance/DOCUMENT-AUDIT.md) — 문서 단계 자체 검증
 21. [references/OFFICIAL-SOURCES.md](./references/OFFICIAL-SOURCES.md) — 공식 문서 근거
 22. [quality-assurance/2026-08-01-DOCUMENT-CONSISTENCY-AUDIT.md](./quality-assurance/2026-08-01-DOCUMENT-CONSISTENCY-AUDIT.md) — 현재 구현과 문서 정합성 감사
-23. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0025 웹 패널 사이드바 내비게이션)
+23. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0028 모노레포 계층·DB·쿼리·env 접근 컨벤션 정합)
 24. `history/` — 세션별 작업 이력 (시간순, 현재 상태가 아님)
 
 macOS 에서 처음 설치·기동할 때는 저장소 루트의 `scripts/setup-macos.sh` 를 실행한다(환경 확인 → compose 검증·override 생성 → 기동 → 스모크 테스트).
@@ -36,7 +36,7 @@ macOS 에서 처음 설치·기동할 때는 저장소 루트의 `scripts/setup-
 1. 사용자의 최신 명시 지시
 2. `docs/acknowledge/`에 기록된 확정 결정
 3. 이 디렉터리의 설계 문서
-4. `/Users/hyunseokbyun/development/llm-rules/docs/convention/` 규칙
-5. `/Users/hyunseokbyun/development/flunti-otel`의 디자인·구현 패턴
+4. `/Users/gkn/.config/opencode/llm-rules/` 규칙
+5. `/Users/gkn/flunti-otel`의 디자인·구현 패턴
 
 현재 상태는 `RESUME-CHECKLIST.md`와 `HANDOFF-STATUS.md`를 우선한다. 과거 `acknowledge/`·`history/`는 시점 증거이며 현재값으로 읽지 않는다. 문서끼리 충돌하면 실제 코드·테스트·runtime을 확인하고 정합성 감사와 `PROCESS.md`에 해결을 기록한다. 구현 중 설계를 바꿔야 하면 코드를 먼저 바꾸지 않고 `OPEN-DECISIONS.md` 또는 새 ADR을 갱신해 승인을 받는다.

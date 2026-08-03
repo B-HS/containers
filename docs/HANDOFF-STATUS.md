@@ -29,10 +29,10 @@
 
 ## 2. 새 세션 시작 순서
 
-1. `/Users/hyunseokbyun/development/llm-rules/docs/convention/` 아래 규칙을 전부 읽는다.
+1. `/Users/gkn/.config/opencode/llm-rules/` 아래 규칙을 전부 읽는다.
 2. [RESUME-CHECKLIST.md](./RESUME-CHECKLIST.md), 이 문서, [PROCESS.md](./PROCESS.md), [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md), [quality-assurance/ACCEPTANCE.md](./quality-assurance/ACCEPTANCE.md)를 읽는다.
-3. 작업 영역은 `/Users/hyunseokbyun/development/containers`다.
-4. 디자인·컴포넌트 패턴은 `/Users/hyunseokbyun/development/flunti-otel`을 읽고 따른다.
+3. 작업 영역은 `/Users/gkn/containers`다.
+4. 디자인·컴포넌트 패턴은 `/Users/gkn/flunti-otel`을 읽고 따른다.
 5. `docs/SHADCN-COMPONENTS.md`를 확인하고 기존 `apps/web/src/shared/ui` primitive를 우선 사용한다.
 6. 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `rest-work/deepseekv4`). 변경 범위는 Git 명령으로 판단한다.
 7. 기존 Docker image·container·network·volume에는 사용자 소유 리소스가 섞여 있다. 이름이 명백한 이번 테스트 fixture가 아니면 삭제하지 않는다.

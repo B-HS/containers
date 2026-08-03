@@ -77,8 +77,8 @@
 
 ## 프로젝트 로컬 기준
 
-- 코딩 규칙: `/Users/hyunseokbyun/development/llm-rules/docs/convention/`
-- 디자인·Hono RPC·모노레포 레퍼런스: `/Users/hyunseokbyun/development/flunti-otel`
-- 레퍼런스 디자인 ADR: `/Users/hyunseokbyun/development/flunti-otel/docs/acknowledge/0018-dashboard-spa-monorepo.md`
-- 레퍼런스 3단 셸 ADR: `/Users/hyunseokbyun/development/flunti-otel/docs/acknowledge/0021-three-column-shell.md`
-- 레퍼런스 UI 수치 검증: `/Users/hyunseokbyun/development/flunti-otel/docs/quality-assurance/spa-ui-consistency.md`
+- 코딩 규칙: `/Users/gkn/.config/opencode/llm-rules/`
+- 디자인·Hono RPC·모노레포 레퍼런스: `/Users/gkn/flunti-otel`
+- 레퍼런스 디자인 ADR: `/Users/gkn/flunti-otel/docs/acknowledge/0018-dashboard-spa-monorepo.md`
+- 레퍼런스 3단 셸 ADR: `/Users/gkn/flunti-otel/docs/acknowledge/0021-three-column-shell.md`
+- 레퍼런스 UI 수치 검증: `/Users/gkn/flunti-otel/docs/quality-assurance/spa-ui-consistency.md`
