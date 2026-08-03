@@ -6,6 +6,7 @@ import { Badge } from '@shared/ui/badge'
 export type MasterDetailItem = {
     badge?: string
     id: string
+    indent?: boolean
     subtitle?: string
     title: string
 }
@@ -35,8 +36,8 @@ export const MasterDetail: FC<MasterDetailProps> = ({ children, empty, items, li
                                 <li key={item.id}>
                                     <button
                                         className={`grid w-full min-w-0 gap-1 p-3 text-left ${
-                                            selected ? 'bg-foreground text-background' : 'bg-card hover:bg-muted'
-                                        }`}
+                                            item.indent ? 'pl-8' : ''
+                                        } ${selected ? 'bg-foreground text-background' : 'bg-card hover:bg-muted'}`}
                                         onClick={() => onSelect(item.id)}
                                         type="button"
                                     >
