@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { createAppError } from '../lib/app-error'
 import { createInteractiveExecService } from './create-interactive-exec-service'
 
 describe('Interactive exec ticket', () => {
@@ -7,7 +8,7 @@ describe('Interactive exec ticket', () => {
         const service = createInteractiveExecService({
             dockerEngineClient: {
                 createInteractiveExec: async () => {
-                    throw new Error('테스트에서 호출되지 않습니다.')
+                    throw createAppError('테스트에서 호출되지 않습니다.')
                 },
                 inspectInteractiveExec: async () => 0,
                 resizeInteractiveExec: async () => undefined,
@@ -28,7 +29,7 @@ describe('Interactive exec ticket', () => {
         const service = createInteractiveExecService({
             dockerEngineClient: {
                 createInteractiveExec: async () => {
-                    throw new Error('테스트에서 호출되지 않습니다.')
+                    throw createAppError('테스트에서 호출되지 않습니다.')
                 },
                 inspectInteractiveExec: async () => 0,
                 resizeInteractiveExec: async () => undefined,
@@ -53,7 +54,7 @@ describe('Interactive exec ticket', () => {
         const service = createInteractiveExecService({
             dockerEngineClient: {
                 createInteractiveExec: async () => {
-                    throw new Error('테스트에서 호출되지 않습니다.')
+                    throw createAppError('테스트에서 호출되지 않습니다.')
                 },
                 inspectInteractiveExec: async () => {
                     inspectCount += 1

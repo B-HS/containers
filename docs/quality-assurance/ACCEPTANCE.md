@@ -122,9 +122,10 @@
 - [x] control·traffic DB backup과 실제 restore drill
 - [x] 로컬 retention과 R2 미설정 상태의 독립 동작
 - [ ] 선택적 R2 장애·재시도·암호화·retention 검증
-- [ ] Discord test 알림·재시도·중복 억제와 민감정보 비노출
+- [x] Discord test 알림·재시도·중복 억제와 민감정보 비노출 (0022 — 단위·통합 검증: test delivery, 429/5xx/4xx 분류, source unique dedupe, webhook URL API·audit·payload 미노출)
 - [ ] 기존 workload가 control plane 장애 중 계속 응답
-- [ ] control plane upgrade와 rollback runbook 재현
+- [x] control plane upgrade 준비 상태 검증 — `GET /api/control-plane/status`(owner·admin) migration sha256 dry-run·DB integrity·active job·최신 backup·maintenance 종합 보고, `docs/CONTROL-PLANE-UPGRADE.md` runbook (0023, 2026-08-01)
+- [ ] control plane upgrade와 rollback runbook 재현 (host 에서 실제 upgrade·rollback 실행은 사용자 수행 — API 는 준비 상태만 보고)
 
 ## 11. 품질·성능
 
@@ -154,4 +155,4 @@
 - [ ] 새 version 배포와 rollback
 - [ ] container·image 정리
 - [ ] API key만으로 같은 자동화 시나리오 수행
-- [ ] host terminal 없이 초대·backup·restore·Discord·disk 정책 관리
+- [x] host terminal 없이 초대·backup·restore·Discord·disk 정책 관리

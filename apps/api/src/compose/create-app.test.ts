@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { DeploymentRelease } from '@containers/contracts/deployment'
 import { healthSchema } from '@containers/contracts/health'
 import type { OperationJob } from '@containers/contracts/operation-job'
 import { createAppError } from '../lib/app-error'
@@ -213,14 +214,7 @@ const createAppTestDependencies = () => ({
         },
     },
     deploymentService: {
-        loadArtifact: async () => ({
-            artifactId: '01958c26-65b5-7c22-9254-03b914e61cc5',
-            createdAt: '2026-01-01T00:00:00.000Z',
-            id: '01958c26-65b5-7c22-9254-03b914e61cc6',
-            messages: ['Loaded image: example:latest'],
-            status: 'loaded' as const,
-            updatedAt: '2026-01-01T00:00:01.000Z',
-        }),
+        getLoaded: async () => null,
     },
     deploymentManifestService: {
         create: async () => {
@@ -232,7 +226,6 @@ const createAppTestDependencies = () => ({
         list: async () => [],
     },
     deploymentReleaseService: {
-        cleanupExpiredContainers: async () => 0,
         create: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
@@ -241,13 +234,6 @@ const createAppTestDependencies = () => ({
         },
         list: async () => [],
         prepareRollback: async () => {
-            throw createAppError('테스트에서 호출되지 않습니다.')
-        },
-        reconcileInterrupted: async () => [],
-        run: async () => {
-            throw createAppError('테스트에서 호출되지 않습니다.')
-        },
-        runRollback: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
     },
@@ -290,6 +276,16 @@ const createAppTestDependencies = () => ({
         isEnabled: () => false,
         leave: () => undefined,
     },
+    controlPlaneStatusService: {
+        getStatus: async () => ({
+            activeJobCount: 0,
+            databaseIntegrity: { control: 'ok' },
+            lastBackupAt: null,
+            maintenance: { enabled: false, reason: null, startedAt: null },
+            migrations: { applied: [], pending: [] },
+            version: '0.1.0',
+        }),
+    },
     operationJobService: {
         enqueue: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')
@@ -303,6 +299,26 @@ const createAppTestDependencies = () => ({
         },
         requestCancel: async () => {
             throw createAppError('JOB_NOT_FOUND')
+        },
+    },
+    notificationDeliveryService: {
+        deliverTest: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+    },
+    notificationDestinationService: {
+        list: async () => [],
+        remove: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+        resolveWebhook: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+        setEnabled: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+        upsert: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
         },
     },
     trafficWorkerClient: {
@@ -341,17 +357,58 @@ const createAppTestDependencies = () => ({
             status: 'uploading',
             warnings: [],
         }),
-        finalizeSession: async () => ({
-            createdAt: '2026-01-01T00:00:00.000Z',
-            fileName: 'image.tar',
+        getOwnedSession: async () => ({
+            expiresAt: '2026-01-02T00:00:00.000Z',
             id: '01958c26-65b5-7c22-9254-03b914e61cc5',
-            mediaType: 'application/vnd.docker.image.rootfs.diff.tar',
-            sha256: 'a'.repeat(64),
-            sizeBytes: 1,
-            status: 'ready',
+            maxChunkBytes: 67_108_864,
+            receivedBytes: 0,
+            status: 'uploading',
+            warnings: [],
         }),
         listArtifacts: async () => [],
     },
+})
+
+const ARTIFACT_ID = '01958c26-65b5-7c22-9254-03b914e61cc5'
+const MANIFEST_ID = '9d3f6a71-2c4b-4b8e-8f1a-3e5d7c9b0a22'
+const RELEASE_ID = 'c4e2d1a0-7b6c-4d5e-8f90-1a2b3c4d5e6f'
+
+const createQueuedJob = (kind: OperationJob['kind'], resourceKey: string): OperationJob => ({
+    attempt: 0,
+    cancelRequestedAt: null,
+    createdAt: '2026-08-01T00:00:00.000Z',
+    createdBy: 'test-owner',
+    failureCode: null,
+    finishedAt: null,
+    heartbeatAt: null,
+    id: '2b1f8a49-4a1f-4be1-9f14-1b6a9be3f2ac',
+    kind,
+    maxAttempts: 1,
+    payload: {},
+    progressStep: null,
+    resourceKey,
+    result: null,
+    scheduledAt: '2026-08-01T00:00:00.000Z',
+    startedAt: null,
+    status: 'queued',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+})
+
+const createRelease = (status: DeploymentRelease['status']): DeploymentRelease => ({
+    activatedAt: null,
+    containerId: 'container-id',
+    containerName: 'workload-blue',
+    createdAt: '2026-08-01T00:00:00.000Z',
+    createdBy: 'test-owner',
+    failureCode: null,
+    finishedAt: null,
+    id: RELEASE_ID,
+    manifestId: MANIFEST_ID,
+    nginxConfigSha256: null,
+    nginxRouteId: null,
+    previousReleaseId: null,
+    status,
+    updatedAt: '2026-08-01T00:00:00.000Z',
 })
 
 describe('API 애플리케이션', () => {
@@ -434,6 +491,7 @@ describe('API 애플리케이션', () => {
             maxAttempts: 1,
             payload: { format: 'csv', from: '2026-08-01T00:00:00.000Z', to: '2026-08-01T01:00:00.000Z' },
             progressStep: 'export',
+            resourceKey: null,
             result: { bytes: 25, fileName, format: 'csv', rowCount: 1, sha256: 'a'.repeat(64) },
             scheduledAt: '2026-08-01T00:00:00.000Z',
             startedAt: '2026-08-01T00:00:00.000Z',
@@ -569,6 +627,7 @@ describe('API 애플리케이션', () => {
                         maxAttempts: 3,
                         payload: input.payload,
                         progressStep: null,
+                        resourceKey: null,
                         result: null,
                         scheduledAt: '2026-08-01T00:00:00.000Z',
                         startedAt: null,
@@ -615,6 +674,7 @@ describe('API 애플리케이션', () => {
             maxAttempts: 1,
             payload: {},
             progressStep: null,
+            resourceKey: null,
             result: null,
             scheduledAt: '2026-08-01T00:00:00.000Z',
             startedAt: null,
@@ -708,6 +768,110 @@ describe('API 애플리케이션', () => {
         expect((await releaseResponse.json()).data).toEqual([])
     })
 
+    test('artifact load 는 이미 loaded 면 200 deployment, 아니면 202 job 을 반환합니다', async () => {
+        const dependencies = createAppTestDependencies()
+        const authService = { ...dependencies.authService, requireRecentRole: dependencies.authService.requireRole }
+        let enqueuedInput: Record<string, unknown> | undefined
+        const jobApp = createApp({
+            ...dependencies,
+            authService,
+            operationJobService: {
+                ...dependencies.operationJobService,
+                enqueue: async (input) => {
+                    enqueuedInput = input
+                    return createQueuedJob('deploy.load', ARTIFACT_ID)
+                },
+            },
+        })
+
+        const jobResponse = await jobApp.request(`/api/artifacts/${ARTIFACT_ID}/load`, { method: 'POST' })
+        expect(jobResponse.status).toBe(202)
+        expect((await jobResponse.json()).data.job.kind).toBe('deploy.load')
+        expect(enqueuedInput).toMatchObject({ kind: 'deploy.load', payload: { artifactId: ARTIFACT_ID }, uniqueResourceKey: ARTIFACT_ID })
+
+        const loaded = {
+            artifactId: ARTIFACT_ID,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            id: '01958c26-65b5-7c22-9254-03b914e61cc6',
+            messages: [],
+            status: 'loaded' as const,
+            updatedAt: '2026-01-01T00:00:01.000Z',
+        }
+        const loadedApp = createApp({
+            ...dependencies,
+            authService,
+            deploymentService: { ...dependencies.deploymentService, getLoaded: async () => loaded },
+        })
+
+        const loadedResponse = await loadedApp.request(`/api/artifacts/${ARTIFACT_ID}/load`, { method: 'POST' })
+        expect(loadedResponse.status).toBe(200)
+        expect((await loadedResponse.json()).data.deployment).toEqual(loaded)
+    })
+
+    test('upload finalize 는 202 job 을 반환하고 없는 session 은 job 없이 410 으로 거부합니다', async () => {
+        const dependencies = createAppTestDependencies()
+        const sessionId = ARTIFACT_ID
+        let enqueueCount = 0
+        const operationJobService = {
+            ...dependencies.operationJobService,
+            enqueue: async () => {
+                enqueueCount += 1
+                return createQueuedJob('upload.finalize', sessionId)
+            },
+        }
+        const app = createApp({ ...dependencies, operationJobService })
+
+        const response = await app.request(`/api/uploads/sessions/${sessionId}/finalize`, { method: 'POST' })
+        expect(response.status).toBe(202)
+        expect((await response.json()).data.job.kind).toBe('upload.finalize')
+        expect(enqueueCount).toBe(1)
+
+        const missingApp = createApp({
+            ...dependencies,
+            operationJobService,
+            uploadService: { ...dependencies.uploadService, getOwnedSession: async () => null },
+        })
+        const missingResponse = await missingApp.request(`/api/uploads/sessions/${sessionId}/finalize`, { method: 'POST' })
+
+        expect(missingResponse.status).toBe(410)
+        expect((await missingResponse.json()).error.code).toBe('UPLOAD_SESSION_INVALID')
+        expect(enqueueCount).toBe(1)
+    })
+
+    test('release 생성과 rollback 은 202 로 release 와 job 을 함께 반환합니다', async () => {
+        const dependencies = createAppTestDependencies()
+        const enqueuedKinds: string[] = []
+        const app = createApp({
+            ...dependencies,
+            authService: { ...dependencies.authService, requireRecentRole: dependencies.authService.requireRole },
+            deploymentReleaseService: {
+                ...dependencies.deploymentReleaseService,
+                create: async () => createRelease('creating'),
+                prepareRollback: async () => createRelease('rolling-back'),
+            },
+            operationJobService: {
+                ...dependencies.operationJobService,
+                enqueue: async (input) => {
+                    enqueuedKinds.push(input.kind)
+                    return createQueuedJob(input.kind, RELEASE_ID)
+                },
+            },
+        })
+
+        const createResponse = await app.request(`/api/deployment-manifests/${MANIFEST_ID}/releases`, { method: 'POST' })
+        expect(createResponse.status).toBe(202)
+        const createBody = await createResponse.json()
+        expect(createBody.data.release.status).toBe('creating')
+        expect(createBody.data.job).toMatchObject({ kind: 'deploy.release', resourceKey: RELEASE_ID })
+
+        const rollbackResponse = await app.request(`/api/deployment-releases/${RELEASE_ID}/rollback`, { method: 'POST' })
+        expect(rollbackResponse.status).toBe(202)
+        const rollbackBody = await rollbackResponse.json()
+        expect(rollbackBody.data.release.status).toBe('rolling-back')
+        expect(rollbackBody.data.job).toMatchObject({ kind: 'deploy.rollback', resourceKey: RELEASE_ID })
+        expect(enqueuedKinds).toEqual(['deploy.release', 'deploy.rollback'])
+    })
+
     test('실시간 stream proxy 는 SSE 응답과 미인증 거부를 반환합니다', async () => {
         const dependencies = createAppTestDependencies()
         const app = createApp(dependencies)
@@ -776,6 +940,38 @@ describe('API 애플리케이션', () => {
 
         const readAllowed = await maintenanceApp.request('/api/jobs?limit=1')
         expect(readAllowed.status).toBe(200)
+    })
+
+    test('control plane 상태는 owner·admin 만 200 으로 조회하고 다른 역할은 403 입니다', async () => {
+        const dependencies = createAppTestDependencies()
+        const roleChecks: string[][] = []
+        const ownerApp = createApp({
+            ...dependencies,
+            authService: {
+                ...dependencies.authService,
+                requireRole: async (_headers: Headers, roles: string[]) => {
+                    roleChecks.push(roles)
+                    return dependencies.authService.requireRole()
+                },
+            },
+        })
+        const ownerResponse = await ownerApp.request('/api/control-plane/status')
+        expect(ownerResponse.status).toBe(200)
+        expect((await ownerResponse.json()).data).toMatchObject({ version: '0.1.0', migrations: { applied: [], pending: [] } })
+        expect(roleChecks).toEqual([['owner', 'admin']])
+
+        const forbiddenApp = createApp({
+            ...dependencies,
+            authService: {
+                ...dependencies.authService,
+                requireRole: async () => {
+                    throw createAppError('FORBIDDEN')
+                },
+            },
+        })
+        const forbiddenResponse = await forbiddenApp.request('/api/control-plane/status')
+        expect(forbiddenResponse.status).toBe(403)
+        expect((await forbiddenResponse.json()).error.code).toBe('FORBIDDEN')
     })
 
     test('공개 email 가입 경로를 차단합니다', async () => {

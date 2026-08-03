@@ -1,10 +1,13 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { API_KEY_SCOPE, type ApiKeyScope } from '@containers/contracts/api-key'
+import { OPERATION_JOB_KIND } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
+import { createAppError } from '../../lib/app-error'
 import { errorResponse, successResponse } from '../../lib/response'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
+import type { OperationJobService } from '../../service/domain/job/create-operation-job-service'
 import type { UploadService } from '../../service/domain/upload/create-upload-service'
 
 const uploadRoles = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR]
@@ -15,7 +18,8 @@ const idempotencyKeySchema = z.string().min(8).max(128)
 type UploadRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     authService: Pick<AuthService, 'requireRole'>
-    uploadService: UploadService
+    operationJobService: Pick<OperationJobService, 'enqueue'>
+    uploadService: Pick<UploadService, 'appendChunk' | 'createSession' | 'getOwnedSession' | 'listArtifacts'>
 }
 
 const getUploadErrorStatus = (code: string) => {
@@ -29,7 +33,7 @@ const getUploadErrorStatus = (code: string) => {
     return 400 as const
 }
 
-export const createUploadRoute = ({ apiKeyService, authService, uploadService }: UploadRouteDependencies) => {
+export const createUploadRoute = ({ apiKeyService, authService, operationJobService, uploadService }: UploadRouteDependencies) => {
     const app = new Hono()
 
     const requireActor = async (headers: Headers, scope: ApiKeyScope) => {
@@ -89,7 +93,17 @@ export const createUploadRoute = ({ apiKeyService, authService, uploadService }:
     app.post('/uploads/sessions/:sessionId/finalize', async (context) => {
         try {
             const actorId = await requireActor(context.req.raw.headers, API_KEY_SCOPE.ARTIFACT_UPLOAD)
-            return context.json(successResponse(await uploadService.finalizeSession(actorId, context.req.param('sessionId'))), 201)
+            const sessionId = context.req.param('sessionId')
+            if (!(await uploadService.getOwnedSession(actorId, sessionId))) {
+                throw createAppError('UPLOAD_SESSION_INVALID')
+            }
+            const job = await operationJobService.enqueue({
+                createdBy: actorId,
+                kind: OPERATION_JOB_KIND.UPLOAD_FINALIZE,
+                payload: { sessionId },
+                uniqueResourceKey: sessionId,
+            })
+            return context.json(successResponse({ job }), 202)
         } catch (error) {
             const code = error instanceof Error ? error.message : 'UPLOAD_FINALIZE_FAILED'
             return context.json(errorResponse(code, 'Artifact 검증을 완료할 수 없습니다.', context.get('requestId')), getUploadErrorStatus(code))

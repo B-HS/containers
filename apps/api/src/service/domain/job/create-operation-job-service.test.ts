@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { operationJob } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/app-error'
-import { createOperationJobService, type OperationJobHandler } from './create-operation-job-service'
+import { createJobError, createOperationJobService, type OperationJobHandler } from './create-operation-job-service'
 
 const temporaryDirectories: string[] = []
 
@@ -58,6 +58,27 @@ describe('operation job 서비스', () => {
 
         expect(second.id).toBe(first.id)
         expect(await service.list({})).toHaveLength(1)
+    })
+
+    test('uniqueResourceKey 등록은 같은 리소스의 활성 job 을 돌려주고 resource key 를 영속화합니다', async () => {
+        const { service } = await createTestContext(async () => null)
+        const first = await service.enqueue({ kind: 'backup.create', payload: {}, uniqueResourceKey: 'artifact-one' })
+        const repeated = await service.enqueue({ kind: 'backup.create', payload: {}, uniqueResourceKey: 'artifact-one' })
+
+        expect(repeated.id).toBe(first.id)
+        expect(first.resourceKey).toBe('artifact-one')
+        expect((await service.get(first.id)).resourceKey).toBe('artifact-one')
+        expect(await service.list({})).toHaveLength(1)
+    })
+
+    test('같은 kind 라도 uniqueResourceKey 가 다르면 새 job 을 만듭니다', async () => {
+        const { service } = await createTestContext(async () => null)
+        const first = await service.enqueue({ kind: 'backup.create', payload: {}, uniqueResourceKey: 'artifact-one' })
+        const other = await service.enqueue({ kind: 'backup.create', payload: {}, uniqueResourceKey: 'artifact-two' })
+
+        expect(other.id).not.toBe(first.id)
+        expect(other.resourceKey).toBe('artifact-two')
+        expect(await service.list({})).toHaveLength(2)
     })
 
     test('실패하면 backoff 후 재시도하고 최대 횟수를 넘으면 실패로 확정합니다', async () => {
@@ -144,5 +165,77 @@ describe('operation job 서비스', () => {
 
         await expect(service.get(job.id)).rejects.toThrow('JOB_NOT_FOUND')
         expect(await service.list({})).toHaveLength(0)
+    })
+
+    test('종결 시 onFinished 옵저버가 성공·실패 job 을 전달합니다', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'containers-job-'))
+        temporaryDirectories.push(directory)
+        const database = createControlDatabase({
+            filePath: join(directory, 'control.sqlite'),
+            migrationsFolder: resolve(process.cwd(), 'packages/db-schema/drizzle'),
+        })
+        const clock = { value: Date.parse('2026-08-01T00:00:00.000Z') }
+        const finishedKinds: string[] = []
+        const service = createOperationJobService({
+            db: database.db,
+            handlers: {
+                'backup.create': async ({ job }) => {
+                    if (job.payload.fail === true) {
+                        throw createAppError('BACKUP_FAILED')
+                    }
+                    return null
+                },
+            },
+            now: () => new Date(clock.value),
+            onFinished: async (job) => {
+                finishedKinds.push(`${job.kind}:${job.status}:${job.failureCode ?? ''}`)
+            },
+        })
+        const succeeded = await service.enqueue({ kind: 'backup.create', payload: {} })
+        const failed = await service.enqueue({ kind: 'backup.create', maxAttempts: 1, payload: { fail: true } })
+
+        await service.tick()
+
+        expect((await service.get(succeeded.id)).status).toBe('succeeded')
+        expect((await service.get(failed.id)).status).toBe('failed')
+        expect(finishedKinds).toContain('backup.create:succeeded:')
+        expect(finishedKinds).toContain('backup.create:failed:BACKUP_FAILED')
+    })
+
+    test('terminal 오류는 재시도 없이 즉시 실패로 확정합니다', async () => {
+        const attempts = { value: 0 }
+        const { service } = await createTestContext(async () => {
+            attempts.value += 1
+            throw createJobError('NOTIFY_BAD_REQUEST', { terminal: true })
+        })
+        const job = await service.enqueue({ kind: 'backup.create', maxAttempts: 3, payload: {} })
+
+        await service.tick()
+
+        const failed = await service.get(job.id)
+        expect(failed.status).toBe('failed')
+        expect(failed.failureCode).toBe('NOTIFY_BAD_REQUEST')
+        expect(failed.attempt).toBe(1)
+        expect(attempts.value).toBe(1)
+        expect((await service.listEvents(job.id)).map((event) => event.event)).toEqual(['queued', 'started', 'failed'])
+    })
+
+    test('retryAfterMs 오류는 표준 backoff 이상으로 재시도를 지연합니다', async () => {
+        const attempts = { value: 0 }
+        const { clock, service } = await createTestContext(async () => {
+            attempts.value += 1
+            throw createJobError('NOTIFY_RATE_LIMITED', { retryAfterMs: 300_000 })
+        })
+        const job = await service.enqueue({ kind: 'backup.create', maxAttempts: 2, payload: {} })
+
+        await service.tick()
+        const retried = await service.get(job.id)
+        expect(retried.status).toBe('queued')
+        expect(new Date(retried.scheduledAt).getTime() - clock.value).toBeGreaterThanOrEqual(300_000)
+
+        clock.value += 300_000
+        await service.tick()
+        expect(attempts.value).toBe(2)
+        expect((await service.get(job.id)).status).toBe('failed')
     })
 })

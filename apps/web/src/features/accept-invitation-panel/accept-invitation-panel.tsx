@@ -78,7 +78,7 @@ export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, 
                             {error}
                         </p>
                     ) : null}
-                    <Button type="submit" disabled={busy}>
+                    <Button type="submit" variant="default" disabled={busy}>
                         {busy ? labels.pending : labels.action}
                     </Button>
                 </form>

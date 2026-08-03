@@ -315,10 +315,24 @@ export const operationJob = sqliteTable(
     'operation_job',
     {
         id: text('id').primaryKey(),
-        kind: text('kind', { enum: ['backup.create', 'backup.restore', 'image.pull', 'system.prune', 'traffic.export'] }).notNull(),
+        kind: text('kind', {
+            enum: [
+                'backup.create',
+                'backup.restore',
+                'deploy.load',
+                'deploy.release',
+                'deploy.rollback',
+                'image.pull',
+                'notification.deliver',
+                'system.prune',
+                'traffic.export',
+                'upload.finalize',
+            ],
+        }).notNull(),
         status: text('status', { enum: ['queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled'] }).notNull(),
         payload: text('payload').notNull(),
         result: text('result'),
+        resourceKey: text('resource_key'),
         failureCode: text('failure_code'),
         attempt: integer('attempt').notNull(),
         maxAttempts: integer('max_attempts').notNull(),
@@ -335,6 +349,7 @@ export const operationJob = sqliteTable(
     (table) => [
         index('operation_job_status_scheduled_at_idx').on(table.status, table.scheduledAt),
         index('operation_job_kind_idx').on(table.kind),
+        index('operation_job_kind_resource_key_idx').on(table.kind, table.resourceKey),
         index('operation_job_created_at_idx').on(table.createdAt),
     ],
 )
@@ -376,6 +391,52 @@ export const nginxRoute = sqliteTable(
     ],
 )
 
+export const notificationDestination = sqliteTable(
+    'notification_destination',
+    {
+        id: text('id').primaryKey(),
+        name: text('name').notNull(),
+        type: text('type', { enum: ['discord'] }).notNull(),
+        ciphertext: text('ciphertext').notNull(),
+        initializationVector: text('initialization_vector').notNull(),
+        authenticationTag: text('authentication_tag').notNull(),
+        enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+        eventTypes: text('event_types').notNull(),
+        version: integer('version').default(1).notNull(),
+        createdBy: text('created_by')
+            .notNull()
+            .references(() => user.id, { onDelete: 'restrict' }),
+        createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+        updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    },
+    (table) => [
+        uniqueIndex('notification_destination_name_unique').on(table.name),
+        index('notification_destination_updated_at_idx').on(table.updatedAt),
+    ],
+)
+
+export const notificationDelivery = sqliteTable(
+    'notification_delivery',
+    {
+        id: text('id').primaryKey(),
+        destinationId: text('destination_id')
+            .notNull()
+            .references(() => notificationDestination.id, { onDelete: 'cascade' }),
+        jobId: text('job_id').references(() => operationJob.id, { onDelete: 'set null' }),
+        sourceJobId: text('source_job_id').notNull(),
+        eventType: text('event_type', { enum: ['backup.failed', 'test'] }).notNull(),
+        failureCode: text('failure_code'),
+        status: text('status', { enum: ['queued', 'delivered', 'failed'] }).notNull(),
+        createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+        updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    },
+    (table) => [
+        uniqueIndex('notification_delivery_source_unique').on(table.destinationId, table.sourceJobId, table.eventType),
+        index('notification_delivery_destination_id_idx').on(table.destinationId),
+        index('notification_delivery_created_at_idx').on(table.createdAt),
+    ],
+)
+
 export const schema = {
     account,
     apiKey,
@@ -387,6 +448,8 @@ export const schema = {
     deploymentSecret,
     invitation,
     nginxRoute,
+    notificationDelivery,
+    notificationDestination,
     operationJob,
     operationJobEvent,
     session,

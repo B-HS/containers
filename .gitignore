@@ -11,3 +11,5 @@ coverage/
 *.sqlite-wal
 *.tsbuildinfo
 runtime/
+.omo/
+.playwright-mcp/

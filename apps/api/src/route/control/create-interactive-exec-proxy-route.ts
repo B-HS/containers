@@ -3,6 +3,7 @@ import { createBunWebSocket } from 'hono/bun'
 import { interactiveExecTicketRequestSchema } from '@containers/contracts/engine-control'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../agent/create-engine-agent-client'
+import { createAppError } from '../../lib/app-error'
 import { errorResponse, successResponse } from '../../lib/response'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -86,7 +87,7 @@ export const createInteractiveExecProxyRoute = ({ auditService, authService, eng
                 await authService.requireRole(headers, EXEC_ROLES)
                 const ticket = context.req.query('ticket')
                 if (!ticket || ticket.length < 32 || ticket.length > 256) {
-                    throw new Error('EXEC_TICKET_INVALID')
+                    throw createAppError('EXEC_TICKET_INVALID')
                 }
                 let upstream: WebSocket | undefined
                 const queuedMessages: string[] = []

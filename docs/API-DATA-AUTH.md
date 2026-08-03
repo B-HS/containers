@@ -71,7 +71,7 @@ middleware는 Host 문자열만 신뢰하지 않고 Nginx가 내부 network에�
 - body가 다른 key 재사용은 conflict다.
 - Nginx revision apply와 resource update는 expected version 또는 checksum을 요구한다.
 - container action 직전에 inspect하고 expected state가 다르면 conflict와 현재 상태를 반환한다.
-- 같은 target의 상충 job은 resource lock row로 직렬화한다.
+- 같은 target의 상충 job은 `operation_job.resource_key` 기반 active job 단일화(`enqueue uniqueResourceKey`)로 직렬화한다.
 
 ## 5. control DB schema
 
@@ -104,9 +104,10 @@ snapshot은 짧게 보존하고 현재 판단에 사용하지 않는다.
 - `artifact_scan`: uploadId, scanner, policyVersion, result, findingsSummary
 - `deployment`: name, currentVersionId, routeId, status
 - `deployment_version`: deploymentId, artifactId, imageDigest, containerId, manifestJson, status
-- 현재 `operation_job`: id, kind, status, payload, result, failureCode, attempt, maxAttempts, progressStep, createdBy, scheduledAt, startedAt, heartbeatAt, cancelRequestedAt, finishedAt, createdAt, updatedAt
+- 현재 `operation_job`: id, kind, status, payload, result, resourceKey, failureCode, attempt, maxAttempts, progressStep, createdBy, scheduledAt, startedAt, heartbeatAt, cancelRequestedAt, finishedAt, createdAt, updatedAt
 - 현재 `operation_job_event`: id, jobId, event, detail, createdAt
-- 향후 resource lock과 범용 idempotency metadata는 operation별 계약이 확정될 때 migration으로 추가한다.
+- resource lock은 `operation_job.resource_key`와 `(kind, resource_key)` index로 제공한다. enqueue가 같은 kind·resource의 active job이 있으면 새 job을 만들지 않고 기존 job을 반환한다.
+- 향후 범용 idempotency metadata는 operation별 계약이 확정될 때 migration으로 추가한다.
 
 ### 5.5 운영
 

@@ -28,18 +28,52 @@ export type OperationJobHandlerContext = {
 
 export type OperationJobHandler = (context: OperationJobHandlerContext) => Promise<Record<string, unknown> | null>
 
+export type JobErrorAttributes = {
+    retryAfterMs?: number
+    terminal?: boolean
+}
+
+export const createJobError = (code: string, attributes: JobErrorAttributes = {}) => {
+    const error = new Error(code) as Error & JobErrorAttributes
+    if (attributes.retryAfterMs !== undefined) {
+        error.retryAfterMs = attributes.retryAfterMs
+    }
+    if (attributes.terminal === true) {
+        error.terminal = true
+    }
+    return error
+}
+
+const getJobErrorAttributes = (error: unknown): JobErrorAttributes => {
+    if (!(error instanceof Error)) {
+        return {}
+    }
+    const candidate = error as Error & JobErrorAttributes
+    const retryAfterMs =
+        typeof candidate.retryAfterMs === 'number' && Number.isFinite(candidate.retryAfterMs) && candidate.retryAfterMs > 0
+            ? Math.floor(candidate.retryAfterMs)
+            : undefined
+    const attributes: JobErrorAttributes = { terminal: candidate.terminal === true }
+    if (retryAfterMs !== undefined) {
+        attributes.retryAfterMs = retryAfterMs
+    }
+    return attributes
+}
+
 type OperationJobEnqueueInput = {
     createdBy?: string
     kind: OperationJobKind
     maxAttempts?: number
     payload: Record<string, unknown>
     unique?: boolean
+    uniqueResourceKey?: string
 }
 
 type OperationJobServiceDependencies = {
     db: ControlDatabase
     handlers: Partial<Record<OperationJobKind, OperationJobHandler>>
     now: () => Date
+    onFinished?: (job: OperationJob) => Promise<void>
 }
 
 const toJob = (record: typeof operationJob.$inferSelect) =>
@@ -50,13 +84,14 @@ const toJob = (record: typeof operationJob.$inferSelect) =>
         finishedAt: record.finishedAt?.toISOString() ?? null,
         heartbeatAt: record.heartbeatAt?.toISOString() ?? null,
         payload: JSON.parse(record.payload) as unknown,
+        resourceKey: record.resourceKey ?? null,
         result: record.result === null ? null : (JSON.parse(record.result) as unknown),
         scheduledAt: record.scheduledAt.toISOString(),
         startedAt: record.startedAt?.toISOString() ?? null,
         updatedAt: record.updatedAt.toISOString(),
     })
 
-export const createOperationJobService = ({ db, handlers, now }: OperationJobServiceDependencies) => {
+export const createOperationJobService = ({ db, handlers, now, onFinished }: OperationJobServiceDependencies) => {
     const recordEvent = async (jobId: string, event: string, detail?: Record<string, unknown>) => {
         await db.insert(operationJobEvent).values({
             createdAt: now(),
@@ -65,6 +100,13 @@ export const createOperationJobService = ({ db, handlers, now }: OperationJobSer
             id: randomUUID(),
             jobId,
         })
+    }
+
+    const notifyFinished = async (job: OperationJob) => {
+        if (onFinished === undefined) {
+            return
+        }
+        void onFinished(job).catch(() => undefined)
     }
 
     const get = async (id: string) => {
@@ -84,11 +126,16 @@ export const createOperationJobService = ({ db, handlers, now }: OperationJobSer
     }
 
     const enqueue = async (input: OperationJobEnqueueInput) => {
-        if (input.unique) {
+        if (input.unique || input.uniqueResourceKey !== undefined) {
+            const conditions = [
+                eq(operationJob.kind, input.kind),
+                input.uniqueResourceKey === undefined ? undefined : eq(operationJob.resourceKey, input.uniqueResourceKey),
+                inArray(operationJob.status, [...ACTIVE_JOB_STATUSES]),
+            ].filter((condition) => condition !== undefined)
             const [active] = await db
                 .select()
                 .from(operationJob)
-                .where(and(eq(operationJob.kind, input.kind), inArray(operationJob.status, [...ACTIVE_JOB_STATUSES])))
+                .where(and(...conditions))
                 .limit(1)
             if (active) {
                 return toJob(active)
@@ -104,6 +151,7 @@ export const createOperationJobService = ({ db, handlers, now }: OperationJobSer
             kind: input.kind,
             maxAttempts: input.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
             payload: JSON.stringify(input.payload),
+            resourceKey: input.uniqueResourceKey ?? null,
             scheduledAt: timestamp,
             status: 'queued',
             updatedAt: timestamp,
@@ -142,21 +190,33 @@ export const createOperationJobService = ({ db, handlers, now }: OperationJobSer
 
     const isCancelRequested = async (id: string) => (await get(id)).status === 'cancelling'
 
-    const finishFailure = async (job: OperationJob, code: string) => {
+    const finishFailure = async (job: OperationJob, code: string, attributes: JobErrorAttributes = {}) => {
         const cancelled = code === 'JOB_CANCELLED' || (await get(job.id)).status === 'cancelling'
         if (cancelled) {
-            await update(job.id, { failureCode: code === 'JOB_CANCELLED' ? null : code, finishedAt: now(), status: 'cancelled' })
+            const cancelledJob = await update(job.id, {
+                failureCode: code === 'JOB_CANCELLED' ? null : code,
+                finishedAt: now(),
+                status: 'cancelled',
+            })
             await recordEvent(job.id, 'cancelled', code === 'JOB_CANCELLED' ? undefined : { code })
+            await notifyFinished(cancelledJob)
             return
         }
-        if (job.attempt < job.maxAttempts) {
-            const retryAt = new Date(now().getTime() + job.attempt * RETRY_BACKOFF_MS)
-            await update(job.id, { failureCode: code, scheduledAt: retryAt, status: 'queued' })
-            await recordEvent(job.id, 'retry-scheduled', { attempt: job.attempt, code, retryAt: retryAt.toISOString() })
+        if (attributes.terminal || job.attempt >= job.maxAttempts) {
+            const failedJob = await update(job.id, { failureCode: code, finishedAt: now(), status: 'failed' })
+            await recordEvent(job.id, 'failed', { code })
+            await notifyFinished(failedJob)
             return
         }
-        await update(job.id, { failureCode: code, finishedAt: now(), status: 'failed' })
-        await recordEvent(job.id, 'failed', { code })
+        const baseBackoffMs = job.attempt * RETRY_BACKOFF_MS
+        const retryAt = new Date(now().getTime() + Math.max(baseBackoffMs, attributes.retryAfterMs ?? 0))
+        await update(job.id, { failureCode: code, scheduledAt: retryAt, status: 'queued' })
+        await recordEvent(job.id, 'retry-scheduled', {
+            attempt: job.attempt,
+            code,
+            retryAfterMs: attributes.retryAfterMs ?? null,
+            retryAt: retryAt.toISOString(),
+        })
     }
 
     const runClaimed = async (job: OperationJob) => {
@@ -178,15 +238,17 @@ export const createOperationJobService = ({ db, handlers, now }: OperationJobSer
                     await recordEvent(job.id, 'progress', { step, ...detail })
                 },
             })
-            await update(job.id, {
+            const succeeded = await update(job.id, {
                 failureCode: null,
                 finishedAt: now(),
                 result: result === null ? null : JSON.stringify(result),
                 status: 'succeeded',
             })
             await recordEvent(job.id, 'succeeded')
+            await notifyFinished(succeeded)
         } catch (error) {
-            await finishFailure(job, error instanceof Error ? error.message : 'JOB_FAILED')
+            const code = error instanceof Error ? error.message : 'JOB_FAILED'
+            await finishFailure(job, code, getJobErrorAttributes(error))
         } finally {
             clearInterval(heartbeat)
         }

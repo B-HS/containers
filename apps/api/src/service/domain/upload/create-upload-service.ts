@@ -14,6 +14,7 @@ import type { ControlDatabase } from '@containers/db-schema/database'
 import { artifact, uploadChunk, uploadSession } from '@containers/db-schema/schema'
 import type { ArtifactInspectionService } from './create-artifact-inspection-service'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import { createAppError } from '../../../lib/app-error'
 
 const MAX_CHUNK_BYTES = 67_108_864
 const SESSION_TTL_MS = 24 * 60 * 60 * 1_000
@@ -51,6 +52,17 @@ const toUploadSession = (
         warnings,
     })
 
+const toArtifact = (record: { createdAt: Date; fileName: string; id: string; mediaType: string; sha256: string; sizeBytes: number }) =>
+    artifactSchema.parse({
+        createdAt: record.createdAt.toISOString(),
+        fileName: record.fileName,
+        id: record.id,
+        mediaType: record.mediaType,
+        sha256: record.sha256,
+        sizeBytes: record.sizeBytes,
+        status: 'ready',
+    })
+
 export const createUploadService = ({
     artifactInspectionService,
     artifactRoot,
@@ -65,7 +77,7 @@ export const createUploadService = ({
         try {
             return (await engineAgentClient.getOverview()).disk.availableBytes
         } catch {
-            throw new Error('DISK_STATUS_UNAVAILABLE')
+            throw createAppError('DISK_STATUS_UNAVAILABLE')
         }
     }
     const reserveStorage = async (additionalBytes: number) => {
@@ -84,11 +96,11 @@ export const createUploadService = ({
             0,
         )
         if (storedBytes + reservedBytes + additionalBytes > totalQuotaBytes) {
-            throw new Error('UPLOAD_QUOTA_EXCEEDED')
+            throw createAppError('UPLOAD_QUOTA_EXCEEDED')
         }
         const projectedAvailableBytes = availableBytes - remainingReservedBytes - additionalBytes
         if (projectedAvailableBytes < diskHardAvailableBytes) {
-            throw new Error('DISK_HARD_WATERMARK')
+            throw createAppError('DISK_HARD_WATERMARK')
         }
         return projectedAvailableBytes < diskSoftAvailableBytes ? (['DISK_SOFT_WATERMARK'] as const) : []
     }
@@ -109,22 +121,22 @@ export const createUploadService = ({
                 .limit(1)
 
             if (!session) {
-                throw new Error('UPLOAD_SESSION_INVALID')
+                throw createAppError('UPLOAD_SESSION_INVALID')
             }
             if (bytes.byteLength === 0 || bytes.byteLength > MAX_CHUNK_BYTES) {
-                throw new Error('CHUNK_SIZE_INVALID')
+                throw createAppError('CHUNK_SIZE_INVALID')
             }
             if (offsetBytes !== session.receivedBytes) {
-                throw new Error('OFFSET_MISMATCH')
+                throw createAppError('OFFSET_MISMATCH')
             }
             if (offsetBytes + bytes.byteLength > session.expectedSizeBytes) {
-                throw new Error('UPLOAD_SIZE_EXCEEDED')
+                throw createAppError('UPLOAD_SIZE_EXCEEDED')
             }
             if (createHash('sha256').update(bytes).digest('hex') !== chunkSha256) {
-                throw new Error('CHUNK_DIGEST_MISMATCH')
+                throw createAppError('CHUNK_DIGEST_MISMATCH')
             }
             if ((await getAvailableBytes()) - bytes.byteLength < diskHardAvailableBytes) {
-                throw new Error('DISK_HARD_WATERMARK')
+                throw createAppError('DISK_HARD_WATERMARK')
             }
 
             const file = await open(session.temporaryPath, 'r+')
@@ -163,7 +175,7 @@ export const createUploadService = ({
                     existing.fileName !== payload.fileName ||
                     existing.mediaType !== payload.mediaType
                 ) {
-                    throw new Error('IDEMPOTENCY_CONFLICT')
+                    throw createAppError('IDEMPOTENCY_CONFLICT')
                 }
 
                 return toUploadSession(existing)
@@ -175,7 +187,7 @@ export const createUploadService = ({
                 .where(and(eq(uploadSession.createdBy, actorId), eq(uploadSession.status, 'uploading'), gt(uploadSession.expiresAt, now())))
 
             if ((active?.value ?? 0) >= 2) {
-                throw new Error('UPLOAD_CONCURRENCY_LIMIT')
+                throw createAppError('UPLOAD_CONCURRENCY_LIMIT')
             }
             const warnings = await reserveStorage(payload.expectedSizeBytes)
 
@@ -209,26 +221,41 @@ export const createUploadService = ({
             const [session] = await db
                 .select()
                 .from(uploadSession)
-                .where(and(eq(uploadSession.id, sessionId), eq(uploadSession.createdBy, actorId), eq(uploadSession.status, 'uploading')))
+                .where(and(eq(uploadSession.id, sessionId), eq(uploadSession.createdBy, actorId)))
                 .limit(1)
 
             if (!session) {
-                throw new Error('UPLOAD_SESSION_INVALID')
+                throw createAppError('UPLOAD_SESSION_INVALID')
+            }
+
+            if (session.status !== 'uploading') {
+                const [existing] = await db.select().from(artifact).where(eq(artifact.sha256, session.expectedSha256)).limit(1)
+                if (!existing) {
+                    throw createAppError('UPLOAD_SESSION_INVALID')
+                }
+                return toArtifact(existing)
             }
             if (session.receivedBytes !== session.expectedSizeBytes) {
-                throw new Error('UPLOAD_INCOMPLETE')
+                throw createAppError('UPLOAD_INCOMPLETE')
             }
             if ((await hashFile(session.temporaryPath)) !== session.expectedSha256) {
-                throw new Error('ARTIFACT_DIGEST_MISMATCH')
+                throw createAppError('ARTIFACT_DIGEST_MISMATCH')
             }
             await artifactInspectionService.inspect(session.temporaryPath, session.mediaType, session.expectedSizeBytes)
 
+            const createdAt = now()
             const id = randomUUID()
             const readyDirectory = join(artifactRoot, 'ready')
+
+            const [duplicate] = await db.select().from(artifact).where(eq(artifact.sha256, session.expectedSha256)).limit(1)
+            if (duplicate) {
+                await db.update(uploadSession).set({ status: 'completed', updatedAt: createdAt }).where(eq(uploadSession.id, sessionId))
+                return toArtifact(duplicate)
+            }
+
             await mkdir(readyDirectory, { recursive: true })
             const storagePath = join(readyDirectory, `${id}.archive`)
             await rename(session.temporaryPath, storagePath)
-            const createdAt = now()
 
             await db.transaction(async (transaction) => {
                 await transaction.insert(artifact).values({
@@ -245,15 +272,23 @@ export const createUploadService = ({
                 await transaction.update(uploadSession).set({ status: 'completed', updatedAt: createdAt }).where(eq(uploadSession.id, sessionId))
             })
 
-            return artifactSchema.parse({
-                createdAt: createdAt.toISOString(),
+            return toArtifact({
+                createdAt,
                 fileName: session.fileName,
                 id,
                 mediaType: session.mediaType,
                 sha256: session.expectedSha256,
                 sizeBytes: session.expectedSizeBytes,
-                status: 'ready',
             })
+        },
+        getOwnedSession: async (actorId: string, sessionId: string) => {
+            const [session] = await db
+                .select()
+                .from(uploadSession)
+                .where(and(eq(uploadSession.id, sessionId), eq(uploadSession.createdBy, actorId)))
+                .limit(1)
+
+            return session ? toUploadSession(session) : null
         },
         listArtifacts: async () =>
             artifactListSchema.parse(

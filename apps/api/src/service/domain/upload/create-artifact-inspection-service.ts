@@ -6,6 +6,7 @@ import { createGunzip } from 'node:zlib'
 import { extract } from 'tar-stream'
 import { z } from 'zod'
 import { ARTIFACT_MEDIA_TYPE } from '@containers/contracts/upload'
+import { createAppError } from '../../../lib/app-error'
 
 const MAX_ARCHIVE_ENTRIES = 100_000
 const MAX_METADATA_BYTES = 16_777_216
@@ -39,7 +40,7 @@ const normalizeArchivePath = (value: string) => {
     const segments = normalized.split('/')
 
     if (normalized.length === 0 || normalized.startsWith('/') || normalized.includes('\\') || normalized.includes('\0') || segments.includes('..')) {
-        throw new Error('ARCHIVE_PATH_INVALID')
+        throw createAppError('ARCHIVE_PATH_INVALID')
     }
 
     return normalized
@@ -47,13 +48,13 @@ const normalizeArchivePath = (value: string) => {
 
 const parseJson = (bytes: Buffer | undefined) => {
     if (!bytes) {
-        throw new Error('ARCHIVE_METADATA_MISSING')
+        throw createAppError('ARCHIVE_METADATA_MISSING')
     }
 
     try {
         return JSON.parse(bytes.toString('utf8')) as unknown
     } catch {
-        throw new Error('ARCHIVE_METADATA_INVALID')
+        throw createAppError('ARCHIVE_METADATA_INVALID')
     }
 }
 
@@ -83,13 +84,13 @@ export const createArtifactInspectionService = () => ({
                 uncompressedBytes += entrySize
 
                 if (entryCount > MAX_ARCHIVE_ENTRIES) {
-                    throw new Error('ARCHIVE_ENTRY_LIMIT')
+                    throw createAppError('ARCHIVE_ENTRY_LIMIT')
                 }
                 if (uncompressedBytes > MAX_UNCOMPRESSED_BYTES || uncompressedBytes > uploadedBytes * MAX_COMPRESSION_RATIO) {
-                    throw new Error('ARCHIVE_EXPANSION_LIMIT')
+                    throw createAppError('ARCHIVE_EXPANSION_LIMIT')
                 }
                 if (header.type !== 'file' && header.type !== 'directory') {
-                    throw new Error('ARCHIVE_ENTRY_TYPE_INVALID')
+                    throw createAppError('ARCHIVE_ENTRY_TYPE_INVALID')
                 }
 
                 archiveEntries.add(name)
@@ -105,7 +106,7 @@ export const createArtifactInspectionService = () => ({
                     if (shouldCollectMetadata) {
                         collectedBytes += chunk.byteLength
                         if (collectedBytes > MAX_METADATA_BYTES) {
-                            throw new Error('ARCHIVE_METADATA_LIMIT')
+                            throw createAppError('ARCHIVE_METADATA_LIMIT')
                         }
                         chunks.push(chunk)
                     }
@@ -121,7 +122,7 @@ export const createArtifactInspectionService = () => ({
 
             handleEntry()
                 .then(next)
-                .catch((error: unknown) => archive.destroy(error instanceof Error ? error : new Error('ARCHIVE_INVALID')))
+                .catch((error: unknown) => archive.destroy(error instanceof Error ? error : createAppError('ARCHIVE_INVALID')))
         })
 
         if (await isGzip(filePath)) {
@@ -134,11 +135,11 @@ export const createArtifactInspectionService = () => ({
             const manifest = dockerManifestSchema.parse(parseJson(metadata.get('manifest.json')))
             for (const image of manifest) {
                 if (!archiveEntries.has(normalizeArchivePath(image.Config))) {
-                    throw new Error('DOCKER_CONFIG_MISSING')
+                    throw createAppError('DOCKER_CONFIG_MISSING')
                 }
                 for (const layer of image.Layers) {
                     if (!archiveEntries.has(normalizeArchivePath(layer))) {
-                        throw new Error('DOCKER_LAYER_MISSING')
+                        throw createAppError('DOCKER_LAYER_MISSING')
                     }
                 }
             }
@@ -149,11 +150,11 @@ export const createArtifactInspectionService = () => ({
                 const expectedDigest = descriptor.digest.slice('sha256:'.length)
                 const blobPath = `blobs/sha256/${expectedDigest}`
                 if (!archiveEntries.has(blobPath) || blobHashes.get(blobPath) !== expectedDigest) {
-                    throw new Error('OCI_BLOB_DIGEST_INVALID')
+                    throw createAppError('OCI_BLOB_DIGEST_INVALID')
                 }
             }
         } else {
-            throw new Error('ARTIFACT_MEDIA_TYPE_INVALID')
+            throw createAppError('ARTIFACT_MEDIA_TYPE_INVALID')
         }
 
         return { entryCount, uncompressedBytes }

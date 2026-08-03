@@ -100,7 +100,7 @@ export const AuthPanel: FC<AuthPanelProps> = ({ labels, mode }) => {
                             {error}
                         </p>
                     ) : null}
-                    <Button type="submit" disabled={pending}>
+                    <Button type="submit" variant="default" disabled={pending}>
                         {pending ? labels.pending : isBootstrap ? labels.ownerAction : labels.loginAction}
                     </Button>
                 </form>

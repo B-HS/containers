@@ -12,6 +12,7 @@ import type {
     NetworkCreateRequest,
     VolumeCreateRequest,
 } from '@containers/contracts/engine-control'
+import { createAppError } from '../lib/app-error'
 
 const DOCKER_REQUEST_TIMEOUT_MS = 5_000
 const DOCKER_MAX_JSON_BYTES = 33_554_432
@@ -334,7 +335,7 @@ const requestDockerEngine = (
             })
             response.on('end', () => {
                 if (!expectedStatuses.includes(response.statusCode ?? 0)) {
-                    reject(new Error(`Docker Engine 응답 코드: ${response.statusCode ?? 'unknown'} ${Buffer.concat(chunks).toString('utf8')}`))
+                    reject(createAppError(`Docker Engine 응답 코드: ${response.statusCode ?? 'unknown'} ${Buffer.concat(chunks).toString('utf8')}`))
                     return
                 }
 
@@ -342,7 +343,7 @@ const requestDockerEngine = (
             })
         })
 
-        request.setTimeout(timeoutMs, () => request.destroy(new Error('Docker Engine 요청 시간이 초과되었습니다.')))
+        request.setTimeout(timeoutMs, () => request.destroy(createAppError('Docker Engine 요청 시간이 초과되었습니다.')))
         request.on('error', reject)
         if (body.length > 0) {
             request.write(body)
@@ -378,7 +379,7 @@ const requestDockerEngineFile = async (socketPath: string, path: string, filePat
                 response.on('end', () => {
                     const body = Buffer.concat(chunks)
                     if (response.statusCode !== 200) {
-                        reject(new Error(`Docker Engine 응답 코드: ${response.statusCode ?? 'unknown'} ${body.toString('utf8')}`))
+                        reject(createAppError(`Docker Engine 응답 코드: ${response.statusCode ?? 'unknown'} ${body.toString('utf8')}`))
                         return
                     }
                     resolve({ body, truncated })
@@ -386,7 +387,7 @@ const requestDockerEngineFile = async (socketPath: string, path: string, filePat
             },
         )
         const stream = createReadStream(filePath)
-        request.setTimeout(DOCKER_IMAGE_LOAD_TIMEOUT_MS, () => request.destroy(new Error('Docker image load 시간이 초과되었습니다.')))
+        request.setTimeout(DOCKER_IMAGE_LOAD_TIMEOUT_MS, () => request.destroy(createAppError('Docker image load 시간이 초과되었습니다.')))
         request.on('error', reject)
         stream.on('error', (error) => request.destroy(error))
         stream.pipe(request)
@@ -412,7 +413,7 @@ const requestDockerEngineUpgrade = (socketPath: string, path: string, body: stri
         const onData = (chunk: Buffer) => {
             responseBytes = Buffer.concat([responseBytes, chunk])
             if (responseBytes.byteLength > 65_536) {
-                fail(new Error('Docker Engine upgrade 응답 헤더가 너무 큽니다.'))
+                fail(createAppError('Docker Engine upgrade 응답 헤더가 너무 큽니다.'))
                 return
             }
             const headerEnd = responseBytes.indexOf('\r\n\r\n')
@@ -422,7 +423,7 @@ const requestDockerEngineUpgrade = (socketPath: string, path: string, body: stri
             const header = responseBytes.subarray(0, headerEnd).toString('utf8')
             const statusCode = Number(header.split('\r\n', 1)[0]?.split(' ')[1])
             if (statusCode !== 101) {
-                fail(new Error(`Docker Engine upgrade 응답 코드: ${Number.isFinite(statusCode) ? statusCode : 'unknown'}`))
+                fail(createAppError(`Docker Engine upgrade 응답 코드: ${Number.isFinite(statusCode) ? statusCode : 'unknown'}`))
                 return
             }
             const head = responseBytes.subarray(headerEnd + 4)
@@ -434,7 +435,7 @@ const requestDockerEngineUpgrade = (socketPath: string, path: string, body: stri
             resolve(socket)
         }
 
-        socket.setTimeout(30_000, () => fail(new Error('Docker interactive exec 연결 시간이 초과되었습니다.')))
+        socket.setTimeout(30_000, () => fail(createAppError('Docker interactive exec 연결 시간이 초과되었습니다.')))
         socket.on('error', onError)
         socket.on('data', onData)
         socket.on('connect', () => {
@@ -459,14 +460,14 @@ const requestDockerEngineStream = (socketPath: string, path: string) =>
                 const chunks: Uint8Array[] = []
                 response.on('data', (chunk: Uint8Array) => chunks.push(chunk))
                 response.on('end', () =>
-                    reject(new Error(`Docker Engine 응답 코드: ${response.statusCode ?? 'unknown'} ${Buffer.concat(chunks).toString('utf8')}`)),
+                    reject(createAppError(`Docker Engine 응답 코드: ${response.statusCode ?? 'unknown'} ${Buffer.concat(chunks).toString('utf8')}`)),
                 )
                 return
             }
             resolve(response)
         })
         request.setTimeout(DOCKER_REQUEST_TIMEOUT_MS, () => {
-            request.destroy(new Error('Docker Engine stream 연결 시간이 초과되었습니다.'))
+            request.destroy(createAppError('Docker Engine stream 연결 시간이 초과되었습니다.'))
         })
         request.on('response', () => request.setTimeout(0))
         request.on('error', reject)
@@ -696,7 +697,7 @@ export const createDockerEngineClient = ({ socketPath }: DockerEngineClientDepen
         loadImageArchive: async (filePath: string) => {
             const response = await requestDockerEngineFile(socketPath, await getVersionedPath('/images/load?quiet=1'), filePath)
             if (response.truncated) {
-                throw new Error('Docker image load 응답이 허용 크기를 초과했습니다.')
+                throw createAppError('Docker image load 응답이 허용 크기를 초과했습니다.')
             }
 
             const messages = response.body
@@ -706,7 +707,7 @@ export const createDockerEngineClient = ({ socketPath }: DockerEngineClientDepen
                 .map((line) => dockerImageLoadMessageSchema.parse(JSON.parse(line)))
             const engineError = messages.find((message) => message.error)?.error
             if (engineError) {
-                throw new Error(`Docker image load 실패: ${engineError}`)
+                throw createAppError(`Docker image load 실패: ${engineError}`)
             }
 
             return messages.flatMap((message) => (message.stream ? [message.stream.trim()] : [])).filter((message) => message.length > 0)
@@ -848,7 +849,7 @@ export const createDockerEngineClient = ({ socketPath }: DockerEngineClientDepen
                 })
             const pullError = messages.find((message) => message.error)?.error
             if (pullError) {
-                throw new Error(`IMAGE_PULL_FAILED: ${pullError}`)
+                throw createAppError(`IMAGE_PULL_FAILED: ${pullError}`)
             }
             return {
                 messages: messages.flatMap((message) => (message.status ? [message.status] : [])).slice(-DOCKER_PULL_MESSAGE_LIMIT),

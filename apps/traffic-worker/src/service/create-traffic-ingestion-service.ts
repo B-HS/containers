@@ -9,6 +9,7 @@ import {
     type TrafficLiveEvent,
 } from '@containers/contracts/traffic'
 import type { TrafficDatabase } from '../database/create-traffic-database'
+import { createAppError } from '../lib/app-error'
 
 const READ_CHUNK_BYTES = 4_194_304
 const MAX_SUBSCRIBERS = 64
@@ -35,6 +36,15 @@ type TrafficIngestionServiceDependencies = {
 const getIdentity = async (filePath: string) => {
     const fileStats = await stat(filePath, { bigint: true })
     return { device: fileStats.dev.toString(), inode: fileStats.ino.toString(), size: Number(fileStats.size) }
+}
+
+const getIdentityIfPresent = async (filePath: string) => {
+    try {
+        return await getIdentity(filePath)
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
+        throw error
+    }
 }
 
 const sameIdentity = (left: Pick<Checkpoint, 'device' | 'inode'>, right: Pick<Checkpoint, 'device' | 'inode'>) =>
@@ -167,6 +177,7 @@ export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, d
         if (polling) return
         polling = true
         try {
+            if ((await getIdentityIfPresent(accessLogPath)) === undefined) return
             const current = await loadCheckpoint()
             const { active, sourcePath } = await findPathByIdentity(current)
             if (!sourcePath) {
@@ -244,14 +255,15 @@ export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, d
         }),
         poll,
         subscribe: (input: unknown, listener: (event: TrafficLiveEvent) => void) => {
-            if (subscribers.size >= MAX_SUBSCRIBERS) throw new Error('TRAFFIC_STREAM_LIMIT')
+            if (subscribers.size >= MAX_SUBSCRIBERS) throw createAppError('TRAFFIC_STREAM_LIMIT')
             const subscriber = { listener, query: trafficLiveQuerySchema.parse(input) }
             subscribers.add(subscriber)
             return () => subscribers.delete(subscriber)
         },
         start: (intervalMs: number) => {
-            void poll()
-            const interval = setInterval(() => void poll(), intervalMs)
+            const run = () => void poll().catch((error: unknown) => console.error('traffic ingestion poll 실패:', error))
+            run()
+            const interval = setInterval(run, intervalMs)
             return () => clearInterval(interval)
         },
     }

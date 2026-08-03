@@ -107,6 +107,36 @@ describe('업로드 서비스', () => {
         sqlite.close()
     })
 
+    test('완료된 session 을 다시 finalize 하면 같은 sha256 artifact 를 돌려주고 없으면 UPLOAD_SESSION_INVALID 입니다', async () => {
+        const { actorId, db, service, sqlite } = await createTestService()
+        const bytes = new TextEncoder().encode('docker-image-archive')
+        const session = await service.createSession(actorId, 'finalize-idempotent-key', {
+            expectedSha256: digest(bytes),
+            expectedSizeBytes: bytes.byteLength,
+            fileName: 'image.tar',
+            mediaType: ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE,
+        })
+        await service.appendChunk(actorId, session.id, 0, digest(bytes), bytes)
+
+        const first = await service.finalizeSession(actorId, session.id)
+        const repeated = await service.finalizeSession(actorId, session.id)
+
+        expect(repeated).toEqual(first)
+        expect(await service.listArtifacts()).toHaveLength(1)
+
+        const orphanBytes = new TextEncoder().encode('another-archive')
+        const orphan = await service.createSession(actorId, 'finalize-orphan-key', {
+            expectedSha256: digest(orphanBytes),
+            expectedSizeBytes: orphanBytes.byteLength,
+            fileName: 'other.tar',
+            mediaType: ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE,
+        })
+        await db.update(uploadSession).set({ status: 'completed' }).where(eq(uploadSession.id, orphan.id))
+
+        await expect(service.finalizeSession(actorId, orphan.id)).rejects.toThrow('UPLOAD_SESSION_INVALID')
+        sqlite.close()
+    })
+
     test('offset과 chunk digest 불일치를 거부하고 진행률을 변경하지 않습니다', async () => {
         const { actorId, db, service, sqlite } = await createTestService()
         const bytes = new TextEncoder().encode('archive')

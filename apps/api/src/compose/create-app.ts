@@ -7,7 +7,9 @@ import type { NginxStatusClient } from '../nginx/create-nginx-status-client'
 import { createAuditRoute } from '../route/audit/create-audit-route'
 import { createApiKeyRoute } from '../route/api-key/create-api-key-route'
 import { createBackupRoute } from '../route/backup/create-backup-route'
+import { createNotificationRoute } from '../route/notification/create-notification-route'
 import { createAuthRoute } from '../route/auth/create-auth-route'
+import { createControlPlaneRoute } from '../route/control-plane/create-control-plane-route'
 import { createControlRoute } from '../route/control/create-control-route'
 import { createInteractiveExecProxyRoute } from '../route/control/create-interactive-exec-proxy-route'
 import { createDeploymentManifestRoute } from '../route/deployment/create-deployment-manifest-route'
@@ -27,6 +29,7 @@ import type { ApiKeyService } from '../service/domain/api-key/create-api-key-ser
 import type { BackupService } from '../service/domain/backup/create-backup-service'
 import type { AuthService } from '../service/domain/auth/create-auth-service'
 import { createControlService } from '../service/domain/control/create-control-service'
+import type { ControlPlaneStatusService } from '../service/domain/control-plane/create-control-plane-status-service'
 import type { DeploymentService } from '../service/domain/deployment/create-deployment-service'
 import type { DeploymentManifestService } from '../service/domain/deployment/create-deployment-manifest-service'
 import type { DeploymentReleaseService } from '../service/domain/deployment/create-deployment-release-service'
@@ -36,6 +39,8 @@ import { createHealthService } from '../service/domain/health/create-health-serv
 import type { BackupScheduleService } from '../service/domain/job/create-backup-schedule-service'
 import type { OperationJobService } from '../service/domain/job/create-operation-job-service'
 import type { MaintenanceService } from '../service/domain/maintenance/create-maintenance-service'
+import type { NotificationDeliveryService } from '../service/domain/notification/create-notification-delivery-service'
+import type { NotificationDestinationService } from '../service/domain/notification/create-notification-destination-service'
 import { createNginxService } from '../service/domain/nginx/create-nginx-service'
 import type { NginxProxyRouteService } from '../service/domain/nginx/create-nginx-proxy-route-service'
 import { createTrafficService } from '../service/domain/traffic/create-traffic-service'
@@ -62,17 +67,20 @@ type AppDependencies = {
         | 'updateUser'
     >
     deploymentManifestService: DeploymentManifestService
-    deploymentReleaseService: DeploymentReleaseService
+    deploymentReleaseService: Pick<DeploymentReleaseService, 'create' | 'get' | 'list' | 'prepareRollback'>
     deploymentSecretService: DeploymentSecretService
-    deploymentService: DeploymentService
+    deploymentService: Pick<DeploymentService, 'getLoaded'>
     engineAgentClient: EngineAgentClient
     nginxStatusClient: NginxStatusClient
     maintenanceService: Pick<MaintenanceService, 'disable' | 'enable' | 'enter' | 'getStatus' | 'isEnabled' | 'leave'>
     nginxProxyRouteService: Pick<NginxProxyRouteService, 'create' | 'list' | 'remove'>
+    controlPlaneStatusService: Pick<ControlPlaneStatusService, 'getStatus'>
+    notificationDeliveryService: Pick<NotificationDeliveryService, 'deliverTest'>
+    notificationDestinationService: NotificationDestinationService
     operationJobService: Pick<OperationJobService, 'enqueue' | 'get' | 'list' | 'listEvents' | 'requestCancel'>
     trafficWorkerClient: Pick<TrafficWorkerClient, 'getAnalytics' | 'getSummary' | 'openLiveStream'>
     trafficExportRoot?: string
-    uploadService: UploadService
+    uploadService: Pick<UploadService, 'appendChunk' | 'createSession' | 'getOwnedSession' | 'listArtifacts'>
 }
 
 export const createApp = ({
@@ -90,6 +98,9 @@ export const createApp = ({
     maintenanceService,
     nginxStatusClient,
     nginxProxyRouteService,
+    notificationDeliveryService,
+    notificationDestinationService,
+    controlPlaneStatusService,
     operationJobService,
     trafficWorkerClient,
     trafficExportRoot = '/backups/traffic-exports',
@@ -109,15 +120,28 @@ export const createApp = ({
     const trafficRoute = createTrafficRoute({ auditService, authService, operationJobService, trafficExportRoot, trafficService })
     const nginxService = createNginxService({ engineAgentClient, nginxStatusClient })
     const nginxRoute = createNginxRoute({ auditService, authService, nginxProxyRouteService, nginxService })
-    const uploadRoute = createUploadRoute({ apiKeyService, authService, uploadService })
-    const deploymentRoute = createDeploymentRoute({ apiKeyService, auditService, authService, deploymentService })
+    const uploadRoute = createUploadRoute({ apiKeyService, authService, operationJobService, uploadService })
+    const deploymentRoute = createDeploymentRoute({ apiKeyService, auditService, authService, deploymentService, operationJobService })
     const deploymentManifestRoute = createDeploymentManifestRoute({ apiKeyService, auditService, authService, deploymentManifestService })
-    const deploymentReleaseRoute = createDeploymentReleaseRoute({ apiKeyService, auditService, authService, deploymentReleaseService })
+    const deploymentReleaseRoute = createDeploymentReleaseRoute({
+        apiKeyService,
+        auditService,
+        authService,
+        deploymentReleaseService,
+        operationJobService,
+    })
     const deploymentSecretRoute = createDeploymentSecretRoute({ apiKeyService, auditService, authService, deploymentSecretService })
     const apiKeyRoute = createApiKeyRoute({ apiKeyService, authService })
     const backupRoute = createBackupRoute({ apiKeyService, auditService, authService, backupService, operationJobService })
+    const notificationRoute = createNotificationRoute({
+        auditService,
+        authService,
+        notificationDeliveryService,
+        notificationDestinationService,
+    })
     const jobRoute = createJobRoute({ auditService, authService, backupScheduleService, operationJobService })
     const maintenanceRoute = createMaintenanceRoute({ auditService, authService, maintenanceService })
+    const controlPlaneRoute = createControlPlaneRoute({ authService, controlPlaneStatusService })
     const loginRateWindows = new Map<string, { count: number; startedAt: number }>()
     const isLoginRateLimited = (headers: Headers) => {
         const key = headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
@@ -167,7 +191,9 @@ export const createApp = ({
         .route('/api', deploymentSecretRoute)
         .route('/api', apiKeyRoute)
         .route('/api', backupRoute)
+        .route('/api', notificationRoute)
         .route('/api', jobRoute)
+        .route('/api', controlPlaneRoute)
         .route('/api', authRoute)
         .on(['GET', 'POST'], '/api/auth/*', async (context) => {
             if (context.req.path === '/api/auth/sign-up/email') {

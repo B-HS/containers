@@ -5,6 +5,7 @@ import { managedUserListSchema, managedUserSchema, managedUserUpdateSchema } fro
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { invitation, session as sessionTable, USER_ROLE, user, userRole } from '@containers/db-schema/schema'
 import type { Auth } from '../../../auth/create-auth'
+import { createAppError } from '../../../lib/app-error'
 
 const ownerBootstrapSchema = z.object({
     email: z.email(),
@@ -57,11 +58,11 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
         const session = await getSession(headers)
 
         if (!session) {
-            throw new Error('AUTH_REQUIRED')
+            throw createAppError('AUTH_REQUIRED')
         }
 
         if (!allowedRoles.includes(session.role)) {
-            throw new Error('FORBIDDEN')
+            throw createAppError('FORBIDDEN')
         }
 
         return session
@@ -71,7 +72,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
         const session = await requireRole(headers, allowedRoles)
 
         if (now().getTime() - session.session.createdAt.getTime() > maxAgeMs) {
-            throw new Error('RECENT_AUTH_REQUIRED')
+            throw createAppError('RECENT_AUTH_REQUIRED')
         }
 
         return session
@@ -80,7 +81,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
     return {
         acceptInvitation: async (input: unknown) => {
             if (invitationAcceptanceInProgress) {
-                throw new Error('INVITATION_BUSY')
+                throw createAppError('INVITATION_BUSY')
             }
 
             invitationAcceptanceInProgress = true
@@ -102,7 +103,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
                     .limit(1)
 
                 if (!record) {
-                    throw new Error('INVITATION_INVALID')
+                    throw createAppError('INVITATION_INVALID')
                 }
 
                 const result = await auth.api.signUpEmail({
@@ -127,7 +128,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
         },
         bootstrapOwner: async (input: unknown) => {
             if (bootstrapInProgress) {
-                throw new Error('BOOTSTRAP_BUSY')
+                throw createAppError('BOOTSTRAP_BUSY')
             }
 
             bootstrapInProgress = true
@@ -137,7 +138,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
                 const [existing] = await db.select({ value: count() }).from(user)
 
                 if ((existing?.value ?? 0) > 0) {
-                    throw new Error('BOOTSTRAP_COMPLETE')
+                    throw createAppError('BOOTSTRAP_COMPLETE')
                 }
 
                 const result = await auth.api.signUpEmail({ body: payload })
@@ -242,10 +243,10 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
                 .limit(1)
 
             if (!target) {
-                throw new Error('USER_NOT_FOUND')
+                throw createAppError('USER_NOT_FOUND')
             }
             if (target.role === USER_ROLE.OWNER || target.id === actor.user.id) {
-                throw new Error('OWNER_IMMUTABLE')
+                throw createAppError('OWNER_IMMUTABLE')
             }
 
             const updatedAt = now()

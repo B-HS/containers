@@ -3,6 +3,7 @@ import { appendFile, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTrafficDatabase, type TrafficDatabase } from '../database/create-traffic-database'
+import { createAppError } from '../lib/app-error'
 import { createTrafficIngestionService } from './create-traffic-ingestion-service'
 import { createTrafficQueryService } from './create-traffic-query-service'
 
@@ -131,7 +132,7 @@ describe('트래픽 수집', () => {
         const ingestion = fixture.createIngestion({
             deleteBefore: fixture.database.deleteBefore,
             insertEvents: (events) => {
-                if (shouldFail) throw new Error('DB_WRITE_FAILED')
+                if (shouldFail) throw createAppError('DB_WRITE_FAILED')
                 return fixture.database.insertEvents(events)
             },
         })
@@ -166,6 +167,20 @@ describe('트래픽 수집', () => {
         await replay.poll()
         expect(received).toHaveLength(1)
         expect(replay.getState().duplicateLineCount).toBe(1)
+        fixture.database.close()
+    })
+
+    test('access log 파일이 아직 없으면 poll이 실패하지 않고 파일이 생기면 이어서 수집합니다', async () => {
+        const fixture = await createFixture()
+        await rm(fixture.accessLogPath)
+        const ingestion = fixture.createIngestion()
+
+        await ingestion.poll()
+        expect(ingestion.getState().ingestedEventCount).toBe(0)
+
+        await writeFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-late'))}\n`)
+        await ingestion.poll()
+        expect(ingestion.getState().ingestedEventCount).toBe(1)
         fixture.database.close()
     })
 })

@@ -4,6 +4,7 @@ import { trafficAnalyticsQuerySchema, trafficAnalyticsSchema, trafficLiveQuerySc
 import { backupIdSchema, backupSnapshotResultSchema } from '@containers/contracts/backup'
 import { trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import { trafficExportResultSchema } from '@containers/contracts/traffic'
+import { createAppError } from '../lib/app-error'
 
 const TRAFFIC_REQUEST_TIMEOUT_MS = 5_000
 
@@ -38,7 +39,7 @@ export const createTrafficWorkerClient = ({ baseUrl, fetcher = fetch, secret }: 
                         : 'BACKUP_TRAFFIC_CREATE_FAILED',
                 )
                 .catch(() => 'BACKUP_TRAFFIC_CREATE_FAILED')
-            throw new Error(code)
+            throw createAppError(code)
         }
         return backupSnapshotResultSchema.parse(await response.json())
     },
@@ -60,7 +61,7 @@ export const createTrafficWorkerClient = ({ baseUrl, fetcher = fetch, secret }: 
             method: 'POST',
             signal: AbortSignal.timeout(TRAFFIC_REQUEST_TIMEOUT_MS),
         })
-        if (!response.ok) throw new Error('TRAFFIC_EXPORT_FAILED')
+        if (!response.ok) throw createAppError('TRAFFIC_EXPORT_FAILED')
         return trafficExportResultSchema.parse(await response.json())
     },
     getAnalytics: async (input: unknown) => {
@@ -89,7 +90,7 @@ export const createTrafficWorkerClient = ({ baseUrl, fetcher = fetch, secret }: 
         })
 
         if (!response.ok) {
-            throw new Error(`Traffic Worker 응답 코드: ${response.status}`)
+            throw createAppError(`Traffic Worker 응답 코드: ${response.status}`)
         }
 
         return trafficAnalyticsSchema.parse(await response.json())
@@ -109,7 +110,7 @@ export const createTrafficWorkerClient = ({ baseUrl, fetcher = fetch, secret }: 
         })
 
         if (!response.ok) {
-            throw new Error(`Traffic Worker 응답 코드: ${response.status}`)
+            throw createAppError(`Traffic Worker 응답 코드: ${response.status}`)
         }
 
         return trafficSummarySchema.parse(await response.json())
@@ -130,7 +131,7 @@ export const createTrafficWorkerClient = ({ baseUrl, fetcher = fetch, secret }: 
             },
             signal,
         })
-        if (!response.ok || !response.body) throw new Error(response.status === 429 ? 'TRAFFIC_STREAM_LIMIT' : 'TRAFFIC_STREAM_FAILED')
+        if (!response.ok || !response.body) throw createAppError(response.status === 429 ? 'TRAFFIC_STREAM_LIMIT' : 'TRAFFIC_STREAM_FAILED')
         return response.body
     },
     restoreBackup: async (input: unknown) => {
@@ -157,7 +158,7 @@ export const createTrafficWorkerClient = ({ baseUrl, fetcher = fetch, secret }: 
                         : 'BACKUP_TRAFFIC_RESTORE_FAILED',
                 )
                 .catch(() => 'BACKUP_TRAFFIC_RESTORE_FAILED')
-            throw new Error(code)
+            throw createAppError(code)
         }
         return backupSnapshotResultSchema.parse(await response.json())
     },

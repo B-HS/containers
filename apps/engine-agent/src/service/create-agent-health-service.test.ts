@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { SERVICE_STATUS } from '@containers/contracts/health'
+import { createAppError } from '../lib/app-error'
 import { createAgentHealthService } from './create-agent-health-service'
 
 describe('Engine Agent 상태', () => {
@@ -24,7 +25,7 @@ describe('Engine Agent 상태', () => {
         const service = createAgentHealthService({
             dockerEngineClient: {
                 getVersion: async () => {
-                    throw new Error('연결 실패')
+                    throw createAppError('연결 실패')
                 },
             },
             now: () => new Date('2026-07-31T00:00:00.000Z'),

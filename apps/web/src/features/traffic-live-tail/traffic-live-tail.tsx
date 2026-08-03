@@ -57,7 +57,7 @@ export const TrafficLiveTail: FC<TrafficLiveTailProps> = ({ initialEvents, label
                 </Button>
             </div>
             <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-left text-xs">
+                <table className="w-full min-w-190 text-left text-xs">
                     <thead className="text-muted-foreground">
                         <tr>
                             <th className="p-2 font-medium">UTC</th>

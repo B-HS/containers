@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
 import type { NginxAccessEvent } from '@containers/contracts/traffic'
+import { createAppError } from '../lib/app-error'
 
 type TrafficDatabaseDependencies = {
     filePath: string
@@ -216,7 +217,7 @@ export const createTrafficDatabase = ({ filePath }: TrafficDatabaseDependencies)
                     .all()
                     .map((column) => column.name)
                 if (integrity !== 'ok' || columns.join(',') !== ACCESS_EVENT_COLUMNS.join(',')) {
-                    throw new Error('BACKUP_TRAFFIC_INVALID')
+                    throw createAppError('BACKUP_TRAFFIC_INVALID')
                 }
             } finally {
                 source.close()

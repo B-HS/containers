@@ -9,6 +9,7 @@ import {
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { nginxRoute } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import { createAppError } from '../../../lib/app-error'
 
 type NginxProxyRouteServiceDependencies = {
     db: ControlDatabase
@@ -39,7 +40,7 @@ export const renderNginxProxyRoutes = (currentConfig: string, routes: NginxProxy
             : currentConfig
     const closingBraceIndex = withoutRoutes.lastIndexOf('}')
     if (closingBraceIndex < 0) {
-        throw new Error('NGINX_CONFIG_STRUCTURE_INVALID')
+        throw createAppError('NGINX_CONFIG_STRUCTURE_INVALID')
     }
 
     const grouped = new Map<string, NginxProxyRoute[]>()
@@ -88,7 +89,7 @@ export const createNginxProxyRouteService = ({ db, engineAgentClient, now, prote
         create: async (input: unknown) => {
             const payload = nginxProxyRouteInputSchema.parse(input)
             if (protectedHostnames.includes(payload.hostname)) {
-                throw new Error('NGINX_ROUTE_PROTECTED_HOSTNAME')
+                throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
             }
             const collision = await db
                 .select({ id: nginxRoute.id })
@@ -96,7 +97,7 @@ export const createNginxProxyRouteService = ({ db, engineAgentClient, now, prote
                 .where(and(eq(nginxRoute.hostname, payload.hostname), eq(nginxRoute.path, payload.path), eq(nginxRoute.pathMode, payload.pathMode)))
                 .limit(1)
             if (collision.length > 0) {
-                throw new Error('NGINX_ROUTE_COLLISION')
+                throw createAppError('NGINX_ROUTE_COLLISION')
             }
 
             const timestamp = now()
@@ -119,10 +120,10 @@ export const createNginxProxyRouteService = ({ db, engineAgentClient, now, prote
         remove: async (id: string, confirmation: string) => {
             const route = (await list()).find((candidate) => candidate.id === id)
             if (!route) {
-                throw new Error('NGINX_ROUTE_NOT_FOUND')
+                throw createAppError('NGINX_ROUTE_NOT_FOUND')
             }
             if (confirmation !== `${route.hostname}${route.path}`) {
-                throw new Error('CONFIRMATION_MISMATCH')
+                throw createAppError('CONFIRMATION_MISMATCH')
             }
             const result = await applyRoutes((await list()).filter((candidate) => candidate.id !== id))
             await db.delete(nginxRoute).where(eq(nginxRoute.id, id))
@@ -131,7 +132,7 @@ export const createNginxProxyRouteService = ({ db, engineAgentClient, now, prote
         upsert: async (input: unknown) => {
             const payload = nginxProxyRouteInputSchema.parse(input)
             if (protectedHostnames.includes(payload.hostname)) {
-                throw new Error('NGINX_ROUTE_PROTECTED_HOSTNAME')
+                throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
             }
             const existing = (await list()).find(
                 (route) => route.hostname === payload.hostname && route.path === payload.path && route.pathMode === payload.pathMode,

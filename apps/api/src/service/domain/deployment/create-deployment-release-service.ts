@@ -4,6 +4,7 @@ import { deploymentReleaseListSchema, deploymentReleaseSchema, type DeploymentMa
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { deploymentManifest, deploymentRelease } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import { createAppError } from '../../../lib/app-error'
 import type { NginxProxyRouteService } from '../nginx/create-nginx-proxy-route-service'
 import type { DeploymentManifestService } from './create-deployment-manifest-service'
 import type { DeploymentSecretService } from './create-deployment-secret-service'
@@ -66,7 +67,7 @@ export const createDeploymentReleaseService = ({
     const get = async (id: string) => {
         const [record] = await db.select().from(deploymentRelease).where(eq(deploymentRelease.id, id)).limit(1)
         if (!record) {
-            throw new Error('DEPLOYMENT_RELEASE_NOT_FOUND')
+            throw createAppError('DEPLOYMENT_RELEASE_NOT_FOUND')
         }
         return toRelease(record)
     }
@@ -80,11 +81,11 @@ export const createDeploymentReleaseService = ({
     const prepareRollback = async (id: string) => {
         const release = await get(id)
         if (release.status !== 'healthy' || !release.previousReleaseId) {
-            throw new Error('DEPLOYMENT_ROLLBACK_UNAVAILABLE')
+            throw createAppError('DEPLOYMENT_ROLLBACK_UNAVAILABLE')
         }
         const [target, manifest] = await Promise.all([get(release.previousReleaseId), deploymentManifestService.get(release.manifestId)])
         if (target.status !== 'healthy' || !target.containerId) {
-            throw new Error('DEPLOYMENT_ROLLBACK_TARGET_UNAVAILABLE')
+            throw createAppError('DEPLOYMENT_ROLLBACK_TARGET_UNAVAILABLE')
         }
         const [active] = await db
             .select({ id: deploymentRelease.id })
@@ -93,14 +94,14 @@ export const createDeploymentReleaseService = ({
             .where(and(eq(deploymentManifest.name, manifest.name), inArray(deploymentRelease.status, [...ACTIVE_RELEASE_STATUSES])))
             .limit(1)
         if (active) {
-            throw new Error('DEPLOYMENT_RELEASE_IN_PROGRESS')
+            throw createAppError('DEPLOYMENT_RELEASE_IN_PROGRESS')
         }
         return update(id, { failureCode: null, status: 'rolling-back' })
     }
     const runRollback = async (id: string) => {
         const release = await get(id)
         if (release.status !== 'rolling-back' || !release.previousReleaseId || !release.containerId) {
-            throw new Error('DEPLOYMENT_RELEASE_STATE_INVALID')
+            throw createAppError('DEPLOYMENT_RELEASE_STATE_INVALID')
         }
         const target = await get(release.previousReleaseId)
         if (target.status !== 'healthy' || !target.containerId) {
@@ -133,7 +134,7 @@ export const createDeploymentReleaseService = ({
                 }
             }
             if (!healthy) {
-                throw new Error('DEPLOYMENT_ROLLBACK_HEALTHCHECK_FAILED')
+                throw createAppError('DEPLOYMENT_ROLLBACK_HEALTHCHECK_FAILED')
             }
             await nginxProxyRouteService.upsert(routeInput(targetManifest, target.containerName))
             routeSwitched = true
@@ -152,7 +153,7 @@ export const createDeploymentReleaseService = ({
                 }
             }
             if (!routeReady) {
-                throw new Error('DEPLOYMENT_ROLLBACK_ROUTE_PROBE_FAILED')
+                throw createAppError('DEPLOYMENT_ROLLBACK_ROUTE_PROBE_FAILED')
             }
             await engineAgentClient.disconnectContainerNetwork(target.containerId, { network: controlNetwork })
             const rolledBack = await update(id, { failureCode: 'MANUAL_ROLLBACK', finishedAt: now(), status: 'rolled-back' })
@@ -296,7 +297,7 @@ export const createDeploymentReleaseService = ({
         create: async (actorId: string, manifestId: string) => {
             const manifest = await deploymentManifestService.get(manifestId)
             if (manifest.environmentKeys.length > 0) {
-                throw new Error('DEPLOYMENT_CONFIGURATION_UNRESOLVED')
+                throw createAppError('DEPLOYMENT_CONFIGURATION_UNRESOLVED')
             }
             await deploymentSecretService.resolve(manifest.secrets)
             const [active] = await db
@@ -306,7 +307,7 @@ export const createDeploymentReleaseService = ({
                 .where(and(eq(deploymentManifest.name, manifest.name), inArray(deploymentRelease.status, [...ACTIVE_RELEASE_STATUSES])))
                 .limit(1)
             if (active) {
-                throw new Error('DEPLOYMENT_RELEASE_IN_PROGRESS')
+                throw createAppError('DEPLOYMENT_RELEASE_IN_PROGRESS')
             }
             const [previous] = await db
                 .select({
@@ -343,7 +344,7 @@ export const createDeploymentReleaseService = ({
         run: async (id: string) => {
             const release = await get(id)
             if (release.status !== 'creating') {
-                throw new Error('DEPLOYMENT_RELEASE_STATE_INVALID')
+                throw createAppError('DEPLOYMENT_RELEASE_STATE_INVALID')
             }
             const manifest = await deploymentManifestService.get(release.manifestId)
             const environment = await deploymentSecretService.resolve(manifest.secrets)
@@ -395,7 +396,7 @@ export const createDeploymentReleaseService = ({
                     }
                 }
                 if (!healthy) {
-                    throw new Error('DEPLOYMENT_HEALTHCHECK_FAILED')
+                    throw createAppError('DEPLOYMENT_HEALTHCHECK_FAILED')
                 }
 
                 await engineAgentClient.connectContainerNetwork(containerId, { network: manifest.network })
@@ -419,7 +420,7 @@ export const createDeploymentReleaseService = ({
                     }
                 }
                 if (!routeReady) {
-                    throw new Error('DEPLOYMENT_ROUTE_PROBE_FAILED')
+                    throw createAppError('DEPLOYMENT_ROUTE_PROBE_FAILED')
                 }
                 await sleep(manifest.rollout.observationSeconds * 1_000)
                 const finalProbe = await routeProbe({
@@ -428,7 +429,7 @@ export const createDeploymentReleaseService = ({
                     timeoutMs: manifest.healthcheck.timeoutSeconds * 1_000,
                 })
                 if (!finalProbe) {
-                    throw new Error('DEPLOYMENT_OBSERVATION_FAILED')
+                    throw createAppError('DEPLOYMENT_OBSERVATION_FAILED')
                 }
                 const healthyRelease = await update(id, { activatedAt: now(), finishedAt: now(), status: 'healthy' })
                 if (previous?.containerId) {

@@ -9,6 +9,7 @@ import {
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { deploymentManifest } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import { createAppError } from '../../../lib/app-error'
 
 type DeploymentManifestServiceDependencies = {
     db: ControlDatabase
@@ -103,10 +104,10 @@ export const createDeploymentManifestService = ({
         create: async (actorId: string, input: unknown) => {
             const payload = deploymentManifestInputSchema.parse(input)
             if (protectedHostnames.includes(payload.route.hostname)) {
-                throw new Error('DEPLOYMENT_ROUTE_PROTECTED_HOSTNAME')
+                throw createAppError('DEPLOYMENT_ROUTE_PROTECTED_HOSTNAME')
             }
             if (protectedNetworks.includes(payload.network)) {
-                throw new Error('DEPLOYMENT_NETWORK_PROTECTED')
+                throw createAppError('DEPLOYMENT_NETWORK_PROTECTED')
             }
             const [existingIdentity] = await db
                 .select({ routeHostname: deploymentManifest.routeHostname, routePath: deploymentManifest.routePath })
@@ -117,7 +118,7 @@ export const createDeploymentManifestService = ({
                 existingIdentity &&
                 (existingIdentity.routeHostname !== payload.route.hostname || existingIdentity.routePath !== payload.route.path)
             ) {
-                throw new Error('DEPLOYMENT_IDENTITY_MISMATCH')
+                throw createAppError('DEPLOYMENT_IDENTITY_MISMATCH')
             }
             const collision = await db
                 .select({ id: deploymentManifest.id })
@@ -125,14 +126,14 @@ export const createDeploymentManifestService = ({
                 .where(and(eq(deploymentManifest.name, payload.name), eq(deploymentManifest.version, payload.version)))
                 .limit(1)
             if (collision.length > 0) {
-                throw new Error('DEPLOYMENT_MANIFEST_VERSION_EXISTS')
+                throw createAppError('DEPLOYMENT_MANIFEST_VERSION_EXISTS')
             }
             const images = await engineAgentClient.getImages()
             const imageExists = images.some(
                 (image) => image.id === payload.imageDigest || image.repoDigests.some((digest) => digest.endsWith(`@${payload.imageDigest}`)),
             )
             if (!imageExists) {
-                throw new Error('DEPLOYMENT_IMAGE_DIGEST_NOT_FOUND')
+                throw createAppError('DEPLOYMENT_IMAGE_DIGEST_NOT_FOUND')
             }
 
             const timestamp = now()
@@ -140,14 +141,14 @@ export const createDeploymentManifestService = ({
             await db.insert(deploymentManifest).values(toRow(id, actorId, timestamp, payload))
             const [created] = await db.select().from(deploymentManifest).where(eq(deploymentManifest.id, id)).limit(1)
             if (!created) {
-                throw new Error('DEPLOYMENT_MANIFEST_CREATE_FAILED')
+                throw createAppError('DEPLOYMENT_MANIFEST_CREATE_FAILED')
             }
             return toManifest(created)
         },
         get: async (id: string) => {
             const [record] = await db.select().from(deploymentManifest).where(eq(deploymentManifest.id, id)).limit(1)
             if (!record) {
-                throw new Error('DEPLOYMENT_MANIFEST_NOT_FOUND')
+                throw createAppError('DEPLOYMENT_MANIFEST_NOT_FOUND')
             }
             return toManifest(record)
         },

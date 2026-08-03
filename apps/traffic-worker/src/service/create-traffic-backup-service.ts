@@ -3,6 +3,7 @@ import { mkdir, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import { backupIdSchema, backupSnapshotResultSchema } from '@containers/contracts/backup'
 import type { TrafficDatabase } from '../database/create-traffic-database'
+import { createAppError } from '../lib/app-error'
 
 type TrafficBackupServiceDependencies = {
     backupRoot: string
@@ -31,7 +32,7 @@ export const createTrafficBackupService = ({ backupRoot, database }: TrafficBack
             const destination = snapshotPath(input)
             const file = Bun.file(destination)
             if (!(await file.exists())) {
-                throw new Error('BACKUP_TRAFFIC_NOT_FOUND')
+                throw createAppError('BACKUP_TRAFFIC_NOT_FOUND')
             }
             const snapshot = new Uint8Array(await file.arrayBuffer())
             database.restoreSnapshot(destination)

@@ -10,6 +10,7 @@ import {
     backupRestoreSchema,
     type BackupManifest,
 } from '@containers/contracts/backup'
+import { createAppError } from '../../../lib/app-error'
 import type { TrafficWorkerClient } from '../../../traffic/create-traffic-worker-client'
 
 type BackupServiceDependencies = {
@@ -38,13 +39,13 @@ const validateControlSnapshot = async (sqlite: Database, filePath: string) => {
         const sourceTables = getTables(source)
         const currentTables = getTables(sqlite)
         if (integrity !== 'ok' || foreignKeyViolation || sourceTables.join(',') !== currentTables.join(',')) {
-            throw new Error('BACKUP_CONTROL_INVALID')
+            throw createAppError('BACKUP_CONTROL_INVALID')
         }
         for (const table of currentTables) {
             const sourceColumns = source.query<{ name: string }, []>(`PRAGMA table_info(${quoteIdentifier(table)})`).all()
             const currentColumns = sqlite.query<{ name: string }, []>(`PRAGMA table_info(${quoteIdentifier(table)})`).all()
             if (sourceColumns.map((column) => column.name).join(',') !== currentColumns.map((column) => column.name).join(',')) {
-                throw new Error('BACKUP_SCHEMA_MISMATCH')
+                throw createAppError('BACKUP_SCHEMA_MISMATCH')
             }
         }
     } finally {
@@ -88,7 +89,7 @@ const restoreControlSnapshot = (sqlite: Database, filePath: string) => {
     }
     const foreignKeyViolation = sqlite.query('PRAGMA foreign_key_check').get()
     if (foreignKeyViolation) {
-        throw new Error('BACKUP_FOREIGN_KEY_INVALID')
+        throw createAppError('BACKUP_FOREIGN_KEY_INVALID')
     }
 }
 
@@ -126,7 +127,7 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
     const createSnapshot = async (input: unknown, applyRetention: boolean) => {
         const payload = backupCreateSchema.parse(input)
         if (sqlite.query('PRAGMA foreign_key_check').get()) {
-            throw new Error('BACKUP_CONTROL_FOREIGN_KEY_INVALID')
+            throw createAppError('BACKUP_CONTROL_FOREIGN_KEY_INVALID')
         }
         const id = randomUUID()
         const directory = join(backupRoot, id)
@@ -165,7 +166,7 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
         try {
             manifest = backupManifestSchema.parse(await Bun.file(manifestPath(id)).json())
         } catch {
-            throw new Error('BACKUP_NOT_FOUND')
+            throw createAppError('BACKUP_NOT_FOUND')
         }
         const [controlStat, trafficStat, controlSha256, trafficSha256] = await Promise.all([
             stat(controlPath(id)),
@@ -173,7 +174,7 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
             sha256File(controlPath(id)),
             sha256File(trafficPath(id)),
         ]).catch(() => {
-            throw new Error('BACKUP_INCOMPLETE')
+            throw createAppError('BACKUP_INCOMPLETE')
         })
         if (
             controlStat.size !== manifest.controlBytes ||
@@ -181,7 +182,7 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
             controlSha256 !== manifest.controlSha256 ||
             trafficSha256 !== manifest.trafficSha256
         ) {
-            throw new Error('BACKUP_DIGEST_MISMATCH')
+            throw createAppError('BACKUP_DIGEST_MISMATCH')
         }
         await validateControlSnapshot(sqlite, controlPath(id))
         return manifest
@@ -193,15 +194,15 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
         remove: async (id: string, input: unknown) => {
             const payload = backupDeleteSchema.parse(input)
             if (payload.confirmation !== id) {
-                throw new Error('CONFIRMATION_MISMATCH')
+                throw createAppError('CONFIRMATION_MISMATCH')
             }
             try {
                 const manifest = backupManifestSchema.parse(await Bun.file(manifestPath(id)).json())
                 if (manifest.id !== id) {
-                    throw new Error('BACKUP_NOT_FOUND')
+                    throw createAppError('BACKUP_NOT_FOUND')
                 }
             } catch (error) {
-                throw new Error('BACKUP_NOT_FOUND', { cause: error })
+                throw createAppError('BACKUP_NOT_FOUND', error)
             }
             await rm(join(backupRoot, id), { recursive: true })
             return { removed: true as const }
@@ -209,14 +210,14 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
         restore: async (id: string, input: unknown) => {
             const payload = backupRestoreSchema.parse(input)
             if (payload.confirmation !== id) {
-                throw new Error('CONFIRMATION_MISMATCH')
+                throw createAppError('CONFIRMATION_MISMATCH')
             }
             const manifest = await getVerified(id)
             const recovery = await createSnapshot({ label: `pre-restore:${id}` }, false)
             try {
                 const traffic = await trafficWorkerClient.restoreBackup(id)
                 if (traffic.bytes !== manifest.trafficBytes || traffic.sha256 !== manifest.trafficSha256) {
-                    throw new Error('BACKUP_TRAFFIC_DIGEST_MISMATCH')
+                    throw createAppError('BACKUP_TRAFFIC_DIGEST_MISMATCH')
                 }
                 restoreControlSnapshot(sqlite, controlPath(id))
                 await cleanupRetention()
@@ -233,7 +234,7 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
                             rollbackCode: rollbackError instanceof Error ? rollbackError.message.split(':')[0] : 'BACKUP_ROLLBACK_FAILED',
                         }),
                     )
-                    throw new Error('BACKUP_RESTORE_ROLLBACK_FAILED', { cause: rollbackError })
+                    throw createAppError('BACKUP_RESTORE_ROLLBACK_FAILED', rollbackError)
                 }
                 throw error
             }

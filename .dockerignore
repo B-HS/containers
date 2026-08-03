@@ -1,5 +1,5 @@
 .git
 .next
 dist
-node_modules
+**/node_modules
 runtime

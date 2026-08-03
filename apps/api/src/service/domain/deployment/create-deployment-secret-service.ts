@@ -10,6 +10,7 @@ import {
 } from '@containers/contracts/deployment-secret'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { deploymentManifest, deploymentSecret } from '@containers/db-schema/schema'
+import { createAppError } from '../../../lib/app-error'
 
 type DeploymentSecretServiceDependencies = {
     db: ControlDatabase
@@ -51,10 +52,10 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
             const request = deploymentSecretDeleteSchema.parse(input)
             const [record] = await db.select().from(deploymentSecret).where(eq(deploymentSecret.id, id)).limit(1)
             if (!record) {
-                throw new Error('DEPLOYMENT_SECRET_NOT_FOUND')
+                throw createAppError('DEPLOYMENT_SECRET_NOT_FOUND')
             }
             if (request.confirmation !== record.reference) {
-                throw new Error('CONFIRMATION_MISMATCH')
+                throw createAppError('CONFIRMATION_MISMATCH')
             }
             const manifests = await db.select({ id: deploymentManifest.id, secretsJson: deploymentManifest.secretsJson }).from(deploymentManifest)
             const used = manifests.some((manifest) => {
@@ -62,7 +63,7 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
                 return bindings.some((binding) => binding.reference === record.reference)
             })
             if (used) {
-                throw new Error('DEPLOYMENT_SECRET_IN_USE')
+                throw createAppError('DEPLOYMENT_SECRET_IN_USE')
             }
             await db.delete(deploymentSecret).where(eq(deploymentSecret.id, id))
             return toSecret(record)
@@ -78,12 +79,12 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
             return parsedBindings.map((binding) => {
                 const record = recordsByReference.get(binding.reference)
                 if (!record) {
-                    throw new Error('DEPLOYMENT_SECRET_UNRESOLVED')
+                    throw createAppError('DEPLOYMENT_SECRET_UNRESOLVED')
                 }
                 try {
                     return `${binding.environmentKey}=${decrypt(record)}`
                 } catch {
-                    throw new Error('DEPLOYMENT_SECRET_DECRYPTION_FAILED')
+                    throw createAppError('DEPLOYMENT_SECRET_DECRYPTION_FAILED')
                 }
             })
         },
@@ -99,7 +100,7 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
                     .where(eq(deploymentSecret.id, existing.id))
                 const [updated] = await db.select().from(deploymentSecret).where(eq(deploymentSecret.id, existing.id)).limit(1)
                 if (!updated) {
-                    throw new Error('DEPLOYMENT_SECRET_NOT_FOUND')
+                    throw createAppError('DEPLOYMENT_SECRET_NOT_FOUND')
                 }
                 return toSecret(updated)
             }

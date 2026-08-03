@@ -155,10 +155,14 @@ Hono RPC는 JSON control endpoint 타입을 제공한다. 대용량 binary chunk
 - 신규 container는 `containers_control`에서 먼저 health probe를 통과하고 목표 network에 연결한 뒤 control network에서 분리한다.
 - 구조화 Nginx route는 apply 성공 뒤에만 DB target을 갱신한다. reload 직후 이전 worker 응답은 health retry 정책으로 흡수한다.
 - route observation 실패는 이전 healthy release로 route를 복원한다. 이전 release가 없으면 새 route를 제거하고 신규 container를 중지한다.
-- API는 release 생성과 수동 rollback 시작에 `202`를 반환하고 상태 조회를 제공한다. 진행 상태는 SQLite에 기록하며 API 재시작 시 중단된 create·probe·route switch·observation·rollback을 안전한 종료 상태로 수렴시킨다.
+- API는 release 생성과 수동 rollback 시작에 `202 { release, job }`을 반환하고 상태 조회를 제공한다. 진행 상태는 SQLite에 기록하며 API 재시작 시 중단된 create·probe·route switch·observation·rollback을 안전한 종료 상태로 수렴시킨다.
 - 수동 rollback은 이전 container를 control network에서 재기동·검증하고 Nginx route probe 성공 뒤 현재 container를 중지한다. 실패하면 현재 정상 route를 복원한다.
 - 이전 container는 새 manifest의 rollback retention 동안 보존하며, 만료 cleanup은 시작 시와 1시간 주기로 재시도하고 named volume은 삭제하지 않는다.
 - Next.js SSR dashboard는 manifest·release 초기 상태, 생성 form, release polling, rollback action을 한국어·영어·일본어로 제공한다.
 - upload session은 ready artifact와 활성 예약량의 합계를 총 quota와 비교한다. Docker Desktop 실제 available bytes에서 아직 전송되지 않은 예약량까지 빼고 soft watermark는 UI 경고, hard watermark는 HTTP 507로 차단하며 각 chunk 직전 다시 확인한다.
 - 기본값은 총 300GiB, soft available 32GiB, hard available 16GiB이며 세 값 모두 환경변수로 조정한다.
-- background 실행은 아직 API process 내부 promise이다. 중단 상태 정리는 구현됐지만 단계 중간부터 계속 실행하는 durable queue와 상세 job timeline은 후속 범위다.
+- artifact load, upload finalize, release 실행, 수동 rollback은 `operation_job` durable queue로 실행한다. job kind는 `deploy.load`, `upload.finalize`, `deploy.release`, `deploy.rollback`이며 실행 상태와 실패 코드는 job timeline에 남는다.
+- 각 job은 `resource_key`(artifactId·sessionId·releaseId)로 잠근다. 같은 리소스의 active job이 있으면 새 job을 만들지 않고 기존 job을 반환한다.
+- `POST /api/artifacts/:artifactId/load`는 이미 `loaded` 상태 deployment 행이 있으면 job 없이 `200 { deployment }`를, 없으면 `202 { job }`을 반환한다. `POST /api/uploads/sessions/:sessionId/finalize`는 session 존재와 actor 소유를 동기 검증한 뒤 `202 { job }`을 반환하고, 같은 내용(sha256)의 artifact가 이미 있으면 그 artifact를 멱등 반환한다.
+- release·rollback job은 재시도하지 않는다(`maxAttempts` 1). 상태 머신이 시도를 이미 소비했으므로 중단된 실행 정리는 release reconcile이 담당한다.
+- 단계 중간부터 이어 실행하는 세분화된 재개는 후속 범위다.

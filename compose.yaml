@@ -84,6 +84,7 @@ services:
             CONTROL_DB_PATH: /data/control.sqlite
             CONTROL_MIGRATIONS_PATH: /app/drizzle
             NGINX_STATUS_URL: http://nginx:8081/status
+            NOTIFICATION_SECRET_KEY_FILE: /data/notification-secret-key
             REGISTRY_CREDENTIAL_FILE: /credentials/registry-credentials.json
             REGISTRY_CREDENTIAL_KEY_FILE: /credentials/registry-credential-key
             PANEL_PUBLIC_URL: http://127.0.0.1:8080
@@ -112,6 +113,7 @@ services:
         networks:
             - ingress
             - control
+            - edge
 
     engine-agent:
         build:

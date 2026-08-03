@@ -12,18 +12,20 @@
 - durable operation job queue(상태 machine·재시도·취소·timeline·boot reconciliation)가 구현됐고 자동 backup 이 첫 소비자다. [acknowledge/0014](./acknowledge/0014-durable-operation-job-queue.md)
 - Docker events·logs·stats 실시간 SSE 가 Agent 정규화 → API 인증 proxy → 패널 실시간 로그 UI 까지 구현됐다. [acknowledge/0015](./acknowledge/0015-docker-stream-sse.md)
 - 전체 typecheck, ESLint, Prettier가 통과한다.
-- 전체 테스트는 31 files, 121 pass, 401 assertions다.
+- 전체 테스트는 34 files, 158 pass, 530 assertions다.
 - container kill·update·rename·wait·top·changes 와 image pull(durable job)·tag 가 agent E2E 로 실측 검증됐다. [acknowledge/0017](./acknowledge/0017-docker-command-completeness.md)
 - Compose project label 기반 관리 plane container·image·network·volume 보호, 자체 prune dry-run preview, image 삭제 dependency impact와 force owner 제한이 구현됐다. [acknowledge/0018](./acknowledge/0018-prune-preview-management-protection.md)
 - owner 최근 인증·preview SHA 재검증·volume opt-in·후보별 보호·취소 지점·단일 attempt를 적용한 `system.prune` durable job과 패널이 구현됐다. [acknowledge/0019](./acknowledge/0019-durable-system-prune.md)
 - registry credential을 Agent 전용 volume에 AES-256-GCM으로 저장하고 host-bound `X-Registry-Auth`로만 사용하는 인증 image pull과 관리 패널이 구현됐다. [acknowledge/0020](./acknowledge/0020-registry-authenticated-image-pull.md)
 - inode checkpoint·rotation 복구, masked live SSE, 24시간 제한 CSV/NDJSON durable export가 구현됐다. [acknowledge/0021](./acknowledge/0021-traffic-checkpoint-live-export.md)
 - maintenance mode 가 mutation 을 503 으로 차단·drain 하며, backup restore 는 maintenance 오케스트레이션이 포함된 `backup.restore` durable job 으로 실행된다. [acknowledge/0016](./acknowledge/0016-maintenance-restore-job.md)
+- control plane upgrade 준비 상태 검증이 구현됐다: `GET /api/control-plane/status`(owner·admin)가 버전, migration applied/pending(파일 sha256 dry-run), maintenance, active job, 최신 backup, DB integrity 를 종합 보고하고, upgrade·rollback runbook 은 [CONTROL-PLANE-UPGRADE.md](./CONTROL-PLANE-UPGRADE.md)로 문서화했다. 자기 재배포는 SECURITY.md §11 에 따라 제외한다. [acknowledge/0023](./acknowledge/0023-control-plane-upgrade-readiness.md)
+- artifact load·upload finalize·release run·rollback 이 durable job(`deploy.load`·`upload.finalize`·`deploy.release`·`deploy.rollback`)으로 전환됐다. `operation_job.resource_key`(migration 0010)와 `enqueue({ uniqueResourceKey })` 로 리소스 단위 잠금을, upload finalize 는 sha256 내용 기반 멱등을 적용한다. [acknowledge/0024](./acknowledge/0024-deploy-upload-durable-job.md)
 - 패널 작업 큐 위젯과 `GET /api/jobs/backup-schedule` 로 자동 backup 의 last success/failure·next run 이 관측된다.
 - live control SQLite는 `integrity_check=ok`, `foreign_key_check=[]`다.
 - 마지막 실제 restore drill, Docker 명령·stream·traffic browser E2E가 성공했다.
 
-최종 제품은 아니다. scanner, R2, Discord, Cloudflare 설치 runbook, upgrade/restore matrix, 접근성·반응형 전수검증이 남아 있다.
+최종 제품은 아니다. scanner, R2, Cloudflare 설치 runbook, fresh install E2E, 접근성·반응형 전수검증이 남아 있다.
 
 ## 2. 새 세션 시작 순서
 
@@ -32,7 +34,7 @@
 3. 작업 영역은 `/Users/hyunseokbyun/development/containers`다.
 4. 디자인·컴포넌트 패턴은 `/Users/hyunseokbyun/development/flunti-otel`을 읽고 따른다.
 5. `docs/SHADCN-COMPONENTS.md`를 확인하고 기존 `apps/web/src/shared/ui` primitive를 우선 사용한다.
-6. 이 디렉터리는 현재 Git 저장소가 아니다. Git 명령을 전제로 변경 범위를 판단하지 않는다.
+6. 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `rest-work/deepseekv4`). 변경 범위는 Git 명령으로 판단한다.
 7. 기존 Docker image·container·network·volume에는 사용자 소유 리소스가 섞여 있다. 이름이 명백한 이번 테스트 fixture가 아니면 삭제하지 않는다.
 8. `.env`를 생성하거나 수정하지 않는다. 현재 구성은 compose environment와 secret file을 사용한다.
 
@@ -160,8 +162,8 @@ Compose 서비스와 권한 경계:
 - `GET /api/jobs`·`GET /api/jobs/:id`·`GET /api/jobs/:id/events`·`POST /api/jobs/:id/cancel` (owner·admin session, 취소는 최근 15분 인증 + audit)
 - 자동 backup 이 첫 소비자: 1분 due-check(최신 backup 시각 + interval 로 next-run 유도, 재시작 안전), unique enqueue 로 중복 방지
 - `GET /api/jobs/backup-schedule` 와 패널 작업 큐 위젯(owner·admin)이 job 목록·취소·interval·last success/failure·next run 을 노출한다
-- 외부 enqueue endpoint 없음. 신규 코드는 `lib/app-error.ts` 의 `createAppError` 를 사용한다.
-- 추가 소비자: `backup.restore`, `image.pull`, `system.prune`, `traffic.export`. 잔여는 live 24시간 주기 실행 증거(g-2), deploy·upload job 전환, resource lock·idempotency key다.
+- 외부 enqueue endpoint 없음. api·engine-agent·traffic-worker 세 앱 모두 `lib/app-error.ts` 의 `createAppError` 로 오류를 던진다.
+- 추가 소비자: `backup.restore`, `image.pull`, `system.prune`, `traffic.export`, `deploy.load`, `deploy.release`, `deploy.rollback`, `upload.finalize`. 잔여는 live 24시간 주기 실행 증거(g-2)다.
 
 ## 5. 최근 checkpoint의 주요 파일
 
@@ -219,7 +221,7 @@ Compose 서비스와 권한 경계:
 - `bun run typecheck`: 7 workspace 모두 성공
 - `bun run lint`: 성공
 - `bun run format:check`: 성공
-- `bun test`: 121 pass, 0 fail, 401 assertions, 31 files
+- `bun test`: 158 pass, 0 fail, 530 assertions, 34 files
 - Phase 12 agent E2E: pull→tag→create→top→changes→update→kill→wait(exit 137)→정확 ID 정리, fixture 무잔재, 신규 API 5종 미인증 401
 - Phase 13: 관리 plane 보호·prune preview·image dependency impact 4개 신규 테스트, 실제 Compose resource label 확인, `/api/system/prune-preview` 미인증 401
 - Phase 14: owner route의 최근 인증·stale SHA·single-attempt enqueue, worker의 재검증·실행 순서·취소, Agent build-cache filter를 단위·통합 검증. owner 브라우저에서 초기 859개→최종 836개 build cache 후보·20개 보호 리소스·volume opt-in·확인 문구 UI 확인
@@ -242,6 +244,7 @@ Compose 서비스와 권한 경계:
 - Chromium SSR dashboard·client interaction·backup widget 확인
 - 실제 blue-green v1→v2→manual rollback, secret injection, graceful stop timeout 검증
 - 실제 control+traffic backup create→pre-restore snapshot→restore 성공
+- Phase 18: migration 파일 sha256 vs `__drizzle_migrations.hash` applied/pending 판정, integrity `ok`, active job count, 최신 backup, 버전 노출 단위 검증. `/api/control-plane/status` 미인증 401 실측, owner·admin 200·역할 인자 `['owner','admin']`·FORBIDDEN 403 통합 검증. `GET /api/health` version `0.1.0` 실측
 
 최종 검증 명령:
 
@@ -274,8 +277,8 @@ named volume을 삭제하거나 Compose를 `down -v` 하지 않는다. 현재 co
 ### P0 — 완전 원격 운영을 막는 항목
 
 1. Docker 명령의 owner durable prune과 registry 인증 pull은 0019·0020으로 완료됐다. 일부 catalog/UI 완전성이 남았다.
-2. durable job queue·jobs 패널·backup(자동/restore)·image pull 소비자는 완료됐다. deploy·upload 의 job 전환과 resource lock, idempotency key 가 남아 있다.
-3. maintenance mode(수동 toggle·restore 자동 적용)는 구현됐다. control plane upgrade/rollback UI·runbook 이 남아 있다.
+2. durable job queue·jobs 패널·backup(자동/restore)·image pull 소비자는 완료됐다. deploy·upload 의 job 전환과 resource lock, idempotency key 도 0024 로 완료됐다.
+3. maintenance mode(수동 toggle·restore 자동 적용)는 구현됐다. control plane upgrade 준비 상태 검증(`/api/control-plane/status`)과 runbook([CONTROL-PLANE-UPGRADE.md](./CONTROL-PLANE-UPGRADE.md))은 0023으로 완료됐다. 실제 재배포는 host 명령으로 수행하며 API 가 컨테이너를 조작하지 않는다(SECURITY.md §11).
 4. Cloudflare Tunnel·Access의 실제 설치·도메인 mapping·token rotation runbook이 없다.
 5. fresh machine 설치 E2E가 없다.
 
@@ -283,9 +286,9 @@ named volume을 삭제하거나 Compose를 `down -v` 하지 않는다. 현재 co
 
 1. backup이 DB 크기만큼 메모리를 사용할 수 있다.
 2. restore는 두 DB에 대한 보상 복구이며 분산 원자 transaction이 아니다. (2026-08-01부터 maintenance drain 하에 durable job 으로 실행되어 mutation interleave 는 차단된다)
-3. (해소 2026-08-01) backup scheduler 성공·실패·다음 실행 시각이 `GET /api/jobs/backup-schedule` 와 패널 작업 큐 위젯에 노출된다. 실패 alert 연동만 남았다.
+3. (해소 2026-08-01) backup scheduler 성공·실패·다음 실행 시각이 `GET /api/jobs/backup-schedule` 와 패널 작업 큐 위젯에 노출된다. backup 실패 alert는 0022의 durable notification job 으로 연동 완료다.
 4. schema migration 간 restore가 지원되지 않는다.
-5. R2 client-side 암호화 backup과 Discord webhook이 없다.
+5. R2 client-side 암호화 backup이 없다. (Discord webhook 알림은 2026-08-01 Phase 17로 구현 완료 — 0022)
 6. API key·internal credential 무중단 rotation이 없다.
 7. audit hash chain·external checkpoint·server-side filter/export가 없다.
 8. scanner, SBOM, vulnerability policy와 owner exception이 없다.
@@ -302,13 +305,13 @@ named volume을 삭제하거나 Compose를 `down -v` 하지 않는다. 현재 co
 
 ## 9. 권장 다음 구현 순서
 
-2026-08-01 세션에서 durable job queue(0014), Docker SSE stream(0015), jobs 패널·backup schedule, maintenance mode·restore job(0016), container·image 명령 완전성 1차(0017)가 완료됐다. 상세 이력은 [history/2026-08-01-durable-jobs-streams-commands.md](./history/2026-08-01-durable-jobs-streams-commands.md).
+2026-08-01 세션에서 durable job queue(0014), Docker SSE stream(0015), jobs 패널·backup schedule, maintenance mode·restore job(0016), container·image 명령 완전성 1차(0017)가 완료됐다. 상세 이력은 [history/2026-08-01-durable-jobs-streams-commands.md](./history/2026-08-01-durable-jobs-streams-commands.md). 같은 세션 후반에 durable notification/Discord(0022)도 완료됐다.
 
 다음 세션은 범위를 넓게 동시에 건드리지 말고 아래 순서로 진행한다.
 
 1. 잔여 실측 증거 2건을 owner 로그인으로 확보한다: live `backup.create` job(g-2, 24시간 경과 시 자동), restore job E2E(i-2). 실시간 로그·jobs 패널 브라우저(e-2)는 완료됐다.
-2. traffic live/export owner E2E는 완료됐다. 다음 기본 구현은 Discord adapter를 비동기 notification job으로 추가하는 것이다. backup 실패 alert를 첫 producer로 사용한다.
-3. [RESUME-CHECKLIST.md](./RESUME-CHECKLIST.md)의 Phase 17 체크리스트에 따라 secret reference·retry·dedupe·redaction을 먼저 결정한다.
+2. traffic live/export owner E2E는 완료됐다. Discord adapter 비동기 notification job(backup 실패 alert, 0022)도 완료됐다. 다음 기본 구현은 R2 encrypted replication adapter다.
+3. (완료) [RESUME-CHECKLIST.md](./RESUME-CHECKLIST.md)의 Phase 17 체크리스트 — secret reference·retry·dedupe·redaction 결정(0022)과 구현·단위 검증 완료. 남은 것은 승인된 webhook으로 실전송 확인뿐이다.
 4. R2는 로컬 backup 성공과 분리된 optional encrypted replication adapter로 추가한다.
 5. control plane upgrade/rollback runbook·UI, Cloudflare 설치 runbook과 fresh M1 Max restore E2E를 수행한다.
 6. 마지막에 dashboard navigation·responsive·accessibility를 전수 개선한다.

@@ -1,11 +1,13 @@
 import { Hono } from 'hono'
 import { API_KEY_SCOPE } from '@containers/contracts/api-key'
+import { OPERATION_JOB_KIND } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { errorResponse, successResponse } from '../../lib/response'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { DeploymentReleaseService } from '../../service/domain/deployment/create-deployment-release-service'
+import type { OperationJobService } from '../../service/domain/job/create-operation-job-service'
 
 const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const RELEASE_READ_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
@@ -15,7 +17,8 @@ type DeploymentReleaseRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
-    deploymentReleaseService: DeploymentReleaseService
+    deploymentReleaseService: Pick<DeploymentReleaseService, 'create' | 'get' | 'list' | 'prepareRollback'>
+    operationJobService: Pick<OperationJobService, 'enqueue'>
 }
 
 const getSourceIp = (headers: Headers) => headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined
@@ -49,6 +52,7 @@ export const createDeploymentReleaseRoute = ({
     auditService,
     authService,
     deploymentReleaseService,
+    operationJobService,
 }: DeploymentReleaseRouteDependencies) =>
     new Hono()
         .get('/deployment-releases', async (context) => {
@@ -99,9 +103,15 @@ export const createDeploymentReleaseRoute = ({
                 }
                 await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
                 const release = await deploymentReleaseService.prepareRollback(releaseId)
-                void deploymentReleaseService.runRollback(release.id).catch(() => undefined)
-                await auditService.record({ ...audit, actorId, authMethod, result: 'success' })
-                return context.json(successResponse(release), 202)
+                const job = await operationJobService.enqueue({
+                    createdBy: actorId,
+                    kind: OPERATION_JOB_KIND.DEPLOY_ROLLBACK,
+                    maxAttempts: 1,
+                    payload: { releaseId: release.id },
+                    uniqueResourceKey: release.id,
+                })
+                await auditService.record({ ...audit, actorId, authMethod, detail: { jobId: job.id }, result: 'success' })
+                return context.json(successResponse({ job, release }), 202)
             } catch (error) {
                 const code = error instanceof Error ? error.message : 'DEPLOYMENT_ROLLBACK_FAILED'
                 if (actorId) {
@@ -132,9 +142,15 @@ export const createDeploymentReleaseRoute = ({
                 }
                 await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
                 const release = await deploymentReleaseService.create(actorId, manifestId)
-                void deploymentReleaseService.run(release.id).catch(() => undefined)
-                await auditService.record({ ...audit, actorId, authMethod, detail: { releaseId: release.id }, result: 'success' })
-                return context.json(successResponse(release), 202)
+                const job = await operationJobService.enqueue({
+                    createdBy: actorId,
+                    kind: OPERATION_JOB_KIND.DEPLOY_RELEASE,
+                    maxAttempts: 1,
+                    payload: { releaseId: release.id },
+                    uniqueResourceKey: release.id,
+                })
+                await auditService.record({ ...audit, actorId, authMethod, detail: { jobId: job.id, releaseId: release.id }, result: 'success' })
+                return context.json(successResponse({ job, release }), 202)
             } catch (error) {
                 const code = error instanceof Error ? error.message : 'DEPLOYMENT_RELEASE_CREATE_FAILED'
                 if (actorId) {

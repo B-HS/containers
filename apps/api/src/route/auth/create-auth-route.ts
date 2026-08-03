@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
+import { createAppError } from '../../lib/app-error'
 import { errorResponse, successResponse } from '../../lib/response'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -138,7 +139,7 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
             const targetId = context.req.param('id')
             try {
                 if (!actor) {
-                    throw new Error('AUTH_REQUIRED')
+                    throw createAppError('AUTH_REQUIRED')
                 }
                 const result = await authService.updateUser(context.req.raw.headers, targetId, await context.req.json())
                 await auditService.record({

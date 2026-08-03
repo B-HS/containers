@@ -3,6 +3,7 @@ import { access, copyFile, readFile, readdir, rename, rm, stat, writeFile } from
 import { join } from 'node:path'
 import { nginxConfigApplyResultSchema, nginxConfigApplySchema, nginxConfigRevisionSchema, nginxConfigStateSchema } from '@containers/contracts/nginx'
 import type { DockerEngineClient } from '../docker/create-docker-engine-client'
+import { createAppError } from '../lib/app-error'
 
 const REQUIRED_CONFIG_TOKENS = [
     'pid /tmp/nginx.pid;',
@@ -35,7 +36,7 @@ const digest = (value: string) => createHash('sha256').update(value).digest('hex
 
 const verifyProtectedContract = (config: string) => {
     if (config.includes('\0') || REQUIRED_CONFIG_TOKENS.some((token) => !config.includes(token))) {
-        throw new Error('NGINX_PROTECTED_CONTRACT')
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
     }
 }
 
@@ -46,7 +47,7 @@ export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetch
         const containers = await dockerEngineClient.getContainers()
         const container = containers.find((candidate) => candidate.Labels['com.docker.compose.service'] === 'nginx' && candidate.State === 'running')
         if (!container) {
-            throw new Error('NGINX_CONTAINER_UNAVAILABLE')
+            throw createAppError('NGINX_CONTAINER_UNAVAILABLE')
         }
         return container
     }
@@ -62,7 +63,7 @@ export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetch
                 await new Promise((resolve) => setTimeout(resolve, 250))
             }
         }
-        throw new Error('NGINX_POST_RELOAD_PROBE_FAILED')
+        throw createAppError('NGINX_POST_RELOAD_PROBE_FAILED')
     }
 
     return {
@@ -72,7 +73,7 @@ export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetch
             const currentConfig = await readFile(currentPath, 'utf8')
             const previousSha256 = digest(currentConfig)
             if (previousSha256 !== payload.expectedSha256) {
-                throw new Error('NGINX_CONFIG_CONFLICT')
+                throw createAppError('NGINX_CONFIG_CONFLICT')
             }
 
             const sha256 = digest(payload.config)
@@ -90,7 +91,7 @@ export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetch
             const validationOutput = `${validation.stdout}${validation.stderr}`
             if (validation.exitCode !== 0 || validation.truncated) {
                 await rm(candidatePath, { force: true })
-                throw new Error(`NGINX_CONFIG_INVALID:${validationOutput}`)
+                throw createAppError(`NGINX_CONFIG_INVALID:${validationOutput}`)
             }
 
             const previousRevisionPath = join(configRoot, `${previousSha256}.revision`)

@@ -17,6 +17,7 @@ const createJob = (values: Partial<OperationJob>): OperationJob => ({
     maxAttempts: 3,
     payload: {},
     progressStep: null,
+    resourceKey: null,
     result: null,
     scheduledAt: NOW.toISOString(),
     startedAt: null,

@@ -27,6 +27,7 @@ type AuditRecord = {
         | 'network'
         | 'nginx-config'
         | 'nginx-route'
+        | 'notification-destination'
         | 'registry-credential'
         | 'system'
         | 'user'

@@ -85,7 +85,7 @@
 - [x] image remove, network·volume create·remove
 - [x] destructive confirmation
 - [x] durable job queue — 상태 machine·재시도·취소·timeline·boot reconciliation (첫 소비자: 자동 backup)
-- [ ] resource lock, idempotency key
+- [x] resource lock, idempotency key — deploy·upload durable job 전환과 `(kind, resource_key)` 리소스 잠금·내용 기반 멱등 ([0024](./acknowledge/0024-deploy-upload-durable-job.md))
 - [x] logs follow, stats stream, Docker events SSE (실시간 로그 UI 포함 — 0015)
 - [x] bounded non-TTY exec
 - [x] TTY WebSocket terminal
@@ -160,8 +160,8 @@
 - [ ] client-side 암호화 선택적 R2 backup·restore
 - [ ] system health와 self metrics
 - [x] maintenance mode
-- [ ] control plane upgrade runbook
-- [ ] Discord webhook 알림과 test delivery
+- [x] control plane upgrade runbook — [docs/CONTROL-PLANE-UPGRADE.md](./CONTROL-PLANE-UPGRADE.md), [0023](./acknowledge/0023-control-plane-upgrade-readiness.md)
+- [x] Discord webhook 알림과 test delivery
 - [x] 한국어·영어·일본어 catalog
 - [ ] 별도 language pack 확장 검증
 
@@ -194,7 +194,7 @@
 ## Phase 12 — release
 
 - [ ] pinned image digest와 reproducible build
-- [ ] migration dry-run과 upgrade·rollback matrix
+- [x] migration dry-run과 upgrade·rollback matrix — `GET /api/control-plane/status`(파일 sha256 vs `__drizzle_migrations.hash`), [CONTROL-PLANE-UPGRADE.md](./CONTROL-PLANE-UPGRADE.md)
 - [ ] fresh install, upgrade, restore E2E
 - [ ] Cloudflare Tunnel·Access 설치 문서
 - [ ] 관리자·외부 API 문서

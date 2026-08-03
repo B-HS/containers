@@ -1,4 +1,5 @@
 import { nginxStatusSchema } from '@containers/contracts/nginx'
+import { createAppError } from '../lib/app-error'
 
 const NGINX_STATUS_TIMEOUT_MS = 3_000
 const nginxStatusPattern =
@@ -14,13 +15,13 @@ export const createNginxStatusClient = ({ fetcher = fetch, statusUrl }: NginxSta
         const response = await fetcher(statusUrl, { signal: AbortSignal.timeout(NGINX_STATUS_TIMEOUT_MS) })
 
         if (!response.ok) {
-            throw new Error(`Nginx status 응답 코드: ${response.status}`)
+            throw createAppError(`Nginx status 응답 코드: ${response.status}`)
         }
 
         const match = nginxStatusPattern.exec(await response.text())
 
         if (!match) {
-            throw new Error('Nginx status 응답 형식이 올바르지 않습니다.')
+            throw createAppError('Nginx status 응답 형식이 올바르지 않습니다.')
         }
 
         return nginxStatusSchema.parse({

@@ -1,31 +1,55 @@
 import { imagePullRequestSchema } from '@containers/contracts/engine-control'
 import {
     backupRestoreJobPayloadSchema,
+    deployLoadJobPayloadSchema,
+    deployReleaseJobPayloadSchema,
+    deployRollbackJobPayloadSchema,
     OPERATION_JOB_KIND,
     systemPruneJobPayloadSchema,
     trafficExportJobPayloadSchema,
+    uploadFinalizeJobPayloadSchema,
 } from '@containers/contracts/operation-job'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
 import type { BackupService } from '../backup/create-backup-service'
+import type { DeploymentReleaseService } from '../deployment/create-deployment-release-service'
+import type { DeploymentService } from '../deployment/create-deployment-service'
 import type { MaintenanceService } from '../maintenance/create-maintenance-service'
+import type { NotificationDeliveryService } from '../notification/create-notification-delivery-service'
 import type { OperationJobHandler } from './create-operation-job-service'
 import { createAppError } from '../../../lib/app-error'
 import type { TrafficWorkerClient } from '../../../traffic/create-traffic-worker-client'
+import type { UploadService } from '../upload/create-upload-service'
+import { createJobError } from './create-operation-job-service'
 
 const RESTORE_DRAIN_TIMEOUT_MS = 10_000
 const RESTORE_MAINTENANCE_REASON = 'backup-restore'
 
+const UPLOAD_FINALIZE_TERMINAL_CODES = new Set(['ARTIFACT_DIGEST_MISMATCH', 'UPLOAD_INCOMPLETE', 'UPLOAD_SESSION_INVALID'])
+
 type JobHandlersDependencies = {
     backupService: Pick<BackupService, 'create' | 'restore'>
+    deploymentReleaseService: Pick<DeploymentReleaseService, 'run' | 'runRollback'>
+    deploymentService: Pick<DeploymentService, 'loadArtifact'>
     engineAgentClient: Pick<
         EngineAgentClient,
         'getPrunePreview' | 'performContainerAction' | 'pruneBuildCache' | 'pullImage' | 'removeImage' | 'removeNetwork' | 'removeVolume'
     >
     maintenanceService: Pick<MaintenanceService, 'disable' | 'drain' | 'enable'>
+    notificationDeliveryService: Pick<NotificationDeliveryService, 'handleDeliver'>
     trafficWorkerClient?: Pick<TrafficWorkerClient, 'createExport'>
+    uploadService: Pick<UploadService, 'finalizeSession'>
 }
 
-export const createJobHandlers = ({ backupService, engineAgentClient, maintenanceService, trafficWorkerClient }: JobHandlersDependencies) => {
+export const createJobHandlers = ({
+    backupService,
+    deploymentReleaseService,
+    deploymentService,
+    engineAgentClient,
+    maintenanceService,
+    notificationDeliveryService,
+    trafficWorkerClient,
+    uploadService,
+}: JobHandlersDependencies) => {
     const handleBackupCreate: OperationJobHandler = async ({ job, reportProgress }) => {
         await reportProgress('snapshot')
         const manifest = await backupService.create(job.payload)
@@ -46,6 +70,33 @@ export const createJobHandlers = ({ backupService, engineAgentClient, maintenanc
                 maintenanceService.disable()
             }
         }
+    }
+
+    const handleDeployLoad: OperationJobHandler = async ({ job }) => {
+        const payload = deployLoadJobPayloadSchema.parse(job.payload)
+        if (job.createdBy === null) {
+            throw createJobError('JOB_ACTOR_MISSING', { terminal: true })
+        }
+        const deployment = await deploymentService.loadArtifact(payload.artifactId, job.createdBy)
+        return { deploymentId: deployment.id, messages: deployment.messages }
+    }
+
+    const handleDeployRelease: OperationJobHandler = async ({ job }) => {
+        const payload = deployReleaseJobPayloadSchema.parse(job.payload)
+        const release = await deploymentReleaseService.run(payload.releaseId)
+        if (release.status !== 'healthy') {
+            throw createJobError(release.failureCode ?? 'DEPLOYMENT_RELEASE_FAILED', { terminal: true })
+        }
+        return { releaseId: release.id, status: release.status }
+    }
+
+    const handleDeployRollback: OperationJobHandler = async ({ job }) => {
+        const payload = deployRollbackJobPayloadSchema.parse(job.payload)
+        const release = await deploymentReleaseService.runRollback(payload.releaseId)
+        if (release.status !== 'rolled-back') {
+            throw createJobError(release.failureCode ?? 'DEPLOYMENT_ROLLBACK_FAILED', { terminal: true })
+        }
+        return { releaseId: release.id, status: release.status }
     }
 
     const handleImagePull: OperationJobHandler = async ({ job, reportProgress }) => {
@@ -130,11 +181,33 @@ export const createJobHandlers = ({ backupService, engineAgentClient, maintenanc
         return result
     }
 
+    const handleUploadFinalize: OperationJobHandler = async ({ job }) => {
+        const payload = uploadFinalizeJobPayloadSchema.parse(job.payload)
+        if (job.createdBy === null) {
+            throw createJobError('JOB_ACTOR_MISSING', { terminal: true })
+        }
+        try {
+            const artifact = await uploadService.finalizeSession(job.createdBy, payload.sessionId)
+            return { artifactId: artifact.id }
+        } catch (error) {
+            const code = error instanceof Error ? error.message : 'UPLOAD_FINALIZE_FAILED'
+            if (UPLOAD_FINALIZE_TERMINAL_CODES.has(code)) {
+                throw createJobError(code, { terminal: true })
+            }
+            throw error
+        }
+    }
+
     return {
         [OPERATION_JOB_KIND.BACKUP_CREATE]: handleBackupCreate,
         [OPERATION_JOB_KIND.BACKUP_RESTORE]: handleBackupRestore,
+        [OPERATION_JOB_KIND.DEPLOY_LOAD]: handleDeployLoad,
+        [OPERATION_JOB_KIND.DEPLOY_RELEASE]: handleDeployRelease,
+        [OPERATION_JOB_KIND.DEPLOY_ROLLBACK]: handleDeployRollback,
         [OPERATION_JOB_KIND.IMAGE_PULL]: handleImagePull,
+        [OPERATION_JOB_KIND.NOTIFICATION_DELIVER]: notificationDeliveryService.handleDeliver,
         [OPERATION_JOB_KIND.SYSTEM_PRUNE]: handleSystemPrune,
         [OPERATION_JOB_KIND.TRAFFIC_EXPORT]: handleTrafficExport,
+        [OPERATION_JOB_KIND.UPLOAD_FINALIZE]: handleUploadFinalize,
     }
 }

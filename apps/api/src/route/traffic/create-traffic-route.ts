@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { OPERATION_JOB_KIND, trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import { trafficAnalyticsQuerySchema, trafficExportResultSchema, trafficLiveQuerySchema } from '@containers/contracts/traffic'
 import { USER_ROLE } from '@containers/db-schema/schema'
+import { createAppError } from '../../lib/app-error'
 import { errorResponse, successResponse } from '../../lib/response'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { TrafficService } from '../../service/domain/traffic/create-traffic-service'
@@ -152,13 +153,13 @@ export const createTrafficRoute = ({
             try {
                 const session = await authorizeExport(context.req.raw.headers)
                 const job = await operationJobService.get(context.req.param('jobId'))
-                if (job.kind !== OPERATION_JOB_KIND.TRAFFIC_EXPORT) throw new Error('TRAFFIC_EXPORT_NOT_FOUND')
-                if (job.status !== 'succeeded') throw new Error('TRAFFIC_EXPORT_NOT_READY')
+                if (job.kind !== OPERATION_JOB_KIND.TRAFFIC_EXPORT) throw createAppError('TRAFFIC_EXPORT_NOT_FOUND')
+                if (job.status !== 'succeeded') throw createAppError('TRAFFIC_EXPORT_NOT_READY')
                 const result = trafficExportResultSchema.parse(job.result)
                 const expectedFileName = `traffic-${job.id}.${result.format}`
-                if (result.fileName !== expectedFileName) throw new Error('TRAFFIC_EXPORT_INVALID')
+                if (result.fileName !== expectedFileName) throw createAppError('TRAFFIC_EXPORT_INVALID')
                 const file = Bun.file(join(trafficExportRoot, result.fileName))
-                if (!(await file.exists())) throw new Error('TRAFFIC_EXPORT_EXPIRED')
+                if (!(await file.exists())) throw createAppError('TRAFFIC_EXPORT_EXPIRED')
                 await auditService.record({
                     actorId: session.user.id,
                     authMethod: 'session',

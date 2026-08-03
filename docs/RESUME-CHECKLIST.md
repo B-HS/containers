@@ -7,7 +7,7 @@
 확인 시각: **2026-08-01 16:00 KST**
 
 - 작업 경로: `/Users/hyunseokbyun/development/containers`
-- 이 디렉터리는 Git 저장소가 아니다. `git status`나 diff를 변경 범위의 근거로 사용하지 않는다.
+- 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `rest-work/deepseekv4`). 변경 범위는 `git status`·diff 로 판단한다.
 - Compose 5개 서비스 `nginx`, `web`, `api`, `engine-agent`, `traffic-worker`가 모두 healthy다.
 - `control.sqlite`, `traffic.sqlite`의 `PRAGMA integrity_check` 결과가 모두 `ok`다.
 - `queued`, `running`, `cancelling` durable job은 0개다.
@@ -29,7 +29,7 @@
 - [ ] [HANDOFF-STATUS.md](./HANDOFF-STATUS.md)의 구현 범위·한계·검증 증거를 읽는다.
 - [ ] [PROCESS.md](./PROCESS.md)의 마지막 활성 Phase를 읽는다.
 - [ ] [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md)과 [quality-assurance/ACCEPTANCE.md](./quality-assurance/ACCEPTANCE.md)에서 선택한 작업의 완료 조건을 확인한다.
-- [ ] 관련 최신 `acknowledge/` 문서를 읽는다. 현재 최신은 [0021](./acknowledge/0021-traffic-checkpoint-live-export.md)이다.
+- [ ] 관련 최신 `acknowledge/` 문서를 읽는다. 현재 최신은 [0025](./acknowledge/0025-web-panel-sidebar-navigation.md)이다.
 - [ ] UI 변경이면 [SHADCN-COMPONENTS.md](./SHADCN-COMPONENTS.md)와 `/Users/hyunseokbyun/development/flunti-otel` 패턴을 먼저 확인한다.
 
 ## 3. 재개 직후 읽기 전용 점검
@@ -89,20 +89,17 @@ docker compose ps
 
 ## 5. 완료된 마지막 Phase
 
-Phase 16은 구현·테스트·재배포·owner browser E2E까지 완료됐다.
+Phase 18(control plane upgrade 준비 상태 검증)은 구현·테스트·재배포·runtime 검증까지 완료됐다. Phase 17(durable notification/Discord)의 항목은 아래 §6의 Phase 17 블록에 [x]로 남아 있다.
 
-- [x] inode/device/offset/partial-line checkpoint와 원자 저장
-- [x] rename rotation old inode drain 후 active inode 전환
-- [x] DB 실패 시 offset 미진행·replay·중복 제거
-- [x] bounded masked Traffic Worker SSE와 API session 재검사 proxy
-- [x] Web 25행 live tail과 pause/resume, ko/en/ja
-- [x] 최대 24시간 CSV/NDJSON durable export
-- [x] owner/admin 생성·download, audit, cancel, 14일 retention
-- [x] 원본 client IP·user agent 비노출, CSV injection 방어
-- [x] 전체 gate, Compose 재배포, 5개 healthy
-- [x] owner live tail 실수신·pause/resume, CSV·NDJSON 생성→완료→download, console error 0
+- [x] `packages/contracts/src/control-plane.ts` — `CONTROL_PLANE_VERSION = '0.1.0'` 단일 원천, migration·status 스키마, export/build 등록
+- [x] `GET /api/control-plane/status`(owner·admin) — migration sha256 dry-run, DB integrity, active job, 최신 backup, maintenance 종합 보고
+- [x] health service version 을 `CONTROL_PLANE_VERSION` import 로 통일(이중 원천 제거)
+- [x] Web owner·admin 위젯 — version, applied/pending, maintenance, active job, 최신 backup, DB integrity, ko/en/ja
+- [x] 단위·통합 테스트 — service 3건, route(owner·admin 200 + 역할 인자, FORBIDDEN 403)
+- [x] `docs/CONTROL-PLANE-UPGRADE.md` runbook — upgrade/rollback 절차, migration downgrade 미지원·backup 복원
+- [x] 전체 gate(143 pass)와 api·web Compose 재배포, 미인증 401·health version 실측
 
-증거: [0021](./acknowledge/0021-traffic-checkpoint-live-export.md), [PROCESS.md](./PROCESS.md), [ACCEPTANCE.md](./quality-assurance/ACCEPTANCE.md).
+증거: [0023](./acknowledge/0023-control-plane-upgrade-readiness.md), [CONTROL-PLANE-UPGRADE.md](./CONTROL-PLANE-UPGRADE.md), [PROCESS.md](./PROCESS.md), [ACCEPTANCE.md](./quality-assurance/ACCEPTANCE.md).
 
 ## 6. 다음에 해야 할 일 — 우선순위와 완료 증거
 
@@ -120,21 +117,23 @@ Phase 16은 구현·테스트·재배포·owner browser E2E까지 완료됐다.
 
 - [ ] Cloudflare Tunnel·Access 설치, domain mapping, token rotation runbook을 작성하고 실제 환경에서 검증한다.
 - [ ] fresh M1 Max Docker Desktop에서 install→owner bootstrap→restore E2E를 수행한다.
-- [ ] control plane upgrade/migration dry-run/rollback matrix와 owner UI·runbook을 구현한다.
-- [ ] deploy·upload를 durable job으로 전환하고 resource lock·idempotency key를 적용한다.
+- [x] control plane upgrade/migration dry-run/rollback matrix와 owner UI·runbook을 구현한다.
+    - 증거: [0023](./acknowledge/0023-control-plane-upgrade-readiness.md), `docs/CONTROL-PLANE-UPGRADE.md`, `GET /api/control-plane/status`(owner·admin), migration sha256 dry-run, DB integrity, active job·최신 backup·maintenance 종합 보고.
+- [x] deploy·upload를 durable job으로 전환하고 resource lock·idempotency key를 적용한다.
+    - 증거: [0024](./acknowledge/0024-deploy-upload-durable-job.md), 신규 kind `deploy.load`·`deploy.release`·`deploy.rollback`·`upload.finalize`, `operation_job.resource_key`와 `(kind, resource_key)` index(migration 0010), `enqueue({ uniqueResourceKey })` 리소스 잠금, upload finalize sha256 내용 멱등, 4개 route의 `202 { job }`·`202 { release, job }`·load 완료 시 `200 { deployment }`.
 
 ### 다음 기본 구현 Phase — Phase 17 durable notification/Discord
 
 외부 credential 없이도 코드·단위 검증까지 진행할 수 있는 다음 기본 작업이다.
 
-- [ ] 먼저 `acknowledge/0022`에 destination metadata, secret reference, retry/backoff, dedupe, redaction 결정을 기록한다.
-- [ ] `notification.deliver` contract와 durable job handler를 추가한다.
-- [ ] webhook URL은 암호화 secret reference로만 저장하고 API·audit·job payload에는 원문을 넣지 않는다.
-- [ ] backup 실패를 첫 producer로 연결하고 같은 실패의 중복 delivery를 억제한다.
-- [ ] owner/admin destination 관리·test delivery UI와 ko/en/ja catalog를 추가한다.
-- [ ] timeout, 429 `Retry-After`, 5xx retry, 4xx terminal failure, cancellation, restart reconciliation을 테스트한다.
+- [x] 먼저 `acknowledge/0022`에 destination metadata, secret reference, retry/backoff, dedupe, redaction 결정을 기록한다.
+- [x] `notification.deliver` contract와 durable job handler를 추가한다.
+- [x] webhook URL은 암호화 secret reference로만 저장하고 API·audit·job payload에는 원문을 넣지 않는다.
+- [x] backup 실패를 첫 producer로 연결하고 같은 실패의 중복 delivery를 억제한다.
+- [x] owner/admin destination 관리·test delivery UI와 ko/en/ja catalog를 추가한다.
+- [x] timeout, 429 `Retry-After`, 5xx retry, 4xx terminal failure, cancellation, restart reconciliation을 테스트한다.
 - [ ] 외부 Discord 실전송은 사용자가 승인된 webhook을 제공했을 때만 수행한다.
-- [ ] 전체 gate와 변경 서비스 Compose 재배포 후 새 acknowledge·handoff·acceptance를 갱신한다.
+- [x] 전체 gate와 변경 서비스 Compose 재배포 후 새 acknowledge·handoff·acceptance를 갱신한다.
 
 ### P1/P2 backlog
 

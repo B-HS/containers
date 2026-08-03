@@ -3,6 +3,7 @@ import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import { apiKeyCreateResultSchema, apiKeyCreateSchema, apiKeyListSchema, type ApiKeyScope } from '@containers/contracts/api-key'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { apiKey } from '@containers/db-schema/schema'
+import { createAppError } from '../../../lib/app-error'
 
 type ApiKeyServiceDependencies = {
     db: ControlDatabase
@@ -33,7 +34,7 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
             const authorization = headers.get('authorization')
             const token = authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : undefined
             if (!token?.startsWith('ctk_')) {
-                throw new Error('AUTH_REQUIRED')
+                throw createAppError('AUTH_REQUIRED')
             }
 
             const currentTime = now()
@@ -49,19 +50,19 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
                 )
                 .limit(1)
             if (!record) {
-                throw new Error('AUTH_REQUIRED')
+                throw createAppError('AUTH_REQUIRED')
             }
 
             const scopes = apiKeyListSchema.element.shape.scopes.parse(parseScopes(record.scopes))
             if (!scopes.includes(requiredScope)) {
-                throw new Error('FORBIDDEN')
+                throw createAppError('FORBIDDEN')
             }
 
             const nowMilliseconds = currentTime.getTime()
             const rateWindow = rateWindows.get(record.id)
             if (rateWindow && nowMilliseconds - rateWindow.startedAt < 60_000) {
                 if (rateWindow.count >= rateLimitPerMinute) {
-                    throw new Error('API_KEY_RATE_LIMITED')
+                    throw createAppError('API_KEY_RATE_LIMITED')
                 }
                 rateWindow.count += 1
             } else {
@@ -105,7 +106,7 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
                 .where(and(eq(apiKey.id, id), isNull(apiKey.revokedAt)))
                 .returning({ id: apiKey.id })
             if (result.length === 0) {
-                throw new Error('API_KEY_NOT_FOUND')
+                throw createAppError('API_KEY_NOT_FOUND')
             }
             rateWindows.delete(id)
             return { id, revoked: true as const }

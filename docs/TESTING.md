@@ -231,7 +231,7 @@ Phase 0 baseline에서 M1 Max의 CPU·memory와 랜 회선 조건을 함께 기�
 
 ## 14. 2026-08-01 현재 검증 checkpoint
 
-- 전체 23 test files, 76 pass, 229 assertions
+- 전체 34 test files, 158 pass, 530 assertions (2026-08-02 기준)
 - workspace typecheck·ESLint·Prettier 통과
 - Next.js production SSR build와 Bun API·Agent·Worker bundle 통과
 - Docker Compose 5개 서비스 health 통과

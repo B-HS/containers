@@ -7,6 +7,7 @@ import { createEngineAgentClient } from './agent/create-engine-agent-client'
 import { createAuth } from './auth/create-auth'
 import { loadAuthSecret } from './auth/load-auth-secret'
 import { createApp } from './compose/create-app'
+import { createAppError } from './lib/app-error'
 import { createNginxStatusClient } from './nginx/create-nginx-status-client'
 import { createNginxRouteProbeClient } from './nginx/create-nginx-route-probe-client'
 import { createAuditService } from './service/domain/audit/create-audit-service'
@@ -20,7 +21,10 @@ import { createDeploymentSecretService } from './service/domain/deployment/creat
 import { createBackupScheduleService } from './service/domain/job/create-backup-schedule-service'
 import { createJobHandlers } from './service/domain/job/create-job-handlers'
 import { createOperationJobService } from './service/domain/job/create-operation-job-service'
+import { createControlPlaneStatusService } from './service/domain/control-plane/create-control-plane-status-service'
 import { createMaintenanceService } from './service/domain/maintenance/create-maintenance-service'
+import { createNotificationDeliveryService } from './service/domain/notification/create-notification-delivery-service'
+import { createNotificationDestinationService } from './service/domain/notification/create-notification-destination-service'
 import { createTrafficWorkerClient } from './traffic/create-traffic-worker-client'
 import { createNginxProxyRouteService } from './service/domain/nginx/create-nginx-proxy-route-service'
 import { createArtifactInspectionService } from './service/domain/upload/create-artifact-inspection-service'
@@ -46,6 +50,7 @@ const envSchema = z
         CONTROL_NETWORK_NAME: z.string().min(1).default('containers_control'),
         DEPLOYMENT_SECRET_KEY_FILE: z.string().min(1).default('/data/deployment-secret-key'),
         NGINX_STATUS_URL: z.url(),
+        NOTIFICATION_SECRET_KEY_FILE: z.string().min(1).default('/data/notification-secret-key'),
         PANEL_PUBLIC_URL: z.url(),
         API_KEY_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(10).max(10_000).default(120),
         TRAFFIC_WORKER_INTERNAL_URL: z.url(),
@@ -111,22 +116,30 @@ const backupService = createBackupService({
     trafficWorkerClient,
 })
 const maintenanceService = createMaintenanceService({ now: () => new Date(), sleep: Bun.sleep })
-const operationJobService = createOperationJobService({
-    db,
-    handlers: createJobHandlers({ backupService, engineAgentClient, maintenanceService, trafficWorkerClient }),
-    now: () => new Date(),
-})
-await operationJobService.reconcileInterrupted()
-operationJobService.start()
-const backupScheduleService = createBackupScheduleService({
+const controlPlaneStatusService = createControlPlaneStatusService({
     backupService,
-    intervalHours: env.BACKUP_INTERVAL_HOURS,
-    now: () => new Date(),
-    operationJobService,
+    db,
+    maintenanceService,
+    migrationsFolder: env.CONTROL_MIGRATIONS_PATH,
+    sqlite,
 })
-await backupScheduleService.enqueueIfDue()
-setInterval(() => void backupScheduleService.enqueueIfDue().catch(() => undefined), 60 * 1_000)
-setInterval(() => void operationJobService.cleanupFinished().catch(() => undefined), 60 * 60 * 1_000)
+const notificationDestinationService = createNotificationDestinationService({
+    db,
+    masterSecret: await loadOrCreateSecret(env.NOTIFICATION_SECRET_KEY_FILE),
+    now: () => new Date(),
+})
+let operationJobService: ReturnType<typeof createOperationJobService> | null = null
+const notificationDeliveryService = createNotificationDeliveryService({
+    db,
+    destinationService: notificationDestinationService,
+    enqueue: (input) => {
+        if (operationJobService === null) {
+            throw createAppError('JOB_ENQUEUE_UNAVAILABLE')
+        }
+        return operationJobService.enqueue(input)
+    },
+    now: () => new Date(),
+})
 const deploymentReleaseService = createDeploymentReleaseService({
     controlNetwork: env.CONTROL_NETWORK_NAME,
     db,
@@ -151,6 +164,33 @@ const uploadService = createUploadService({
     now: () => new Date(),
     totalQuotaBytes: env.UPLOAD_TOTAL_QUOTA_BYTES,
 })
+operationJobService = createOperationJobService({
+    db,
+    handlers: createJobHandlers({
+        backupService,
+        deploymentReleaseService,
+        deploymentService,
+        engineAgentClient,
+        maintenanceService,
+        notificationDeliveryService,
+        trafficWorkerClient,
+        uploadService,
+    }),
+    now: () => new Date(),
+    onFinished: (job) => notificationDeliveryService.onFinished(job),
+})
+await operationJobService.reconcileInterrupted()
+operationJobService.start()
+await notificationDeliveryService.reconcileQueued()
+const backupScheduleService = createBackupScheduleService({
+    backupService,
+    intervalHours: env.BACKUP_INTERVAL_HOURS,
+    now: () => new Date(),
+    operationJobService,
+})
+await backupScheduleService.enqueueIfDue()
+setInterval(() => void backupScheduleService.enqueueIfDue().catch(() => undefined), 60 * 1_000)
+setInterval(() => void operationJobService.cleanupFinished().catch(() => undefined), 60 * 60 * 1_000)
 const app = createApp({
     apiKeyService,
     backupScheduleService,
@@ -166,6 +206,9 @@ const app = createApp({
     maintenanceService,
     nginxStatusClient: createNginxStatusClient({ statusUrl: env.NGINX_STATUS_URL }),
     nginxProxyRouteService,
+    controlPlaneStatusService,
+    notificationDeliveryService,
+    notificationDestinationService,
     operationJobService,
     trafficExportRoot: env.TRAFFIC_EXPORT_ROOT,
     trafficWorkerClient,

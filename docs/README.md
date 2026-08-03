@@ -26,8 +26,10 @@
 20. [quality-assurance/DOCUMENT-AUDIT.md](./quality-assurance/DOCUMENT-AUDIT.md) — 문서 단계 자체 검증
 21. [references/OFFICIAL-SOURCES.md](./references/OFFICIAL-SOURCES.md) — 공식 문서 근거
 22. [quality-assurance/2026-08-01-DOCUMENT-CONSISTENCY-AUDIT.md](./quality-assurance/2026-08-01-DOCUMENT-CONSISTENCY-AUDIT.md) — 현재 구현과 문서 정합성 감사
-23. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0021 traffic checkpoint·live·export)
+23. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0025 웹 패널 사이드바 내비게이션)
 24. `history/` — 세션별 작업 이력 (시간순, 현재 상태가 아님)
+
+macOS 에서 처음 설치·기동할 때는 저장소 루트의 `scripts/setup-macos.sh` 를 실행한다(환경 확인 → compose 검증·override 생성 → 기동 → 스모크 테스트).
 
 ## 적용 우선순위
 

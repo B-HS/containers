@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { interactiveExecTicketRequestSchema, interactiveExecTicketSchema } from '@containers/contracts/engine-control'
 import type { DockerEngineClient } from '../docker/create-docker-engine-client'
+import { createAppError } from '../lib/app-error'
 
 type InteractiveExecServiceDependencies = {
     dockerEngineClient: Pick<DockerEngineClient, 'createInteractiveExec' | 'inspectInteractiveExec' | 'resizeInteractiveExec'>
@@ -46,10 +47,10 @@ export const createInteractiveExecService = ({ dockerEngineClient, now }: Intera
             const record = tickets.get(ticket)
             tickets.delete(ticket)
             if (!record || record.expiresAt <= now()) {
-                throw new Error('EXEC_TICKET_INVALID')
+                throw createAppError('EXEC_TICKET_INVALID')
             }
             if (activeSessions.size >= MAX_ACTIVE_INTERACTIVE_EXEC_SESSIONS) {
-                throw new Error('EXEC_SESSION_LIMIT_REACHED')
+                throw createAppError('EXEC_SESSION_LIMIT_REACHED')
             }
             const sessionId = randomBytes(16).toString('base64url')
             activeSessions.add(sessionId)

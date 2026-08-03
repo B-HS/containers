@@ -3,9 +3,14 @@ import { z } from 'zod'
 export const OPERATION_JOB_KIND = {
     BACKUP_CREATE: 'backup.create',
     BACKUP_RESTORE: 'backup.restore',
+    DEPLOY_LOAD: 'deploy.load',
+    DEPLOY_RELEASE: 'deploy.release',
+    DEPLOY_ROLLBACK: 'deploy.rollback',
     IMAGE_PULL: 'image.pull',
+    NOTIFICATION_DELIVER: 'notification.deliver',
     SYSTEM_PRUNE: 'system.prune',
     TRAFFIC_EXPORT: 'traffic.export',
+    UPLOAD_FINALIZE: 'upload.finalize',
 } as const
 
 export const OPERATION_JOB_STATUS = {
@@ -20,10 +25,31 @@ export const OPERATION_JOB_STATUS = {
 export const operationJobKindSchema = z.enum([
     OPERATION_JOB_KIND.BACKUP_CREATE,
     OPERATION_JOB_KIND.BACKUP_RESTORE,
+    OPERATION_JOB_KIND.DEPLOY_LOAD,
+    OPERATION_JOB_KIND.DEPLOY_RELEASE,
+    OPERATION_JOB_KIND.DEPLOY_ROLLBACK,
     OPERATION_JOB_KIND.IMAGE_PULL,
+    OPERATION_JOB_KIND.NOTIFICATION_DELIVER,
     OPERATION_JOB_KIND.SYSTEM_PRUNE,
     OPERATION_JOB_KIND.TRAFFIC_EXPORT,
+    OPERATION_JOB_KIND.UPLOAD_FINALIZE,
 ])
+
+export const deployLoadJobPayloadSchema = z.object({
+    artifactId: z.uuid(),
+})
+
+export const deployReleaseJobPayloadSchema = z.object({
+    releaseId: z.uuid(),
+})
+
+export const deployRollbackJobPayloadSchema = z.object({
+    releaseId: z.uuid(),
+})
+
+export const uploadFinalizeJobPayloadSchema = z.object({
+    sessionId: z.uuid(),
+})
 
 export const trafficExportFormatSchema = z.enum(['csv', 'ndjson'])
 export const trafficExportJobPayloadSchema = z
@@ -72,6 +98,7 @@ export const operationJobSchema = z.object({
     payload: z.record(z.string(), z.unknown()),
     progressStep: z.string().nullable(),
     result: z.record(z.string(), z.unknown()).nullable(),
+    resourceKey: z.string().nullable(),
     scheduledAt: z.iso.datetime(),
     startedAt: z.iso.datetime().nullable(),
     status: operationJobStatusSchema,

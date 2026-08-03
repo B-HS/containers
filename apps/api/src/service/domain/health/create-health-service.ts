@@ -1,3 +1,4 @@
+import { CONTROL_PLANE_VERSION } from '@containers/contracts/control-plane'
 import { SERVICE_STATUS, healthSchema } from '@containers/contracts/health'
 
 type HealthServiceDependencies = {
@@ -10,7 +11,7 @@ export const createHealthService = ({ now }: HealthServiceDependencies) => ({
             service: 'api',
             status: SERVICE_STATUS.OK,
             timestamp: now().toISOString(),
-            version: '0.1.0',
+            version: CONTROL_PLANE_VERSION,
         }),
 })
 
