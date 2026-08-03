@@ -2,9 +2,7 @@
 
 A self-hosted Docker management panel that runs entirely on your own machine — a modern alternative to Portainer / Yacht for a single Docker host, hardened as if it were a production control plane.
 
-![Dashboard](screenshots/dashboard.png)
-
-![Nginx config GUI](screenshots/nginx-gui.png)
+![Dashboard](screenshots/hero.png)
 
 ## What it does
 
