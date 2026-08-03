@@ -107,7 +107,12 @@ export const containerCreateRequestSchema = z.object({
         .max(128)
         .default([]),
     image: z.string().min(1).max(512),
-    labels: z.record(z.string().min(1).max(128), z.string().max(1_024)).default({}),
+    labels: z
+        .record(z.string().min(1).max(128), z.string().max(1_024))
+        .default({})
+        .refine((labels) => !('managed-by' in labels) && !('com.docker.compose.project' in labels), {
+            message: '관리 plane 라벨은 허용되지 않습니다.',
+        }),
     memoryBytes: z.number().int().min(16_777_216).max(68_719_476_736).default(536_870_912),
     name: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/),
     nanoCpus: z.number().int().min(100_000_000).max(10_000_000_000).default(1_000_000_000),
@@ -212,11 +217,87 @@ export const volumeCreateRequestSchema = z.object({
     name: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/),
 })
 
+const expandIpv4Shorthand = (value: string): string[] | null => {
+    const match = value.match(/^(\d{1,3})(?:\.(\d{1,3}))?(?:\.(\d{1,3}))?(?:\.(\d{1,3}))?$/)
+    if (!match) {
+        return null
+    }
+    const octets = match.slice(1).map((part) => (part === undefined ? 0 : Number(part)))
+    if (octets.length < 2 || octets.some((octet) => octet > 255)) {
+        return null
+    }
+    while (octets.length < 4) {
+        octets.push(0)
+    }
+    return octets.map(String)
+}
+
+const isBlockedRegistryHost = (hostname: string) => {
+    const normalized = hostname.toLowerCase()
+    if (normalized === 'localhost' || normalized === 'host.docker.internal' || normalized === 'registry-1.docker.io') {
+        return true
+    }
+    if (normalized.includes('containers_control') || normalized.includes('containers_ingress') || normalized.includes('.internal')) {
+        return true
+    }
+    const bracketedIpv6 = normalized.match(/^\[([0-9a-f:]+)\]$/)
+    if (bracketedIpv6) {
+        const address = bracketedIpv6[1] ?? ''
+        if (
+            address === '::1' ||
+            address.startsWith('fe80') ||
+            address.startsWith('fc') ||
+            address.startsWith('fd') ||
+            address.startsWith('::ffff:')
+        ) {
+            return true
+        }
+        if (address.startsWith('2002:') || address.startsWith('2001:0:')) {
+            return true
+        }
+        return true
+    }
+    if (!normalized.includes('.')) {
+        return true
+    }
+    const expanded = expandIpv4Shorthand(normalized)
+    if (expanded) {
+        const octets = expanded.map(Number)
+        const first = octets[0]
+        const second = octets[1]
+        if (first === undefined || second === undefined) return true
+        if (first === 10 || first === 127 || first === 0) return true
+        if (first === 169 && second === 254) return true
+        if (first === 172 && second >= 16 && second <= 31) return true
+        if (first === 192 && second === 168) return true
+        if (first === 100 && second >= 64 && second <= 127) return true
+        if (first === 198 && second >= 18 && second <= 19) return true
+        if (first >= 224) return true
+        return false
+    }
+    return false
+}
+
 export const imageReferenceSchema = z
     .string()
     .min(1)
     .max(512)
     .regex(/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/)
+    .refine(
+        (reference) => {
+            const components = reference.split('/')
+            if (components.length === 1) {
+                return true
+            }
+            const firstComponent = components[0] ?? ''
+            const hasRegistryHost = firstComponent.includes('.') || firstComponent === 'localhost' || firstComponent.includes(':')
+            if (!hasRegistryHost) {
+                return true
+            }
+            return !isBlockedRegistryHost(firstComponent.replace(/:\d+$/, ''))
+        },
+        { message: '내부 레지스트리 주소는 허용되지 않습니다.' },
+    )
 
 export const imagePullRequestSchema = z.object({
     credentialId: z.uuid().optional(),

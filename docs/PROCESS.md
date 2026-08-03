@@ -379,3 +379,44 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] a. 원인 — EngineInfo 가 데이터 로드 전/연결 불가 시 `unavailable` 텍스트 1줄을 렌더해 데이터 3줄(dl) 과 높이 차이 발생, 페이지 전환마다 사이드바 레이아웃 시프트
 - [x] b. 수정 — `entities/engine/engine-info.tsx` 의 `unavailable` state·라벨 제거, 데이터 부재 시 dl 과 동일한 구조(`grid gap-1` + `h-4 animate-pulse rounded-sm bg-muted` 3줄)의 skeleton 렌더, fetch 실패 시 마지막 데이터 유지. panel-shell `engineInfoLabels`·layout.tsx 전달부·ko/en/ja `engineUnavailable` 키 제거
 - [x] c. 검증 — typecheck·lint·format:check·test 159 pass, web 재빌드 healthy. 브라우저 실측: Engine API 차단 시 skeleton 3줄·높이 56px, 데이터 로드 dl 도 56px (줄 16px×3 + gap 4px×2) 로 일치, 차단/로드/페이지 전환(containers·traffic) 3개 상태 모두 EngineInfo 컨테이너 높이 76px 동일 — layout shifting 0
+
+## 작업: Nginx 설정 GUI 고도화 (2026-08-03)
+
+기준: 사용자 지시 — "nginx 설정도 구문분석해서 1. upstream 2. server block 3. 기타 nginx 설정 / 또한 server block에서는 사용할수있는 옵션등을 뺴먹지말고 넣고 / 또한 지금처럼 raw로 편집할수도있고아니면 gui로 체크 및 input으로 설정값 넣게 해서 더 빠르고 간편하게 할수있는등 이런식으로 더 고도화해봐"
+
+- [x] a. 파서 — `shared/lib/nginx-config/parse-nginx-config.ts` 문(statement) 단위 스캔 + raw 보존 AST. 주석·빈 줄·멀티라인·따옴표 문자열 처리, 알 수 없는 구조는 text 노드로 보존해 편집 시 데이터 손실 없음
+- [x] b. 직렬화 — `serialize-nginx-config.ts` 원본과 바이트 단위 왕복 동일 + 노드 생성 헬퍼(renderDirectiveRaw/createDirectiveNode/createBlockNode)
+- [x] c. 카탈로그 — `nginx-directives.ts` 공식 문서 기준 server 컨텍스트 지시어 전수 정의(12개 그룹: 기본/경로/제한/응답 헤더/로깅/리라이트/프록시/SSL/접근 제어/압축/기타/HTTP2), valueType(boolean/text/number/size/duration/options/code)·multiple·placeholder
+- [x] d. 편집 모델 — `nginx-editor-model.ts` 블록 children 조작(getChildIndent/upsertDirectiveNode/removeDirectiveNodes/replaceBlockChildrenInOrder/collectBlocks)
+- [x] e. GUI 컴포넌트 4종 — nginx-directive-editor(체크/input/select + multiple 리스트), nginx-block-editor(server/location 공용 — 그룹 Accordion + 기타 지시어 raw + location 재귀), nginx-upstream-editor(주소 + weight/max_conns/max_fails/fail_timeout/backup/down/resolve), nginx-global-editor(main/http 직속 raw 편집)
+- [x] f. 위젯 고도화 — raw/GUI Tabs 토글, GUI 내부 upstream/server block/기타 3섹션, server·upstream 추가/삭제, GUI 편집 결과를 rawConfig에 즉시 미러링해 GUI↔raw 전환 자유, 적용은 기존 `POST /api/nginx/config/apply`(SHA-256 충돌 + nginx -t) 파이프라인 재사용. 보호 계약(REQUIRED_CONFIG_TOKENS)은 서버 검증으로 그대로 방어
+- [x] g. i18n — `nginxGui` 네임스페이스 ko/en/ja 전부 추가(모드 토글·섹션·그룹 12개·지시어 폼·placeholder)
+- [x] h. 기계 검증 — typecheck·lint·format:check·next build·test 159 pass (noUncheckedIndexedAccess 에러 2건 수정, 미사용 indent prop 제거)
+- [x] i. 왕복 정합성 — 실제 `infra/nginx/nginx.conf`(server 3·upstream 2) 파싱→직렬화 원본과 바이트 동일, server_name 변경/gzip·proxy_read_timeout 추가/add_header 삭제/location 추가/따옴표 문자열 토큰/주석·빈 줄 보존 시나리오 전부 확인 (임시 검증 스크립트 실행 후 삭제)
+- [x] j. 합의 기록 — `docs/acknowledge/0026-nginx-gui-editor.md` 작성 (설계 결정·제약·파일 목록·검증)
+- [x] k. E2E (compose 재빌드 후 owner 브라우저) — GUI 편집 탭 upstream 2개(containers_web/api) 구조화 폼·server block 12개 그룹 카탈로그(checkbox 190·input 110)·기타 설정(main/http) 렌더 확인, GUI keepalive_timeout 65→66 변경→raw 미러링 즉시 반영, GUI 변경 적용으로 실제 current.conf 반영(nginx -t 통과·revision 0→1·SHA 변경)·healthy 유지 후 65 원복(revision 2)
+- [x] l. E2E 발견·수정 — i18n 키 불일치(카탈로그 labelKey `nginxGui.group.*` dot 경로 vs 메시지 `groupBasic` camelCase, placeholderKey 이중 접두사)로 GUI 탭에서 MISSING_MESSAGE 콘솔 에러 130건 → 카탈로그 키를 메시지 형식에 맞춰 수정(typecheck·lint·format·test 159 pass, web 재빌드) 후 에러 0건 재확인. 적용 시 오래된 세션은 `RECENT_AUTH_REQUIRED` 401 — 재로그인으로 해소(owner 비밀번호는 E2E용으로 재설정 후 사용자 전달)
+
+## 작업: Nginx GUI 지시어 툴팁·server 탭 MasterDetail (2026-08-03)
+
+기준: 사용자 지시 — "nginx 지시어 각 항목에 설명 툴팁 추가" + "server 탭의 location을 sidebar로 둬야 편집이 편하지않을까?"
+
+- [x] a. 툴팁 기반 — `shared/ui/tooltip.tsx` 신규(radix-ui 통합 패키지 Tooltip 래퍼, named export 4종: TooltipProvider/Tooltip/TooltipTrigger/TooltipContent)
+- [x] b. 지시어 설명 프래그먼트 — ko 156 directive + 8 upstreamOption 작성, en/ja는 백그라운드 에이전트 2개로 병렬 번역, 키 집합·순서 3개 언어 일치 검증
+- [x] c. 메시지 병합 — ko/en/ja.json `nginxGui` 키 48개(기존 46 + directive + upstreamOption), JSON.parse 검증
+- [x] d. 배선 — `nginx-directive-editor.tsx` 지시어 라벨 4브랜치(① multiple+추가 ② boolean ③ options ④ 기본 텍스트) 전부 DirectiveTooltip, `nginx-upstream-editor.tsx` 옵션 라벨 8개(serverAddress/weight/maxConns/maxFails/failTimeout/backup/down/resolve) UpstreamOptionTooltip. `t.has()` 가드로 누락 키는 툴팁만 미표시
+- [x] e. server 탭 MasterDetail — `nginx-config-widget.tsx` server+location 계층 사이드바(serverTitle 요약 + flatMap 순서 유지) + useMasterDetailSelection(serverIndex/locationIndex), location 선택 시 헤더에 경로 Input(수정 즉시 head 재생성·사이드바 반영) + 삭제, server 헤더에 location 추가/삭제. `MasterDetailItem.indent?: boolean`(들여쓰기 pl-8)·`NginxBlockEditor.hideLocations?: boolean`(server 편집기에서 location 섹션 숨김) 추가 — 선택 필드라 기존 호출부 영향 없음
+- [x] f. 기계 검증 — typecheck(noUncheckedIndexedAccess·exactOptionalPropertyTypes 대응: 선택 항목 const 로컬 내로잉, badge 조건부 스프레드)·lint·format:check·test 159 pass
+- [x] g. 재빌드·E2E 실측 — compose web 재빌드 healthy, owner 브라우저: upstream `weight` hover 툴팁 "로드 밸런싱 가중치를 지정합니다...", server block 사이드바 server 3개+들여쓰기 location, location `/api/` 선택 시 편집기 전환·경로 Input·삭제 버튼, 경로 수정(`/api/v2/`) 사이드바 즉시 반영·새로고침 원복, `server_name` hover 툴팁 "이 server 블록이 응답할 도메인 이름을 지정합니다...", console error 0건. 기록: [acknowledge/0027](./acknowledge/0027-nginx-gui-tooltip-master-detail.md)
+
+## 작업: 보안 감사 반복 하드닝 (2026-08-03, 12라운드)
+
+기준: 사용자 지시 — "싹 다 수정해 개인 컴퓨터에서 돌아가는만큼 빈틈 없이 완벽한 보안을 가져야하거든" → 3헌터(표면/인증·데이터/런타임·공급망) 팀 12라운드 반복 감사, 발견 즉시 수정. 이후 사용자 `/goal clear`로 목표 해제, 최근 변경분 집중 검증 후 마무리.
+
+- [x] a. 1차 대규모 하드닝 — createContainer 볼륨 whitelist(관리 볼륨 9종 차단), rate-limit 바이패스 차단(x-real-ip 신뢰·nginx X-Real-IP), exec/interactive-exec 관리-plane 라벨 가드(Id+Name), 비활성 사용자 API key 미폐기(innerJoin disabledAt + disable/role-change 시 revoke), nginx 보호계약 주석 제거, webhook SSRF private IP 차단, restore audit 보존, upload GC, HMAC secret 분리(traffic-credentials 볼륨), exec ticket path 방식, backup :id UUID
+- [x] b. 라운드2~4 — 비활성/역할 강등 API key 일괄 revoke, restore FK COMMIT 전 검증+비밀·라우트·업로드 테이블 보존, 이미지 pull private DNS 검증(resolveHost all), registry IPv4 shorthand·IPv6-mapped 차단, nginx protected-contract placement 검증, 배포 실패 컨테이너 control 네트워크 분리, connect/disconnect 가드, ready/quarantine orphan GC, webhook DNS-rebinding 전 주소 검증, probeContainer 관리-plane 가드, getNginxContainer 위장 차단
+- [x] c. 라운드5~8 — restore 인증·시크릿·라우트·업로드·작업 보존 균형, exec WS recent-auth 주기 재확인, READ 격리(query/stream/events 관리 컨테이너 차단), nginx contract api 블록+upstream+location 검증, 이미지 pull IPv6 hex-mapped, createNetwork/Volume protected, probe 네트워크 도입(배포 L2 격리), registry-credentials 볼륨 API 격리, 로그인 rate-limit 경로 정규화, nginx route protected target+suffix, traffic export filename regex
+- [x] d. 라운드9~12 — 로그인 rate-limit Map prune+disabled 401, nginx contract nested-location 우회 차단, webhook IPv6 과차단 수정(공개 통과·private/6to4/Teredo 차단), restore preserved 재조정(nginx_route/deployment 복원 가능+보안 불변식 유지), nginx auth-location regex(trailing-slash 우회 차단), route path `;`/`$` 주입 차단
+- [x] e. 검증 — 12라운드 누적 typecheck(7 workspace)·lint·format:check·test 160 pass, 모든 재빌드 healthy
+- [x] f. 최근 변경분 집중 검증 — webhook IPv6 파서(공개 통과·private 차단 ALL PASS), nginx auth-location regex(panel+api 적용·nginx -t 통과·trailing-slash 404로 우회 불가), restore preserved(nginx_route/deployment 복원 가능) 확인, 브라우저 실측(로그인 유지·nginx GUI 렌더·console error 0)
+- [x] g. 문서 정리 — PROCESS.md 체크 기록. (보안 감사 반복 루프는 사용자 `/goal clear`로 중단; 외부 무인증 공격자 기준 잔여 위험은 관리자 자격증명 탈취·DNS-rebinding TOCTOU(관리자 신뢰 경계 내)뿐)

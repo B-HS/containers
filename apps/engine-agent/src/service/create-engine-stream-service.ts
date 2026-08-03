@@ -11,13 +11,27 @@ import type { createDockerEngineClient } from '../docker/create-docker-engine-cl
 import { createAppError } from '../lib/app-error'
 import { createLineParser, createMultiplexFrameParser } from './create-stream-parsers'
 
+const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
+const MANAGEMENT_LABEL = 'managed-by'
+const MANAGEMENT_LABEL_VALUE = 'containers-control-plane'
+const MANAGEMENT_PROJECT = 'containers'
+
+const isManagementPlaneResource = (labels: Record<string, string>) =>
+    labels[COMPOSE_PROJECT_LABEL] === MANAGEMENT_PROJECT || labels[MANAGEMENT_LABEL] === MANAGEMENT_LABEL_VALUE
+
+const containerMatchesReference = (containerId: string, containerNames: string[], reference: string) =>
+    containerId === reference || containerId.startsWith(reference) || containerNames.includes(reference)
+
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000
 const STREAM_MAX_DURATION_MS = 30 * 60 * 1_000
 const MAX_CONCURRENT_STREAMS = 20
 const FULL_PERCENT = 100
 
 type EngineStreamServiceDependencies = {
-    dockerEngineClient: Pick<ReturnType<typeof createDockerEngineClient>, 'openContainerLogStream' | 'openContainerStatsStream' | 'openEventStream'>
+    dockerEngineClient: Pick<
+        ReturnType<typeof createDockerEngineClient>,
+        'getContainers' | 'openContainerLogStream' | 'openContainerStatsStream' | 'openEventStream'
+    >
     now: () => Date
 }
 
@@ -185,6 +199,20 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
         activeStreams += 1
     }
 
+    const assertNotManagementPlane = async (containerId: string) => {
+        const containers = await dockerEngineClient.getContainers()
+        const container = containers.find((candidate) =>
+            containerMatchesReference(
+                candidate.Id,
+                candidate.Names.map((name) => name.replace(/^\//, '')),
+                containerId,
+            ),
+        )
+        if (container && isManagementPlaneResource(container.Labels)) {
+            throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
+        }
+    }
+
     const openWithSource = async <TSource>(open: () => Promise<TSource>) => {
         acquire()
         try {
@@ -200,14 +228,20 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
         openEventStream: async () => {
             const source = await openWithSource(() => dockerEngineClient.openEventStream())
             const parser = createLineParser()
+            const managementIds = new Set(
+                (await dockerEngineClient.getContainers())
+                    .filter((container) => isManagementPlaneResource(container.Labels))
+                    .map((container) => container.Id),
+            )
             return toSseStream(source, (chunk) =>
                 parser
                     .push(chunk)
                     .map((line) => normalizeEngineEvent(line, now()))
-                    .filter((event) => event !== null),
+                    .filter((event) => event !== null && !managementIds.has(event.actorId)),
             )
         },
         openContainerLogStream: async (containerId: string, tail: number) => {
+            await assertNotManagementPlane(containerId)
             const { stream, tty } = await openWithSource(() => dockerEngineClient.openContainerLogStream(containerId, tail))
             if (tty) {
                 return toSseStream(stream, (chunk) => [
@@ -218,6 +252,7 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
             return toSseStream(stream, (chunk) => parser.push(chunk).map((frame) => containerLogStreamChunkSchema.parse({ kind: 'log', ...frame })))
         },
         openContainerStatsStream: async (containerId: string) => {
+            await assertNotManagementPlane(containerId)
             const source = await openWithSource(() => dockerEngineClient.openContainerStatsStream(containerId))
             const parser = createLineParser()
             return toSseStream(source, (chunk) =>

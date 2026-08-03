@@ -13,7 +13,7 @@ type AuthRouteDependencies = {
     >
 }
 
-const getSourceIp = (headers: Headers) => headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined
+const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 const getErrorCode = (error: unknown) => {
     if (error instanceof ZodError) {

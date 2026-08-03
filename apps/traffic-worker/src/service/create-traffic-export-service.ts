@@ -42,7 +42,8 @@ export const createTrafficExportService = ({ database, exportRoot, now }: Traffi
         const entries = await readdir(exportRoot, { withFileTypes: true })
         await Promise.all(
             entries.map(async (entry) => {
-                if (!entry.isFile() || !/^traffic-[0-9a-f-]{36}\.(csv|ndjson)$/.test(entry.name)) return
+                if (!entry.isFile()) return
+                if (!/^traffic-[0-9a-f-]{36}\.(csv|ndjson)(\.tmp)?$/.test(entry.name)) return
                 const filePath = join(exportRoot, entry.name)
                 if ((await stat(filePath)).mtimeMs < now() - EXPORT_RETENTION_MS) await unlink(filePath)
             }),

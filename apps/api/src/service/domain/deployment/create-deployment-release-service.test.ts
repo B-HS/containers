@@ -75,14 +75,14 @@ const createTestContext = async ({
     const createdEnvironments: string[][] = []
     let routeProbeIndex = 0
     const releaseService = createDeploymentReleaseService({
-        controlNetwork: 'containers_control',
+        probeNetwork: 'containers_probe',
         db: database.db,
         deploymentManifestService: manifestService,
         deploymentSecretService: { resolve: async () => resolvedEnvironment },
         engineAgentClient: {
             connectContainerNetwork: async (_containerId, input) => {
                 const attachment = containerNetworkAttachmentSchema.parse(input)
-                operations.push(attachment.network === 'containers_control' ? 'connect-control' : 'connect-edge')
+                operations.push(attachment.network === 'containers_probe' ? 'connect-probe' : 'connect-edge')
                 return { operation: 'connect-network', targetId: 'new-container-id' }
             },
             createContainer: async (input) => {
@@ -92,7 +92,7 @@ const createTestContext = async ({
             },
             disconnectContainerNetwork: async (_containerId, input) => {
                 const attachment = containerNetworkAttachmentSchema.parse(input)
-                operations.push(attachment.network === 'containers_control' ? 'disconnect-control' : 'disconnect-network')
+                operations.push(attachment.network === 'containers_probe' ? 'disconnect-probe' : 'disconnect-network')
                 return { operation: 'disconnect-network', targetId: 'new-container-id' }
             },
             performContainerAction: async (_containerId, action) => {
@@ -164,7 +164,7 @@ describe('blue-green deployment release', () => {
 
         expect(result.status).toBe('healthy')
         expect(result.containerId).toBe('new-container-id')
-        expect(operations).toEqual(['create', 'connect-edge', 'disconnect-control', 'switch-route'])
+        expect(operations).toEqual(['create', 'connect-edge', 'disconnect-probe', 'switch-route'])
         sqlite.close()
     })
 
@@ -175,7 +175,7 @@ describe('blue-green deployment release', () => {
 
         expect(result.status).toBe('rolled-back')
         expect(result.failureCode).toBe('DEPLOYMENT_OBSERVATION_FAILED')
-        expect(operations).toEqual(['create', 'connect-edge', 'disconnect-control', 'switch-route', 'remove-route', 'stop'])
+        expect(operations).toEqual(['create', 'connect-edge', 'disconnect-probe', 'switch-route', 'remove-route', 'stop', 'disconnect-probe'])
         sqlite.close()
     })
 
@@ -185,7 +185,7 @@ describe('blue-green deployment release', () => {
         const result = await releaseService.run(release.id)
 
         expect(result.status).toBe('healthy')
-        expect(operations).toEqual(['create', 'connect-edge', 'disconnect-control', 'switch-route'])
+        expect(operations).toEqual(['create', 'connect-edge', 'disconnect-probe', 'switch-route'])
         sqlite.close()
     })
 
@@ -196,7 +196,7 @@ describe('blue-green deployment release', () => {
 
         expect(result.status).toBe('failed')
         expect(result.failureCode).toBe('DEPLOYMENT_HEALTHCHECK_FAILED')
-        expect(operations).toEqual(['create', 'stop'])
+        expect(operations).toEqual(['create', 'stop', 'disconnect-probe'])
         sqlite.close()
     })
 
@@ -236,7 +236,7 @@ describe('blue-green deployment release', () => {
         expect(prepared.status).toBe('rolling-back')
         expect(result.status).toBe('rolled-back')
         expect(result.failureCode).toBe('MANUAL_ROLLBACK')
-        expect(operations.slice(-5)).toEqual(['connect-control', 'start', 'switch-route', 'disconnect-control', 'stop'])
+        expect(operations.slice(-5)).toEqual(['connect-probe', 'start', 'switch-route', 'disconnect-probe', 'stop'])
         sqlite.close()
     })
 

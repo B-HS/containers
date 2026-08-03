@@ -191,6 +191,7 @@ describe('Engine 제어 서비스', () => {
             registryCredentialService: {
                 getRegistryAuth: async (credentialId, reference) => `${credentialId}:${reference}`,
             },
+            resolveHost: async () => ({ addresses: ['93.184.216.34'] }),
         })
 
         await expect(

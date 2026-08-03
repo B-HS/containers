@@ -349,6 +349,7 @@ const createAppTestDependencies = () => ({
     },
     uploadService: {
         appendChunk: async () => ({ receivedBytes: 1, sessionId: '01958c26-65b5-7c22-9254-03b914e61cc5' }),
+        cleanupExpiredSessions: async () => 0,
         createSession: async () => ({
             expiresAt: '2026-01-02T00:00:00.000Z',
             id: '01958c26-65b5-7c22-9254-03b914e61cc5',

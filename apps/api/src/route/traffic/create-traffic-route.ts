@@ -24,7 +24,7 @@ type TrafficRouteDependencies = {
     trafficService: TrafficService
 }
 
-const sourceIp = (headers: Headers) => headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined
+const sourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 export const createTrafficRoute = ({
     auditService,
@@ -156,6 +156,7 @@ export const createTrafficRoute = ({
                 if (job.kind !== OPERATION_JOB_KIND.TRAFFIC_EXPORT) throw createAppError('TRAFFIC_EXPORT_NOT_FOUND')
                 if (job.status !== 'succeeded') throw createAppError('TRAFFIC_EXPORT_NOT_READY')
                 const result = trafficExportResultSchema.parse(job.result)
+                if (!/^traffic-[0-9a-f-]{36}\.(csv|ndjson)$/.test(result.fileName)) throw createAppError('TRAFFIC_EXPORT_INVALID')
                 const expectedFileName = `traffic-${job.id}.${result.format}`
                 if (result.fileName !== expectedFileName) throw createAppError('TRAFFIC_EXPORT_INVALID')
                 const file = Bun.file(join(trafficExportRoot, result.fileName))

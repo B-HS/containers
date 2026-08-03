@@ -19,12 +19,63 @@ export const notificationDestinationTypeSchema = z.enum([NOTIFICATION_DESTINATIO
 
 export const notificationEventTypeSchema = z.enum([NOTIFICATION_EVENT_TYPE.BACKUP_FAILED, NOTIFICATION_EVENT_TYPE.TEST])
 
+const isPrivateIpv4 = (octets: number[]) => {
+    const first = octets[0]
+    const second = octets[1]
+    if (first === undefined || second === undefined) return true
+    if (first === 10) return true
+    if (first === 127) return true
+    if (first === 0) return true
+    if (first === 169 && second === 254) return true
+    if (first === 172 && second >= 16 && second <= 31) return true
+    if (first === 192 && second === 168) return true
+    if (first >= 224) return true
+    if (first === 100 && second >= 64 && second <= 127) return true
+    if (first === 198 && second >= 18 && second <= 19) return true
+    return false
+}
+
+const isBlockedIpAddress = (hostname: string) => {
+    const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+    if (ipv4) {
+        const octets = ipv4.slice(1).map(Number)
+        if (octets.some((octet) => octet > 255)) {
+            return true
+        }
+        return isPrivateIpv4(octets)
+    }
+    if (/^\[/.test(hostname)) {
+        const ipv6 = hostname.replace(/^\[|\]$/g, '').toLowerCase()
+        if (ipv6 === '::1' || ipv6.startsWith('fe80')) return true
+        if (ipv6.startsWith('fc') || ipv6.startsWith('fd')) return true
+        const mappedIpv4 = ipv6.match(/^::ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+        if (mappedIpv4) {
+            return isPrivateIpv4(mappedIpv4.slice(1).map(Number))
+        }
+        return true
+    }
+    if (!hostname.includes('.')) {
+        return true
+    }
+    return false
+}
+
 export const notificationWebhookUrlSchema = z
     .string()
     .min(1)
     .max(2_048)
     .url()
     .refine((value) => value.startsWith('https://'), { message: 'https URL만 허용됩니다.' })
+    .refine(
+        (value) => {
+            try {
+                return !isBlockedIpAddress(new URL(value).hostname)
+            } catch {
+                return false
+            }
+        },
+        { message: '내부 네트워크 주소는 허용되지 않습니다.' },
+    )
 
 export const notificationDestinationUpsertSchema = z
     .object({

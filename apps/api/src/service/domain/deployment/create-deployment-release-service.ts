@@ -12,7 +12,7 @@ import type { DeploymentSecretService } from './create-deployment-secret-service
 const ACTIVE_RELEASE_STATUSES = ['creating', 'probing', 'switching', 'observing', 'rolling-back'] as const
 
 type DeploymentReleaseServiceDependencies = {
-    controlNetwork: string
+    probeNetwork: string
     db: ControlDatabase
     deploymentManifestService: Pick<DeploymentManifestService, 'get'>
     deploymentSecretService: Pick<DeploymentSecretService, 'resolve'>
@@ -54,7 +54,7 @@ const publicHealthPath = (manifest: DeploymentManifest) =>
         : `${manifest.route.path.replace(/\/$/, '')}${manifest.healthcheck.path === '/' ? '' : manifest.healthcheck.path}`
 
 export const createDeploymentReleaseService = ({
-    controlNetwork,
+    probeNetwork,
     db,
     deploymentManifestService,
     deploymentSecretService,
@@ -115,7 +115,7 @@ export const createDeploymentReleaseService = ({
         let routeSwitched = false
 
         try {
-            await engineAgentClient.connectContainerNetwork(target.containerId, { network: controlNetwork })
+            await engineAgentClient.connectContainerNetwork(target.containerId, { network: probeNetwork })
             await engineAgentClient.performContainerAction(target.containerId, { action: 'start' })
             targetStarted = true
             let healthy = false
@@ -155,7 +155,7 @@ export const createDeploymentReleaseService = ({
             if (!routeReady) {
                 throw createAppError('DEPLOYMENT_ROLLBACK_ROUTE_PROBE_FAILED')
             }
-            await engineAgentClient.disconnectContainerNetwork(target.containerId, { network: controlNetwork })
+            await engineAgentClient.disconnectContainerNetwork(target.containerId, { network: probeNetwork })
             const rolledBack = await update(id, { failureCode: 'MANUAL_ROLLBACK', finishedAt: now(), status: 'rolled-back' })
             await engineAgentClient
                 .performContainerAction(release.containerId, { action: 'stop', timeoutSeconds: 10 })
@@ -169,7 +169,7 @@ export const createDeploymentReleaseService = ({
             if (targetStarted) {
                 await engineAgentClient.performContainerAction(target.containerId, { action: 'stop', timeoutSeconds: 10 }).catch(() => undefined)
             }
-            await engineAgentClient.disconnectContainerNetwork(target.containerId, { network: controlNetwork }).catch(() => undefined)
+            await engineAgentClient.disconnectContainerNetwork(target.containerId, { network: probeNetwork }).catch(() => undefined)
             return update(id, { failureCode: `MANUAL_ROLLBACK_FAILED:${failureCode}`, status: 'healthy' })
         }
     }
@@ -194,7 +194,7 @@ export const createDeploymentReleaseService = ({
                             await engineAgentClient
                                 .performContainerAction(target.containerId, { action: 'stop', timeoutSeconds: 10 })
                                 .catch(() => undefined)
-                            await engineAgentClient.disconnectContainerNetwork(target.containerId, { network: controlNetwork }).catch(() => undefined)
+                            await engineAgentClient.disconnectContainerNetwork(target.containerId, { network: probeNetwork }).catch(() => undefined)
                         }
                     }
                     reconciled.push(
@@ -247,6 +247,7 @@ export const createDeploymentReleaseService = ({
             }
             if (release.containerId) {
                 await engineAgentClient.performContainerAction(release.containerId, { action: 'stop', timeoutSeconds: 10 }).catch(() => undefined)
+                await engineAgentClient.disconnectContainerNetwork(release.containerId, { network: probeNetwork }).catch(() => undefined)
             }
             reconciled.push(
                 await update(release.id, {
@@ -369,7 +370,7 @@ export const createDeploymentReleaseService = ({
                     memoryBytes: manifest.memoryBytes,
                     name: release.containerName,
                     nanoCpus: manifest.nanoCpus,
-                    network: controlNetwork,
+                    network: probeNetwork,
                     pidsLimit: manifest.pidsLimit,
                     readOnlyRootFilesystem: true,
                     restartPolicy: manifest.restartPolicy,
@@ -400,7 +401,7 @@ export const createDeploymentReleaseService = ({
                 }
 
                 await engineAgentClient.connectContainerNetwork(containerId, { network: manifest.network })
-                await engineAgentClient.disconnectContainerNetwork(containerId, { network: controlNetwork })
+                await engineAgentClient.disconnectContainerNetwork(containerId, { network: probeNetwork })
                 await update(id, { status: 'switching' })
                 const switched = await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName))
                 switchedRoute = { id: switched.route.id }
@@ -455,6 +456,7 @@ export const createDeploymentReleaseService = ({
                 }
                 if (containerId) {
                     await engineAgentClient.performContainerAction(containerId, { action: 'stop', timeoutSeconds: 10 }).catch(() => undefined)
+                    await engineAgentClient.disconnectContainerNetwork(containerId, { network: probeNetwork }).catch(() => undefined)
                 }
                 return update(id, {
                     failureCode: rollbackSucceeded || !switchedRoute ? failureCode : `ROLLBACK_FAILED:${failureCode}`,

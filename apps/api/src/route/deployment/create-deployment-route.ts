@@ -19,7 +19,7 @@ type DeploymentRouteDependencies = {
     operationJobService: Pick<OperationJobService, 'enqueue'>
 }
 
-const getSourceIp = (headers: Headers) => headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined
+const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 export const createDeploymentRoute = ({
     apiKeyService,

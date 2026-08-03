@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import { apiKeyCreateResultSchema, apiKeyCreateSchema, apiKeyListSchema, type ApiKeyScope } from '@containers/contracts/api-key'
 import type { ControlDatabase } from '@containers/db-schema/database'
-import { apiKey } from '@containers/db-schema/schema'
+import { apiKey, userRole } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/app-error'
 
 type ApiKeyServiceDependencies = {
@@ -38,17 +38,20 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
             }
 
             const currentTime = now()
-            const [record] = await db
+            const [joined] = await db
                 .select()
                 .from(apiKey)
+                .innerJoin(userRole, eq(userRole.userId, apiKey.createdBy))
                 .where(
                     and(
                         eq(apiKey.tokenHash, hashToken(token)),
                         isNull(apiKey.revokedAt),
                         or(isNull(apiKey.expiresAt), gt(apiKey.expiresAt, currentTime)),
+                        isNull(userRole.disabledAt),
                     ),
                 )
                 .limit(1)
+            const record = joined?.api_key
             if (!record) {
                 throw createAppError('AUTH_REQUIRED')
             }

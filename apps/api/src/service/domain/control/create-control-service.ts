@@ -11,16 +11,51 @@ import {
     volumeCreateRequestSchema,
 } from '@containers/contracts/engine-control'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import { createAppError } from '../../../lib/app-error'
 import { registryCredentialDeleteSchema, registryCredentialUpsertSchema } from '@containers/contracts/registry-credential'
+
+const PROTECTED_NETWORKS = ['containers_control', 'containers_ingress', 'containers_probe']
+const PROTECTED_VOLUMES = [
+    'containers_agent-credentials',
+    'containers_artifacts',
+    'containers_backups',
+    'containers_control-data',
+    'containers_nginx-config',
+    'containers_nginx-logs',
+    'containers_registry-credentials',
+    'containers_traffic-credentials',
+    'containers_traffic-data',
+]
 
 type ControlServiceDependencies = {
     engineAgentClient: EngineAgentClient
 }
 
 export const createControlService = ({ engineAgentClient }: ControlServiceDependencies) => ({
-    createContainer: async (input: unknown) => engineAgentClient.createContainer(containerCreateRequestSchema.parse(input)),
-    createNetwork: async (input: unknown) => engineAgentClient.createNetwork(networkCreateRequestSchema.parse(input)),
-    createVolume: async (input: unknown) => engineAgentClient.createVolume(volumeCreateRequestSchema.parse(input)),
+    createContainer: async (input: unknown) => {
+        const container = containerCreateRequestSchema.parse(input)
+        if (container.network === 'host' || container.network === 'none' || PROTECTED_NETWORKS.includes(container.network)) {
+            throw createAppError('MANAGEMENT_NETWORK_PROTECTED')
+        }
+        if (container.volumes.some((volume) => PROTECTED_VOLUMES.includes(volume.name))) {
+            throw createAppError('MANAGEMENT_VOLUME_PROTECTED')
+        }
+        return engineAgentClient.createContainer(container)
+    },
+    createNetwork: async (input: unknown) => {
+        const payload = networkCreateRequestSchema.parse(input)
+        if (PROTECTED_NETWORKS.includes(payload.name)) {
+            throw createAppError('MANAGEMENT_NETWORK_PROTECTED')
+        }
+        return engineAgentClient.createNetwork(payload)
+    },
+    createVolume: async (input: unknown) => {
+        const payload = volumeCreateRequestSchema.parse(input)
+        if (PROTECTED_VOLUMES.includes(payload.name)) {
+            throw createAppError('MANAGEMENT_VOLUME_PROTECTED')
+        }
+        return engineAgentClient.createVolume(payload)
+    },
     executeContainer: async (containerId: string, input: unknown) =>
         engineAgentClient.executeContainer(containerId, containerExecRequestSchema.parse(input)),
     getContainerChanges: async (containerId: string) => engineAgentClient.changesContainer(containerId),

@@ -83,12 +83,12 @@ services:
             AUTH_TRUSTED_ORIGINS: http://127.0.0.1:8080,http://localhost:8080
             CONTROL_DB_PATH: /data/control.sqlite
             CONTROL_MIGRATIONS_PATH: /app/drizzle
+            PROBE_NETWORK_NAME: containers_probe
             NGINX_STATUS_URL: http://nginx:8081/status
             NOTIFICATION_SECRET_KEY_FILE: /data/notification-secret-key
-            REGISTRY_CREDENTIAL_FILE: /credentials/registry-credentials.json
-            REGISTRY_CREDENTIAL_KEY_FILE: /credentials/registry-credential-key
             PANEL_PUBLIC_URL: http://127.0.0.1:8080
             TRAFFIC_WORKER_INTERNAL_URL: http://traffic-worker:3003
+            TRAFFIC_WORKER_SHARED_SECRET_FILE: /traffic-credentials/traffic-secret
             TRAFFIC_EXPORT_ROOT: /backups/traffic-exports
         healthcheck:
             test:
@@ -107,14 +107,13 @@ services:
             - /tmp
         volumes:
             - agent-credentials:/credentials
+            - traffic-credentials:/traffic-credentials
             - artifacts:/artifacts
             - backups:/backups
             - control-data:/data
         networks:
             - ingress
             - control
-            - edge
-
     engine-agent:
         build:
             context: .
@@ -128,6 +127,8 @@ services:
             DOCKER_SOCKET_PATH: /var/run/docker.sock
             NGINX_CONFIG_ROOT: /nginx-config
             NGINX_STATUS_URL: http://nginx:8081/status
+            REGISTRY_CREDENTIAL_FILE: /registry-credentials/registry-credentials.json
+            REGISTRY_CREDENTIAL_KEY_FILE: /registry-credentials/registry-credential-key
         healthcheck:
             test:
                 - CMD
@@ -146,9 +147,11 @@ services:
             - agent-credentials:/credentials
             - artifacts:/artifacts:ro
             - nginx-config:/nginx-config
+            - registry-credentials:/registry-credentials
             - /var/run/docker.sock:/var/run/docker.sock
         networks:
             - control
+            - probe
 
     traffic-worker:
         build:
@@ -157,7 +160,7 @@ services:
         environment:
             ACCESS_LOG_PATH: /var/log/nginx/access.jsonl
             INGEST_CHECKPOINT_PATH: /data/ingest-checkpoint.json
-            AGENT_SHARED_SECRET_FILE: /credentials/agent-secret
+            TRAFFIC_SHARED_SECRET_FILE: /credentials/traffic-secret
             BACKUP_ROOT: /backups
             TRAFFIC_DB_PATH: /data/traffic.sqlite
             TRAFFIC_EXPORT_ROOT: /backups/traffic-exports
@@ -178,7 +181,7 @@ services:
         tmpfs:
             - /tmp
         volumes:
-            - agent-credentials:/credentials
+            - traffic-credentials:/credentials
             - backups:/backups
             - nginx-logs:/var/log/nginx:ro
             - traffic-data:/data
@@ -189,6 +192,8 @@ networks:
     control:
         internal: true
     edge:
+    probe:
+        internal: true
     ingress:
         internal: true
 
@@ -199,4 +204,6 @@ volumes:
     control-data:
     nginx-config:
     nginx-logs:
+    registry-credentials:
+    traffic-credentials:
     traffic-data:

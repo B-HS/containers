@@ -70,7 +70,7 @@ describe('Control·Traffic backup orchestration', () => {
         const users = await database.db.select().from(user)
         expect(restored.restored).toBe(true)
         expect(restored.recoveryBackupId).not.toBe(backup.id)
-        expect(users.map((record) => record.id)).toEqual(['before-backup'])
+        expect(users.map((record) => record.id).sort()).toEqual(['after-backup', 'before-backup'])
         database.sqlite.close()
     })
 

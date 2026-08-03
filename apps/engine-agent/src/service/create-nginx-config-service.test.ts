@@ -35,7 +35,7 @@ const createTestContext = async (validationExitCode = 0) => {
                     Id: 'nginx-container-id',
                     Image: 'containers-nginx',
                     ImageID: 'sha256:nginx',
-                    Labels: { 'com.docker.compose.service': 'nginx' },
+                    Labels: { 'com.docker.compose.project': 'containers', 'com.docker.compose.service': 'nginx' },
                     Names: ['/containers-nginx-1'],
                     State: 'running',
                     Status: 'Up',

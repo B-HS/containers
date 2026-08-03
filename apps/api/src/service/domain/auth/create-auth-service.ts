@@ -3,7 +3,7 @@ import { and, asc, count, eq, gt, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { managedUserListSchema, managedUserSchema, managedUserUpdateSchema } from '@containers/contracts/user-management'
 import type { ControlDatabase } from '@containers/db-schema/database'
-import { invitation, session as sessionTable, USER_ROLE, user, userRole } from '@containers/db-schema/schema'
+import { invitation, apiKey as apiKeyTable, session as sessionTable, USER_ROLE, user, userRole } from '@containers/db-schema/schema'
 import type { Auth } from '../../../auth/create-auth'
 import { createAppError } from '../../../lib/app-error'
 
@@ -157,7 +157,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             }
         },
         createInvitation: async (headers: Headers, input: unknown) => {
-            const session = await requireRole(headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN])
+            const session = await requireRecentRole(headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN], 15 * 60 * 1_000)
             const payload = invitationCreateSchema.parse(input)
             const token = randomBytes(32).toString('base64url')
             const createdAt = now()
@@ -252,10 +252,14 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             const updatedAt = now()
             const disabledAt = payload.disabled === undefined ? target.disabledAt : payload.disabled ? updatedAt : null
             const role = payload.role ?? target.role
+            const roleChanged = role !== target.role
             await db.transaction(async (transaction) => {
                 await transaction.update(userRole).set({ disabledAt, role, updatedAt }).where(eq(userRole.userId, target.id))
                 if (payload.disabled) {
                     await transaction.delete(sessionTable).where(eq(sessionTable.userId, target.id))
+                }
+                if (payload.disabled || roleChanged) {
+                    await transaction.update(apiKeyTable).set({ revokedAt: updatedAt }).where(eq(apiKeyTable.createdBy, target.id))
                 }
             })
 

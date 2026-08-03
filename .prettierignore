@@ -1,4 +1,5 @@
 .next
+.opencode
 dist
 node_modules
 bun.lock

@@ -42,7 +42,7 @@ export const createAgentApp = ({
     const engineQueryService = createEngineQueryService({
         dockerEngineClient,
         getFilesystemUsage: async () => {
-            const filesystem = await statfs('/')
+            const filesystem = await statfs(artifactRoot)
             const capacityBytes = filesystem.blocks * filesystem.bsize
             const availableBytes = filesystem.bavail * filesystem.bsize
 

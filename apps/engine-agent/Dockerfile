@@ -21,8 +21,8 @@ FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b4
 
 WORKDIR /app
 COPY --from=build --chown=bun:bun /app/apps/engine-agent/dist ./dist
-RUN mkdir -p /credentials /nginx-config
-RUN chown bun:bun /credentials /nginx-config
+RUN mkdir -p /credentials /nginx-config /registry-credentials
+RUN chown bun:bun /credentials /nginx-config /registry-credentials
 
 USER bun
 EXPOSE 3002

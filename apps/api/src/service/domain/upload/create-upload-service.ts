@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdir, open, rename } from 'node:fs/promises'
+import { mkdir, open, readdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { and, count, eq, gt } from 'drizzle-orm'
+import { and, count, eq, gt, lt, ne } from 'drizzle-orm'
 import {
     artifactListSchema,
     artifactSchema,
@@ -197,8 +197,6 @@ export const createUploadService = ({
             const quarantineDirectory = join(artifactRoot, 'quarantine')
             await mkdir(quarantineDirectory, { recursive: true })
             const temporaryPath = join(quarantineDirectory, `${id}.part`)
-            const file = await open(temporaryPath, 'wx', 0o600)
-            await file.close()
 
             await db.insert(uploadSession).values({
                 createdAt,
@@ -214,6 +212,17 @@ export const createUploadService = ({
                 temporaryPath,
                 updatedAt: createdAt,
             })
+
+            try {
+                const file = await open(temporaryPath, 'wx', 0o600)
+                await file.close()
+            } catch (error) {
+                await db
+                    .delete(uploadSession)
+                    .where(eq(uploadSession.id, id))
+                    .catch(() => undefined)
+                throw error
+            }
 
             return toUploadSession({ expiresAt, id, receivedBytes: 0, status: 'uploading' }, [...warnings])
         },
@@ -249,13 +258,13 @@ export const createUploadService = ({
 
             const [duplicate] = await db.select().from(artifact).where(eq(artifact.sha256, session.expectedSha256)).limit(1)
             if (duplicate) {
+                await rm(session.temporaryPath, { force: true }).catch(() => undefined)
                 await db.update(uploadSession).set({ status: 'completed', updatedAt: createdAt }).where(eq(uploadSession.id, sessionId))
                 return toArtifact(duplicate)
             }
 
             await mkdir(readyDirectory, { recursive: true })
             const storagePath = join(readyDirectory, `${id}.archive`)
-            await rename(session.temporaryPath, storagePath)
 
             await db.transaction(async (transaction) => {
                 await transaction.insert(artifact).values({
@@ -271,6 +280,7 @@ export const createUploadService = ({
                 })
                 await transaction.update(uploadSession).set({ status: 'completed', updatedAt: createdAt }).where(eq(uploadSession.id, sessionId))
             })
+            await rename(session.temporaryPath, storagePath)
 
             return toArtifact({
                 createdAt,
@@ -289,6 +299,65 @@ export const createUploadService = ({
                 .limit(1)
 
             return session ? toUploadSession(session) : null
+        },
+        cleanupExpiredSessions: async () => {
+            const expired = await db
+                .select()
+                .from(uploadSession)
+                .where(and(lt(uploadSession.expiresAt, now()), ne(uploadSession.status, 'completed')))
+            const completedWithStaleFiles = await db
+                .select()
+                .from(uploadSession)
+                .where(and(eq(uploadSession.status, 'completed'), lt(uploadSession.expiresAt, now())))
+            let removed = 0
+            for (const session of [...expired, ...completedWithStaleFiles]) {
+                await rm(session.temporaryPath, { force: true }).catch(() => undefined)
+                await db.delete(uploadSession).where(eq(uploadSession.id, session.id))
+                removed += 1
+            }
+
+            const referencedPaths = new Set((await db.select({ storagePath: artifact.storagePath }).from(artifact)).map((row) => row.storagePath))
+            const readyDirectory = join(artifactRoot, 'ready')
+            const readyFiles = await readdir(readyDirectory).catch(() => [])
+            for (const fileName of readyFiles) {
+                const storagePath = join(readyDirectory, fileName)
+                if (referencedPaths.has(storagePath)) {
+                    continue
+                }
+                const [nowReferenced] = await db
+                    .select({ storagePath: artifact.storagePath })
+                    .from(artifact)
+                    .where(eq(artifact.storagePath, storagePath))
+                    .limit(1)
+                if (nowReferenced) {
+                    continue
+                }
+                await rm(storagePath, { force: true }).catch(() => undefined)
+                removed += 1
+            }
+
+            const referencedTemporaryPaths = new Set(
+                (await db.select({ temporaryPath: uploadSession.temporaryPath }).from(uploadSession)).map((row) => row.temporaryPath),
+            )
+            const quarantineDirectory = join(artifactRoot, 'quarantine')
+            const quarantineFiles = await readdir(quarantineDirectory).catch(() => [])
+            for (const fileName of quarantineFiles) {
+                const temporaryPath = join(quarantineDirectory, fileName)
+                if (referencedTemporaryPaths.has(temporaryPath)) {
+                    continue
+                }
+                const [nowReferenced] = await db
+                    .select({ temporaryPath: uploadSession.temporaryPath })
+                    .from(uploadSession)
+                    .where(eq(uploadSession.temporaryPath, temporaryPath))
+                    .limit(1)
+                if (nowReferenced) {
+                    continue
+                }
+                await rm(temporaryPath, { force: true }).catch(() => undefined)
+                removed += 1
+            }
+            return removed
         },
         listArtifacts: async () =>
             artifactListSchema.parse(

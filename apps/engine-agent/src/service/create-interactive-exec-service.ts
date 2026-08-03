@@ -5,13 +5,21 @@ import type { DockerEngineClient } from '../docker/create-docker-engine-client'
 import { createAppError } from '../lib/app-error'
 
 type InteractiveExecServiceDependencies = {
-    dockerEngineClient: Pick<DockerEngineClient, 'createInteractiveExec' | 'inspectInteractiveExec' | 'resizeInteractiveExec'>
+    dockerEngineClient: Pick<DockerEngineClient, 'createInteractiveExec' | 'getContainers' | 'inspectInteractiveExec' | 'resizeInteractiveExec'>
     now: () => Date
 }
 
 export const MAX_ACTIVE_INTERACTIVE_EXEC_SESSIONS = 10
 
 const containerIdSchema = z.string().min(1).max(256)
+
+const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
+const MANAGEMENT_LABEL = 'managed-by'
+const MANAGEMENT_LABEL_VALUE = 'containers-control-plane'
+const MANAGEMENT_PROJECT = 'containers'
+
+const isManagementPlaneResource = (labels: Record<string, string>) =>
+    labels[COMPOSE_PROJECT_LABEL] === MANAGEMENT_PROJECT || labels[MANAGEMENT_LABEL] === MANAGEMENT_LABEL_VALUE
 
 export const createInteractiveExecService = ({ dockerEngineClient, now }: InteractiveExecServiceDependencies) => {
     const tickets = new Map<
@@ -35,8 +43,18 @@ export const createInteractiveExecService = ({ dockerEngineClient, now }: Intera
     return {
         attach: async (containerId: string, input: ReturnType<typeof interactiveExecTicketRequestSchema.parse>) =>
             dockerEngineClient.createInteractiveExec(containerId, input),
-        createTicket: (containerIdInput: unknown, input: unknown) => {
+        createTicket: async (containerIdInput: unknown, input: unknown) => {
             const containerId = containerIdSchema.parse(containerIdInput)
+            const containers = await dockerEngineClient.getContainers()
+            const container = containers.find(
+                (candidate) =>
+                    candidate.Id === containerId ||
+                    candidate.Id.startsWith(containerId) ||
+                    candidate.Names.map((name) => name.replace(/^\//, '')).includes(containerId),
+            )
+            if (container && isManagementPlaneResource(container.Labels)) {
+                throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
+            }
             const payload = interactiveExecTicketRequestSchema.parse(input)
             const ticket = randomBytes(32).toString('base64url')
             const expiresAt = new Date(now().getTime() + 30_000)

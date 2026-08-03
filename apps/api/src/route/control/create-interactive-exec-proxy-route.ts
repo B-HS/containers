@@ -7,9 +7,11 @@ import { createAppError } from '../../lib/app-error'
 import { errorResponse, successResponse } from '../../lib/response'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
+import type { MaintenanceService } from '../../service/domain/maintenance/create-maintenance-service'
 
 const { upgradeWebSocket } = createBunWebSocket()
 const EXEC_ROLES = [USER_ROLE.OWNER]
+const EXEC_RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const EXEC_SESSION_RECHECK_INTERVAL_MS = 15_000
 const EXEC_MAX_BUFFERED_OUTPUT_BYTES = 1_048_576
 const EXEC_MAX_QUEUED_INPUT_BYTES = 65_536
@@ -18,6 +20,7 @@ type InteractiveExecProxyRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     engineAgentClient: Pick<EngineAgentClient, 'createInteractiveExecTicket' | 'getInteractiveExecWebSocketUrl'>
+    maintenanceService: Pick<MaintenanceService, 'isEnabled'>
 }
 
 type BufferedWebSocket = {
@@ -30,9 +33,14 @@ const hasBufferedAmount = (value: unknown): value is BufferedWebSocket =>
     'getBufferedAmount' in value &&
     typeof (value as { getBufferedAmount?: unknown }).getBufferedAmount === 'function'
 
-const getSourceIp = (headers: Headers) => headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined
+const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-export const createInteractiveExecProxyRoute = ({ auditService, authService, engineAgentClient }: InteractiveExecProxyRouteDependencies) =>
+export const createInteractiveExecProxyRoute = ({
+    auditService,
+    authService,
+    engineAgentClient,
+    maintenanceService,
+}: InteractiveExecProxyRouteDependencies) =>
     new Hono()
         .post('/containers/:containerId/exec-tickets', async (context) => {
             let actorId: string | undefined
@@ -61,7 +69,7 @@ export const createInteractiveExecProxyRoute = ({ auditService, authService, eng
                     targetId: containerId,
                     targetType: 'container',
                 })
-                return context.json(successResponse({ ...ticket, websocketPath: `/api/exec/ws?ticket=${encodeURIComponent(ticket.ticket)}` }), 201)
+                return context.json(successResponse({ ...ticket, websocketPath: `/api/exec/ws/${encodeURIComponent(ticket.ticket)}` }), 201)
             } catch (error) {
                 const code = error instanceof Error ? error.message : 'EXEC_TICKET_FAILED'
                 if (actorId) {
@@ -81,11 +89,14 @@ export const createInteractiveExecProxyRoute = ({ auditService, authService, eng
             }
         })
         .get(
-            '/exec/ws',
+            '/exec/ws/:ticket',
             upgradeWebSocket(async (context) => {
                 const headers = new Headers(context.req.raw.headers)
-                await authService.requireRole(headers, EXEC_ROLES)
-                const ticket = context.req.query('ticket')
+                await authService.requireRecentRole(headers, EXEC_ROLES, EXEC_RECENT_AUTH_MAX_AGE_MS)
+                if (maintenanceService.isEnabled()) {
+                    throw createAppError('MAINTENANCE_MODE')
+                }
+                const ticket = context.req.param('ticket')
                 if (!ticket || ticket.length < 32 || ticket.length > 256) {
                     throw createAppError('EXEC_TICKET_INVALID')
                 }
@@ -115,7 +126,9 @@ export const createInteractiveExecProxyRoute = ({ auditService, authService, eng
                     },
                     onOpen: (_event, websocket) => {
                         sessionCheckTimer = setInterval(() => {
-                            void authService.requireRole(headers, EXEC_ROLES).catch(() => websocket.close(1008, 'session revoked'))
+                            void authService
+                                .requireRecentRole(headers, EXEC_ROLES, EXEC_RECENT_AUTH_MAX_AGE_MS)
+                                .catch(() => websocket.close(1008, 'session revoked'))
                         }, EXEC_SESSION_RECHECK_INTERVAL_MS)
                         upstream = new WebSocket(engineAgentClient.getInteractiveExecWebSocketUrl(ticket))
                         upstream.addEventListener('open', () => {

@@ -18,7 +18,7 @@ type DeploymentManifestRouteDependencies = {
     deploymentManifestService: DeploymentManifestService
 }
 
-const getSourceIp = (headers: Headers) => headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined
+const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 const errorStatus = (code: string) => {
     if (code === 'API_KEY_RATE_LIMITED') {

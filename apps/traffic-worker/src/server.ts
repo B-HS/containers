@@ -12,7 +12,7 @@ const env = parseEnv(
     z.object({
         TRAFFIC_WORKER_PORT: z.coerce.number().int().positive().default(3003),
         ACCESS_LOG_PATH: z.string().min(1),
-        AGENT_SHARED_SECRET_FILE: z.string().min(1),
+        TRAFFIC_SHARED_SECRET_FILE: z.string().min(1),
         BACKUP_ROOT: z.string().min(1).default('/backups'),
         INGEST_CHECKPOINT_PATH: z.string().min(1).default('/data/ingest-checkpoint.json'),
         TRAFFIC_DB_PATH: z.string().min(1),
@@ -39,7 +39,7 @@ const app = createTrafficApp({
     ingestionService,
     now: () => new Date(),
     queryService,
-    sharedSecret: await loadOrCreateSecret(env.AGENT_SHARED_SECRET_FILE),
+    sharedSecret: await loadOrCreateSecret(env.TRAFFIC_SHARED_SECRET_FILE),
 })
 
 export default {

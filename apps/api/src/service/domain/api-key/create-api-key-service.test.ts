@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { createControlDatabase } from '@containers/db-schema/database'
-import { user } from '@containers/db-schema/schema'
+import { USER_ROLE, user, userRole } from '@containers/db-schema/schema'
 import { createApiKeyService } from './create-api-key-service'
 
 const temporaryDirectories: string[] = []
@@ -29,6 +29,12 @@ const createTestService = async () => {
         id: actorId,
         name: 'Owner',
         updatedAt: now,
+    })
+    await database.db.insert(userRole).values({
+        createdAt: now,
+        role: USER_ROLE.OWNER,
+        updatedAt: now,
+        userId: actorId,
     })
 
     return { ...database, actorId, service: createApiKeyService({ db: database.db, now: () => now }) }

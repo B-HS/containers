@@ -80,7 +80,7 @@ type AppDependencies = {
     operationJobService: Pick<OperationJobService, 'enqueue' | 'get' | 'list' | 'listEvents' | 'requestCancel'>
     trafficWorkerClient: Pick<TrafficWorkerClient, 'getAnalytics' | 'getSummary' | 'openLiveStream'>
     trafficExportRoot?: string
-    uploadService: Pick<UploadService, 'appendChunk' | 'createSession' | 'getOwnedSession' | 'listArtifacts'>
+    uploadService: Pick<UploadService, 'appendChunk' | 'cleanupExpiredSessions' | 'createSession' | 'getOwnedSession' | 'listArtifacts'>
 }
 
 export const createApp = ({
@@ -115,7 +115,7 @@ export const createApp = ({
     const authRoute = createAuthRoute({ auditService, authService })
     const controlService = createControlService({ engineAgentClient })
     const controlRoute = createControlRoute({ auditService, authService, controlService, operationJobService })
-    const interactiveExecProxyRoute = createInteractiveExecProxyRoute({ auditService, authService, engineAgentClient })
+    const interactiveExecProxyRoute = createInteractiveExecProxyRoute({ auditService, authService, engineAgentClient, maintenanceService })
     const trafficService = createTrafficService({ trafficWorkerClient })
     const trafficRoute = createTrafficRoute({ auditService, authService, operationJobService, trafficExportRoot, trafficService })
     const nginxService = createNginxService({ engineAgentClient, nginxStatusClient })
@@ -144,7 +144,7 @@ export const createApp = ({
     const controlPlaneRoute = createControlPlaneRoute({ authService, controlPlaneStatusService })
     const loginRateWindows = new Map<string, { count: number; startedAt: number }>()
     const isLoginRateLimited = (headers: Headers) => {
-        const key = headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+        const key = headers.get('x-real-ip')?.trim() ?? 'unknown'
         const timestamp = Date.now()
         const window = loginRateWindows.get(key)
         if (!window || timestamp - window.startedAt >= 60_000) {
@@ -152,6 +152,13 @@ export const createApp = ({
             return false
         }
         window.count += 1
+        if (loginRateWindows.size > 10_000) {
+            for (const [id, candidate] of loginRateWindows) {
+                if (timestamp - candidate.startedAt >= 60_000) {
+                    loginRateWindows.delete(id)
+                }
+            }
+        }
         return window.count > 10
     }
 
@@ -196,11 +203,12 @@ export const createApp = ({
         .route('/api', controlPlaneRoute)
         .route('/api', authRoute)
         .on(['GET', 'POST'], '/api/auth/*', async (context) => {
-            if (context.req.path === '/api/auth/sign-up/email') {
+            const normalizedPath = context.req.path.replace(/\/+$/, '')
+            if (normalizedPath === '/api/auth/sign-up/email') {
                 return context.json(errorResponse('SIGN_UP_DISABLED', '공개 가입은 허용되지 않습니다.', context.get('requestId')), 404)
             }
 
-            if (context.req.path === '/api/auth/sign-in/email' && context.req.method === 'POST') {
+            if (normalizedPath === '/api/auth/sign-in/email' && context.req.method === 'POST') {
                 if (isLoginRateLimited(context.req.raw.headers)) {
                     context.header('retry-after', '60')
                     return context.json(errorResponse('AUTH_RATE_LIMITED', '로그인 요청 한도를 초과했습니다.', context.get('requestId')), 429)
@@ -211,7 +219,10 @@ export const createApp = ({
                     .catch(() => undefined)
                 const email = body && typeof body === 'object' && 'email' in body ? body.email : undefined
                 if (await authService.isEmailDisabled(email).catch(() => false)) {
-                    return context.json(errorResponse('ACCOUNT_DISABLED', '비활성화된 계정입니다.', context.get('requestId')), 403)
+                    return context.json(
+                        errorResponse('INVALID_EMAIL_OR_PASSWORD', '이메일 또는 비밀번호가 올바르지 않습니다.', context.get('requestId')),
+                        401,
+                    )
                 }
             }
 

@@ -109,6 +109,9 @@ export const createDeploymentManifestService = ({
             if (protectedNetworks.includes(payload.network)) {
                 throw createAppError('DEPLOYMENT_NETWORK_PROTECTED')
             }
+            if (['bridge', 'host', 'none'].includes(payload.network)) {
+                throw createAppError('DEPLOYMENT_NETWORK_INVALID')
+            }
             const [existingIdentity] = await db
                 .select({ routeHostname: deploymentManifest.routeHostname, routePath: deploymentManifest.routePath })
                 .from(deploymentManifest)

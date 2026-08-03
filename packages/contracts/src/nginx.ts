@@ -34,13 +34,19 @@ export const nginxConfigApplyResultSchema = z.object({
 })
 
 const hostnamePattern = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
-const routePathPattern = /^\/(?:[A-Za-z0-9._~!$&'()*+,;=:@%/-]*)$/
+const protectedSuffix = /(^|\.)containers\.local$/
+const routePathPattern = /^\/(?:[A-Za-z0-9._~!&'()*+,=:@%/-]*)$/
 const containerTargetPattern = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/
 
 export const nginxProxyRouteInputSchema = z.object({
     bodySizeMegabytes: z.number().int().min(1).max(1024).default(64),
     enabled: z.boolean().default(true),
-    hostname: z.string().trim().toLowerCase().regex(hostnamePattern),
+    hostname: z
+        .string()
+        .trim()
+        .toLowerCase()
+        .regex(hostnamePattern)
+        .refine((value) => !protectedSuffix.test(value), { message: '보호된 도메인 접미사는 허용되지 않습니다.' }),
     path: z.string().trim().regex(routePathPattern).default('/'),
     pathMode: z.enum(['exact', 'prefix']).default('prefix'),
     protocol: z.enum(['http', 'websocket']).default('http'),

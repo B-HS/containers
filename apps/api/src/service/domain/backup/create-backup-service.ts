@@ -69,15 +69,41 @@ const sha256File = async (filePath: string) => {
 
 const restoreControlSnapshot = (sqlite: Database, filePath: string) => {
     const tables = getTables(sqlite)
+    const preservedTables = new Set([
+        'account',
+        'api_key',
+        'artifact',
+        'audit_log',
+        'deployment_secret',
+        'invitation',
+        'notification_delivery',
+        'notification_destination',
+        'operation_job',
+        'operation_job_event',
+        'session',
+        'upload_chunk',
+        'upload_session',
+        'user',
+        'user_role',
+        'verification',
+    ])
     sqlite.exec(`ATTACH DATABASE ${quoteSqlValue(filePath)} AS backup_source`)
     sqlite.exec('PRAGMA foreign_keys = OFF')
     try {
         sqlite.exec('BEGIN IMMEDIATE')
         for (const table of [...tables].reverse()) {
-            sqlite.exec(`DELETE FROM main.${quoteIdentifier(table)}`)
+            if (!preservedTables.has(table)) {
+                sqlite.exec(`DELETE FROM main.${quoteIdentifier(table)}`)
+            }
         }
         for (const table of tables) {
-            sqlite.exec(`INSERT INTO main.${quoteIdentifier(table)} SELECT * FROM backup_source.${quoteIdentifier(table)}`)
+            if (!preservedTables.has(table)) {
+                sqlite.exec(`INSERT INTO main.${quoteIdentifier(table)} SELECT * FROM backup_source.${quoteIdentifier(table)}`)
+            }
+        }
+        const foreignKeyViolation = sqlite.query('PRAGMA foreign_key_check').get()
+        if (foreignKeyViolation) {
+            throw createAppError('BACKUP_FOREIGN_KEY_INVALID')
         }
         sqlite.exec('COMMIT')
     } catch (error) {
@@ -86,10 +112,6 @@ const restoreControlSnapshot = (sqlite: Database, filePath: string) => {
     } finally {
         sqlite.exec('PRAGMA foreign_keys = ON')
         sqlite.exec('DETACH DATABASE backup_source')
-    }
-    const foreignKeyViolation = sqlite.query('PRAGMA foreign_key_check').get()
-    if (foreignKeyViolation) {
-        throw createAppError('BACKUP_FOREIGN_KEY_INVALID')
     }
 }
 

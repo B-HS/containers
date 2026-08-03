@@ -23,7 +23,7 @@ const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const OPERATOR_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR]
 const ADMIN_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
-const RECENT_ADMIN_ACTIONS = ['remove', 'update']
+const RECENT_ADMIN_ACTIONS = ['kill', 'pause', 'remove', 'rename', 'restart', 'start', 'stop', 'unpause', 'update']
 
 type ControlRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
@@ -32,7 +32,7 @@ type ControlRouteDependencies = {
     operationJobService: Pick<OperationJobService, 'enqueue'>
 }
 
-const getSourceIp = (headers: Headers) => headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined
+const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 const getErrorCode = (error: unknown) => (error instanceof Error ? error.message : 'CONTROL_FAILED')
 

@@ -5,6 +5,14 @@ import { nginxConfigApplyResultSchema, nginxConfigApplySchema, nginxConfigRevisi
 import type { DockerEngineClient } from '../docker/create-docker-engine-client'
 import { createAppError } from '../lib/app-error'
 
+const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
+const MANAGEMENT_LABEL = 'managed-by'
+const MANAGEMENT_LABEL_VALUE = 'containers-control-plane'
+const MANAGEMENT_PROJECT = 'containers'
+
+const isManagementPlaneResource = (labels: Record<string, string>) =>
+    labels[COMPOSE_PROJECT_LABEL] === MANAGEMENT_PROJECT || labels[MANAGEMENT_LABEL] === MANAGEMENT_LABEL_VALUE
+
 const REQUIRED_CONFIG_TOKENS = [
     'pid /tmp/nginx.pid;',
     'access_log /var/log/nginx/access.jsonl containers_json;',
@@ -15,10 +23,16 @@ const REQUIRED_CONFIG_TOKENS = [
     'stub_status;',
     'proxy_pass http://containers_api;',
     'proxy_pass http://containers_web;',
-    'map $http_cf_connecting_ip $containers_client_ip',
+    'upstream containers_api',
+    'upstream containers_web',
+    'server api:3001',
+    'server web:3000',
+    'map $remote_addr $containers_client_ip',
     'limit_req_zone $containers_client_ip zone=containers_api_rate:10m rate=300r/m;',
     'limit_req_zone $containers_client_ip zone=containers_auth_rate:10m rate=5r/m;',
     'limit_req_status 429;',
+    'limit_req zone=containers_api_rate',
+    'limit_req zone=containers_auth_rate',
     'Content-Security-Policy',
     'X-Content-Type-Options "nosniff" always;',
     'X-Frame-Options "DENY" always;',
@@ -34,10 +48,147 @@ type NginxConfigServiceDependencies = {
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
 
+const stripComments = (config: string) =>
+    config
+        .split('\n')
+        .map((line) => {
+            let inSingleQuote = false
+            let inDoubleQuote = false
+            for (let index = 0; index < line.length; index += 1) {
+                const character = line[index]
+                if (character === "'" && !inDoubleQuote) {
+                    inSingleQuote = !inSingleQuote
+                } else if (character === '"' && !inSingleQuote) {
+                    inDoubleQuote = !inDoubleQuote
+                } else if (character === '#' && !inSingleQuote && !inDoubleQuote) {
+                    return line.slice(0, index)
+                }
+            }
+            return line
+        })
+        .join('\n')
+
+const extractServerBlock = (config: string, serverName: string) => {
+    const serverStart = config.indexOf(`server_name ${serverName}`)
+    if (serverStart < 0) {
+        return ''
+    }
+    const blockStart = config.lastIndexOf('server {', serverStart)
+    if (blockStart < 0) {
+        return ''
+    }
+    let depth = 0
+    let index = blockStart
+    for (; index < config.length; index += 1) {
+        const character = config[index]
+        if (character === '{') {
+            depth += 1
+        } else if (character === '}') {
+            depth -= 1
+            if (depth === 0) {
+                break
+            }
+        }
+    }
+    return depth === 0 ? config.slice(blockStart, index + 1) : ''
+}
+
+const stripNestedBlocks = (block: string) => {
+    let result = ''
+    let depth = 0
+    for (let index = 0; index < block.length; index += 1) {
+        const character = block[index]
+        if (character === '{') {
+            depth += 1
+            if (depth > 1) {
+                continue
+            }
+        } else if (character === '}') {
+            depth -= 1
+            if (depth === 0) {
+                result += character
+            }
+            continue
+        }
+        if (depth <= 1) {
+            result += character
+        }
+    }
+    return result
+}
+
+const extractLocation = (block: string, locationPattern: RegExp) => {
+    const match = locationPattern.exec(block)
+    if (!match) {
+        return ''
+    }
+    const locationStart = match.index
+    const braceStart = block.indexOf('{', locationStart)
+    if (braceStart < 0) {
+        return ''
+    }
+    let depth = 0
+    let index = braceStart
+    for (; index < block.length; index += 1) {
+        const character = block[index]
+        if (character === '{') {
+            depth += 1
+        } else if (character === '}') {
+            depth -= 1
+            if (depth === 0) {
+                break
+            }
+        }
+    }
+    const full = depth === 0 ? block.slice(locationStart, index + 1) : ''
+    return full === '' ? '' : stripNestedBlocks(full)
+}
+
 const verifyProtectedContract = (config: string) => {
-    if (config.includes('\0') || REQUIRED_CONFIG_TOKENS.some((token) => !config.includes(token))) {
+    if (config.includes('\0')) {
         throw createAppError('NGINX_PROTECTED_CONTRACT')
     }
+    const activeConfig = stripComments(config)
+    if (REQUIRED_CONFIG_TOKENS.some((token) => !activeConfig.includes(token))) {
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
+    }
+    const panelBlock = extractServerBlock(activeConfig, 'panel.containers.local')
+    if (
+        !panelBlock ||
+        !panelBlock.includes('listen 8080') ||
+        !panelBlock.includes('add_header Content-Security-Policy') ||
+        !panelBlock.includes('add_header X-Frame-Options') ||
+        !panelBlock.includes('add_header X-Content-Type-Options') ||
+        !panelBlock.includes('proxy_pass http://containers_api;') ||
+        !panelBlock.includes('proxy_pass http://containers_web;')
+    ) {
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
+    }
+    const apiLocation = extractLocation(panelBlock, /location \/api\//)
+    if (!apiLocation || !apiLocation.includes('limit_req zone=containers_api_rate') || hasExcessiveBurst(apiLocation, 1_000)) {
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
+    }
+    const authLocation = extractLocation(panelBlock, /location\s+~\s+\^\/api\/auth\/sign-in\/email/)
+    if (!authLocation || !authLocation.includes('limit_req zone=containers_auth_rate') || hasExcessiveBurst(authLocation, 100)) {
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
+    }
+    const apiBlock = extractServerBlock(activeConfig, 'api.containers.local')
+    const apiBlockApiLocation = extractLocation(apiBlock, /location \/api\//)
+    if (
+        !apiBlockApiLocation ||
+        !apiBlockApiLocation.includes('limit_req zone=containers_api_rate') ||
+        hasExcessiveBurst(apiBlockApiLocation, 1_000)
+    ) {
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
+    }
+}
+
+const hasExcessiveBurst = (location: string, maxBurst: number) => {
+    const match = location.match(/limit_req\s+zone=[a-z_]+_rate\s+burst=(\d+)/)
+    if (!match) {
+        return false
+    }
+    return Number.parseInt(match[1] ?? '0', 10) > maxBurst
 }
 
 export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetcher = fetch, now, statusUrl }: NginxConfigServiceDependencies) => {
@@ -45,7 +196,12 @@ export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetch
 
     const getNginxContainer = async () => {
         const containers = await dockerEngineClient.getContainers()
-        const container = containers.find((candidate) => candidate.Labels['com.docker.compose.service'] === 'nginx' && candidate.State === 'running')
+        const container = containers.find(
+            (candidate) =>
+                candidate.Labels['com.docker.compose.service'] === 'nginx' &&
+                isManagementPlaneResource(candidate.Labels) &&
+                candidate.State === 'running',
+        )
         if (!container) {
             throw createAppError('NGINX_CONTAINER_UNAVAILABLE')
         }

@@ -48,12 +48,14 @@ const envSchema = z
         CONTROL_DB_PATH: z.string().min(1),
         CONTROL_MIGRATIONS_PATH: z.string().min(1),
         CONTROL_NETWORK_NAME: z.string().min(1).default('containers_control'),
+        PROBE_NETWORK_NAME: z.string().min(1).default('containers_probe'),
         DEPLOYMENT_SECRET_KEY_FILE: z.string().min(1).default('/data/deployment-secret-key'),
         NGINX_STATUS_URL: z.url(),
         NOTIFICATION_SECRET_KEY_FILE: z.string().min(1).default('/data/notification-secret-key'),
         PANEL_PUBLIC_URL: z.url(),
         API_KEY_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(10).max(10_000).default(120),
         TRAFFIC_WORKER_INTERNAL_URL: z.url(),
+        TRAFFIC_WORKER_SHARED_SECRET_FILE: z.string().min(1),
         TRAFFIC_EXPORT_ROOT: z.string().min(1).default('/backups/traffic-exports'),
         UPLOAD_DISK_HARD_AVAILABLE_BYTES: z.coerce.number().int().positive().default(17_179_869_184),
         UPLOAD_DISK_SOFT_AVAILABLE_BYTES: z.coerce.number().int().positive().default(34_359_738_368),
@@ -87,12 +89,24 @@ const deploymentManifestService = createDeploymentManifestService({
     engineAgentClient,
     now: () => new Date(),
     protectedHostnames,
-    protectedNetworks: ['containers_control', 'containers_ingress'],
+    protectedNetworks: ['containers_control', 'containers_ingress', 'containers_probe'],
 })
 const nginxProxyRouteService = createNginxProxyRouteService({
     db,
     engineAgentClient,
     now: () => new Date(),
+    protectedContainers: [
+        'api',
+        'containers-api-1',
+        'containers-engine-agent-1',
+        'containers-nginx-1',
+        'containers-traffic-worker-1',
+        'containers-web-1',
+        'engine-agent',
+        'nginx',
+        'traffic-worker',
+        'web',
+    ],
     protectedHostnames,
 })
 const nginxRouteBaseUrl = new URL(env.NGINX_STATUS_URL)
@@ -106,7 +120,7 @@ const deploymentSecretService = createDeploymentSecretService({
 })
 const trafficWorkerClient = createTrafficWorkerClient({
     baseUrl: env.TRAFFIC_WORKER_INTERNAL_URL,
-    secret: await loadOrCreateSecret(env.AGENT_SHARED_SECRET_FILE),
+    secret: await loadOrCreateSecret(env.TRAFFIC_WORKER_SHARED_SECRET_FILE),
 })
 const backupService = createBackupService({
     backupRoot: env.BACKUP_ROOT,
@@ -141,7 +155,7 @@ const notificationDeliveryService = createNotificationDeliveryService({
     now: () => new Date(),
 })
 const deploymentReleaseService = createDeploymentReleaseService({
-    controlNetwork: env.CONTROL_NETWORK_NAME,
+    probeNetwork: env.PROBE_NETWORK_NAME,
     db,
     deploymentManifestService,
     deploymentSecretService,
@@ -164,6 +178,8 @@ const uploadService = createUploadService({
     now: () => new Date(),
     totalQuotaBytes: env.UPLOAD_TOTAL_QUOTA_BYTES,
 })
+await uploadService.cleanupExpiredSessions().catch(() => undefined)
+setInterval(() => void uploadService.cleanupExpiredSessions().catch(() => undefined), 15 * 60 * 1_000)
 operationJobService = createOperationJobService({
     db,
     handlers: createJobHandlers({

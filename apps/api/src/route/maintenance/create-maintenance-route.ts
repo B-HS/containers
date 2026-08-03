@@ -17,7 +17,7 @@ type MaintenanceRouteDependencies = {
     maintenanceService: Pick<MaintenanceService, 'disable' | 'enable' | 'getStatus'>
 }
 
-const sourceIp = (headers: Headers) => headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined
+const sourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 const errorStatus = (code: string) => {
     if (code === 'AUTH_REQUIRED' || code === 'RECENT_AUTH_REQUIRED') return 401 as const

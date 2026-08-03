@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono'
 import { API_KEY_SCOPE } from '@containers/contracts/api-key'
-import { backupRestoreSchema } from '@containers/contracts/backup'
+import { backupIdSchema, backupRestoreSchema } from '@containers/contracts/backup'
 import { OPERATION_JOB_KIND } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/app-error'
@@ -22,7 +22,7 @@ type BackupRouteDependencies = {
     operationJobService: Pick<OperationJobService, 'enqueue'>
 }
 
-const sourceIp = (headers: Headers) => headers.get('cf-connecting-ip') ?? headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined
+const sourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 const errorStatus = (code: string) => {
     if (code === 'API_KEY_RATE_LIMITED') return 429 as const
@@ -86,7 +86,7 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
         .post('/backups', (context) => mutate(context, 'backup.create', 'new', async () => backupService.create(await context.req.json())))
         .post('/backups/:id/restore', (context) =>
             mutate(context, 'backup.restore', context.req.param('id'), async (principal) => {
-                const backupId = context.req.param('id')
+                const backupId = backupIdSchema.parse(context.req.param('id'))
                 const payload = backupRestoreSchema.parse(await context.req.json())
                 if (payload.confirmation !== backupId) {
                     throw createAppError('CONFIRMATION_MISMATCH')
@@ -106,7 +106,7 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
         )
         .delete('/backups/:id', (context) =>
             mutate(context, 'backup.remove', context.req.param('id'), async () =>
-                backupService.remove(context.req.param('id'), await context.req.json()),
+                backupService.remove(backupIdSchema.parse(context.req.param('id')), await context.req.json()),
             ),
         )
 }

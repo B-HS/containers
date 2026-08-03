@@ -86,6 +86,7 @@ describe('engine stream 서비스', () => {
         const source = new PassThrough()
         const service = createEngineStreamService({
             dockerEngineClient: {
+                getContainers: async () => [],
                 openContainerLogStream: async () => ({ stream: source, tty: false }),
                 openContainerStatsStream: async () => new PassThrough(),
                 openEventStream: async () => new PassThrough(),
@@ -110,6 +111,7 @@ describe('engine stream 서비스', () => {
     test('동시 stream 상한을 넘으면 거부합니다', async () => {
         const service = createEngineStreamService({
             dockerEngineClient: {
+                getContainers: async () => [],
                 openContainerLogStream: async () => ({ stream: new PassThrough(), tty: true }),
                 openContainerStatsStream: async () => new PassThrough(),
                 openEventStream: async () => new PassThrough(),

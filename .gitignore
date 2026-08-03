@@ -13,3 +13,5 @@ coverage/
 runtime/
 .omo/
 .playwright-mcp/
+.opencode/
+nginx-gui-server-block.png
