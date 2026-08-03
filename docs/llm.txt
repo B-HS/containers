@@ -1,0 +1,387 @@
+================================================================================
+CONTAINERS — AI-READY PROJECT REFERENCE
+================================================================================
+Self-hosted Docker management panel. A single web UI to control Docker
+containers, deploy workloads behind Nginx, view traffic analytics, and manage
+backups — hardened like a production control plane.
+
+Monorepo: Bun workspace (`apps/*`, `packages/*`).
+Runtime: Bun 1.3.14, TypeScript strict, all dependencies exact-pinned.
+Run: `docker compose build && docker compose up -d --wait` then http://127.0.0.1:8080
+
+TABLE OF CONTENTS
+1. ARCHITECTURE
+2. SERVICE / PROCESS MAP
+3. DATA MODEL (SQLite tables)
+4. AUTH & AUTHORIZATION
+5. API SURFACE (public API)
+6. ENGINE-AGENT INTERNAL API
+7. TRAFFIC-WORKER INTERNAL API
+8. NGINX & RATE LIMITING
+9. SECURITY MODEL & GUARDS
+10. DEPLOYMENT PIPELINE
+11. BACKUP & RESTORE
+12. DEVELOPMENT COMMANDS
+================================================================================
+
+
+================================================================================
+1. ARCHITECTURE
+================================================================================
+5 containers via docker-compose. All internal services authenticate to each
+other with HMAC-SHA256 shared secrets (nonce + timestamp, 30s skew). Docker
+Engine API is accessed ONLY through the engine-agent.
+
+  Browser ──► nginx (127.0.0.1:8080, edge) ──► web (Next.js, :3000)
+      │            │  /api/* ──► api (:3001)
+      │            └  /status (stub_status)
+      └── nginx.conf managed by engine-agent via /v1/nginx/config/apply
+
+  api (:3001) ──► engine-agent (:3002, HMAC) ──► Docker Engine (socket)
+             └─► traffic-worker (:3003, HMAC)
+
+Networks (docker):
+  control   internal:true  — api, engine-agent, traffic-worker, nginx
+  ingress   internal:true  — web, nginx, api
+  probe     internal:true  — engine-agent + deployment staging (healthcheck)
+  edge      (default)      — user workloads (non-internal, internet egress)
+
+Volumes:
+  agent-credentials, artifacts, backups, control-data, nginx-config,
+  nginx-logs, registry-credentials, traffic-credentials, traffic-data
+
+Secrets are file-backed (mode 0600), auto-generated on first boot, mounted at
+/credentials, /traffic-credentials, /registry-credentials, /data. No .env.
+
+Key source layout:
+  apps/api/            Hono control-plane: auth, RBAC, jobs, backups, uploads,
+                       deployments, nginx routes, notifications, audit
+  apps/engine-agent/   Docker Engine client: containers, exec, streams, stats,
+                       image pull/load, nginx config apply, registry creds
+  apps/traffic-worker/ Access-log ingestion, analytics aggregation, export
+  apps/web/            Next.js App Router panel (ko/en/ja)
+  packages/contracts/  Shared Zod schemas (single source of DTO truth)
+  packages/db-schema/  Drizzle schema + SQLite migrations
+  packages/config/     env parsing (Zod) + secret loading
+
+
+================================================================================
+2. SERVICE / PROCESS MAP
+================================================================================
+api            Port 3001 (internal). Compose: apps/api/src/server.ts →
+               createApp (apps/api/src/compose/create-app.ts) mounts all routes.
+engine-agent   Port 3002 (internal). Docker socket owner. Routes under /v1/*
+               HMAC-guarded; /ws/exec/* is ticket-gated (not HMAC).
+traffic-worker Port 3003 (internal). Reads nginx access.log JSONL, ingests to
+               traffic.sqlite, serves analytics.
+web            Port 3000 (internal). Next.js SSR + client, proxied by nginx.
+nginx          Port 8080/8081. Edge reverse proxy; 8081 is stub_status.
+
+Internal auth (packages/contracts/src/internal-auth.ts):
+  Header X-Internal-Timestamp (ms) + X-Internal-Nonce (uuid) +
+  X-Internal-Signature = HMAC-SHA256(secret, `${method}\n${path}\n${timestamp}\n${nonce}\n${body}`).
+  Nonce dedup + timestamp skew <= 30s. Secrets differ per link (api↔agent,
+  api↔traffic) in separate volume files.
+
+
+================================================================================
+3. DATA MODEL (SQLite — control.sqlite unless noted)
+================================================================================
+Better Auth core: user, session, account, verification
+  user(id, name, email, emailVerified, createdAt, updatedAt)
+  session(id, expiresAt, token, userId)
+RBAC:            user_role(userId PK, role, disabledAt, createdAt, updatedAt)
+  role ∈ owner|admin|operator|viewer|auditor
+Invitation:      invitation(id, tokenHash, email, role, expiresAt, revokedAt,
+                           createdBy)
+Audit:           audit_log(id, actorId, authMethod, operation, targetType,
+                           targetId, requestId, result, sourceIp, detail,
+                           createdAt)  — append-only; sourceIp from X-Real-IP
+API keys:        api_key(id, name, prefix, tokenHash, scopes, createdBy,
+                           expiresAt, revokedAt, lastUsedAt)
+Uploads:         artifact(id, fileName, mediaType, sha256, sizeBytes, status,
+                          storagePath, createdBy)
+                 upload_session(id, idempotencyKey, fileName, mediaType,
+                          expectedSha256, expectedSizeBytes, receivedBytes,
+                          status, temporaryPath, createdBy, expiresAt)
+                 upload_chunk(id, sessionId, offsetBytes, sizeBytes, sha256)
+Deployment:      deployment(id, artifactId, containerId, status, createdBy)
+                 deployment_manifest(id, name, version, imageDigest,
+                          commandJson, entrypointJson, environmentKeysJson,
+                          secretsJson, volumesJson, internalPort, protocol,
+                          nanoCpus, memoryBytes, pidsLimit, restartPolicy,
+                          network, healthcheck*, route*, rollout*, createdBy)
+                 deployment_secret(id, reference, ciphertext,
+                          initializationVector, authenticationTag, version)
+                 deployment_release(id, manifestId, previousReleaseId,
+                          containerId, containerName, nginxRouteId,
+                          nginxConfigSha256, status, failureCode, createdBy,
+                          activatedAt, finishedAt)
+Jobs:            operation_job(id, kind, status, payload, result, resourceKey,
+                          failureCode, attempt, maxAttempts, createdBy,
+                          scheduledAt, ... )  kind ∈ backup.create,
+                          backup.restore, deploy.load, deploy.release,
+                          deploy.rollback, image.pull, notification.deliver,
+                          system.prune, traffic.export, upload.finalize
+                 operation_job_event(id, jobId, event, detail)
+Nginx routes:    nginx_route(id, hostname, path, pathMode, targetContainer,
+                          targetPort, protocol, stripPrefix, timeoutSeconds,
+                          bodySizeMegabytes, enabled)
+Notifications:   notification_destination(id, name, type, ciphertext, iv, tag,
+                          enabled, eventTypes, createdBy)
+                 notification_delivery(id, destinationId, jobId, sourceJobId,
+                          eventType, failureCode, status)
+Traffic (traffic.sqlite, separate DB): access_event(s) + checkpoints
+
+
+================================================================================
+4. AUTH & AUTHORIZATION
+================================================================================
+Auth: Better Auth email+password. Public sign-up disabled (404). Session cookie.
+  Login rate limit: nginx `containers_auth_rate` 5r/m burst=5 per $remote_addr
+  + app-level 10/min per X-Real-IP (in-memory, 10k-pruned).
+  Disabled account → generic 401 INVALID_EMAIL_OR_PASSWORD (no enumeration).
+
+Roles: owner > admin > operator > viewer/auditor (auditor = read-only).
+  owner immutable, cannot self-modify. Roles assigned via invitations.
+
+Recent-auth (step-up): all DESTRUCTIVE writes require a session <= 15 min old
+  (`requireRecentRole(headers, roles, 15*60*1000)`). Long-lived sessions that
+  pass 15 min get 401 RECENT_AUTH_REQUIRED → re-login. Enforced on:
+  container create/action/exec/remove, image pull/tag/remove, network/volume
+  create+remove, prune, registry-credential CRUD, deployment manifest/release/
+  secret write, backup write/restore, api-key create/revoke, user update,
+  invitation create, nginx route/config, job cancel, maintenance toggle,
+  exec-ticket.
+
+API keys: `ctk_` + 32-byte random; only SHA-256 stored; scopes deny-by-default.
+  authenticate() inner-joins user_role and rejects if disabledAt set or revoked.
+  Disabling/demoting a user revokes their api keys + deletes sessions in one txn.
+  Scopes: artifact:read, artifact:upload, backup:read, backup:write,
+          deployment:read, deployment:write, image:load, secret:read,
+          secret:write.
+  Per-key rate limit 120/min (in-memory).
+
+Management-plane boundary (engine-agent): resources labeled
+  com.docker.compose.project=containers OR managed-by=containers-control-plane
+  are protected from user exec/actions/logs/stats/remove/prune. User-created
+  containers cannot carry these labels (schema refine rejects them).
+
+
+================================================================================
+5. API SURFACE (public API, apps/api — all under /api)
+================================================================================
+Auth (better-auth): /api/auth/* — sign-in/email, sign-up/email (404), session.
+  /api/bootstrap/status GET (public) | /api/bootstrap/owner POST (first boot)
+  /api/session GET | /api/invitations POST (owner/admin recent) |
+  /api/invitations/accept POST | /api/users GET (owner/admin) |
+  /api/users/:id PATCH (owner recent, demote/disable revokes keys+sessions)
+
+API keys:        /api/api-keys GET/POST (admin recent), /api/api-keys/:id DELETE
+Audit:           /api/audit GET (owner/admin, read-only)
+Backup:          /api/backups GET/POST (owner), /api/backups/:id/restore POST,
+                 /api/backups/:id DELETE (owner + recent)
+Control plane:   /api/control-plane/status GET (owner/admin)
+Maintenance:     /api/maintenance GET (all) / POST (owner recent)
+Engine:          /api/system/engine GET, /api/containers GET,
+                 /api/containers/:containerId GET, .../logs GET
+Container ctrl:  /api/containers/:containerId/top|changes GET (all roles),
+                 .../wait POST (operator)
+                 /api/containers POST (admin recent, create)
+                 /api/containers/:containerId/actions POST (admin recent:
+                   kill|pause|remove|rename|restart|start|stop|unpause|update)
+                 /api/containers/:containerId/exec POST (owner recent)
+                 /api/exec/ws/:ticket WS (owner recent + maintenance gate)
+Images:          /api/images GET, /api/images/:imageId/removal-impact GET,
+                 /api/images/pull POST (admin recent, durable job),
+                 /api/images/:imageId/tag POST (admin recent),
+                 /api/images/:imageId DELETE (admin recent, confirmation)
+Networks/Volumes:/api/networks GET | POST (admin recent)
+                 /api/volumes GET | POST (admin recent)
+Prune:           /api/system/prune-preview GET (admin),
+                 /api/system/prune POST (owner recent, preview-sha required)
+Registry creds:  /api/registry-credentials GET (admin) |
+                 POST/:credentialId/DELETE (owner recent)
+Deployment:      /api/artifacts/:artifactId/load POST (deployment:write or admin)
+                 /api/deployment-manifests GET/POST/DELETE (admin recent write)
+                 /api/deployment-releases GET | POST (owner recent) |
+                 .../:id/rollback POST (owner recent)
+                 /api/deployment-manifests/:manifestId/releases POST
+                 /api/deployment-secrets GET/POST/DELETE (admin recent write)
+Jobs:            /api/jobs GET, /api/jobs/backup-schedule GET,
+                 /api/jobs/:id GET, .../events GET, .../cancel POST (owner)
+Nginx:           /api/nginx/status GET, /api/nginx/config GET,
+                 /api/nginx/config/apply POST (admin recent),
+                 /api/nginx/routes GET | POST/DELETE (admin recent)
+Notification:    /api/notification-destinations GET/POST (admin recent) |
+                 /api/notification-destinations/:id PATCH/DELETE |
+                 /api/notification-destinations/:id/test POST (admin recent)
+Traffic:         /api/traffic/analytics GET, /api/traffic/live GET (SSE),
+                 /api/traffic/summary GET, /api/traffic/exports POST (owner),
+                 /api/traffic/exports/:jobId/download GET (owner/admin)
+Upload:          /api/artifacts GET (all), /api/uploads/sessions POST,
+                 /api/uploads/sessions/:sessionId/chunks PUT,
+                 .../finalize POST (artifact:upload or operator+, 64MiB chunks,
+                 sequential offset, per-chunk sha256, final full-file hash)
+Streams:         /api/stream/containers/:id/logs|stats, /api/stream/events
+                 (SSE, role-gated; management-plane events filtered)
+
+Response envelope: { "success": true, "data": ... } |
+  { "success": false, "error": { "code": "...", "message": "...", "requestId": "..." } }
+  Codes are UPPER_SNAKE (AUTH_REQUIRED, FORBIDDEN, RECENT_AUTH_REQUIRED,
+  MANAGEMENT_RESOURCE_PROTECTED, NGINX_CONFIG_CONFLICT, ...).
+
+
+================================================================================
+6. ENGINE-AGENT INTERNAL API (apps/engine-agent — HMAC under /v1)
+================================================================================
+All /v1/* routes require the HMAC shared-secret header set. Container IDs may
+be full ID, 12-char prefix, or name. Management-plane containers rejected.
+
+Query:   /v1/containers GET | /v1/containers/:id GET | .../logs|top|changes
+         /v1/containers/:id/wait POST | /v1/system/overview GET
+Control: /v1/containers POST (create; rejects host/none net + protected volumes
+           + management labels; validates image registry host via DNS)
+         /v1/containers/:id/actions POST (management-guarded; start included)
+         /v1/containers/:id/exec POST (owner recent; management-guarded)
+         /v1/containers/:id/networks/connect|disconnect POST
+         /v1/containers/:id/probe POST (healthcheck; management-guarded)
+         /v1/images GET | /v1/images/:id/tag POST | /v1/images/pull POST
+         /v1/images/load POST | /v1/images/:id DELETE
+         /v1/images/:id/removal-impact GET
+         /v1/networks GET/POST | /v1/volumes GET/POST
+         /v1/system/prune-preview GET | /v1/system/prune-build-cache POST
+Exec:    /v1/containers/:id/exec-tickets POST (owner recent) → returns ticket
+         /ws/exec/:ticket WS (NOT HMAC; single-use 32B ticket, 30s TTL,
+         10 concurrent sessions, idle/max-duration caps)
+Nginx:   /v1/nginx/config GET | /v1/nginx/config/apply POST
+         (apply: writes candidate → nginx -t → atomic rename → HUP → probe)
+Registry creds: /v1/registry-credentials GET/POST | /v1/registry-credentials/:id
+         POST/DELETE (AES-256-GCM, key in /registry-credentials)
+Health:  /health GET (public on 3002)
+
+
+================================================================================
+7. TRAFFIC-WORKER INTERNAL API (apps/traffic-worker — HMAC under /v1)
+================================================================================
+/v1/traffic/analytics GET   — aggregates with filters: windowMinutes,
+                              statusClass, pathPrefix, limit
+/v1/traffic/ingestion GET   — ingestion status/checkpoint
+/v1/traffic/live GET        — SSE live tail (bounded subscribers, masked IP)
+/v1/traffic/summary GET     — top-level counters for dashboard
+/v1/traffic/exports/:jobId POST — durable CSV/NDJSON export job
+/v1/backups/:id POST        — snapshot traffic.sqlite
+/v1/backups/:id/restore POST— restore traffic.sqlite (digest-verified)
+
+
+================================================================================
+8. NGINX & RATE LIMITING
+================================================================================
+infra/nginx/nginx.conf + managed current.conf (edited via GUI/raw + apply).
+Protected contract (engine-agent verifyProtectedContract) REQUIRES:
+  pid /tmp/nginx.pid, access_log containers_json, listen 8080/8081,
+  location /api/, location = /status, stub_status,
+  proxy_pass containers_api + containers_web,
+  upstream containers_api/containers_web with server api:3001 / web:3000,
+  map $remote_addr $containers_client_ip,
+  limit_req_zone api 300r/m + auth 5r/m + status 429,
+  limit_req zone usage in /api/ (burst<=1000) and auth location (burst<=100),
+  CSP / X-Content-Type-Options / X-Frame-Options headers on panel block.
+  Nested-location rate-limit smuggling is rejected (top-level directives only).
+  Applies to BOTH panel.containers.local and api.containers.local server blocks.
+
+Every proxy location sets `X-Real-IP $remote_addr` (spoof-proof) and forwards
+X-Forwarded-For. Route blocks (user proxy routes) also set X-Real-IP.
+Rate zones key on $containers_client_ip = $remote_addr (never client headers).
+
+Auth location uses regex `location ~ ^/api/auth/sign-in/email/?$` to defeat
+trailing-slash bypass.
+
+
+================================================================================
+9. SECURITY MODEL & GUARDS
+================================================================================
+External attack surface: only nginx 127.0.0.1:8080 (login). All mutation is
+behind session auth + role + recent-auth. No anonymous mutation.
+
+SSRF defenses:
+  - Webhook delivery: https-only, dotted hostname, DNS lookup(all,verbatim) →
+    reject if ANY resolved address is private/loopback/ULA/link-local/
+    6to4/Teredo/::ffff-mapped; public IPv6 allowed; redirect:manual.
+  - Image pull / container create image: host extracted → DNS resolve-all →
+    reject private; blocklist rejects internal hostnames + IPv4 shorthand +
+    IPv6 special prefixes at schema level.
+  - probeContainer: target restricted to non-management Docker-network
+    containers by name (no arbitrary host).
+
+Filesystem/archive:
+  - Artifact inspect rejects path traversal (`..`, `\`, NUL), enforces
+    entry/expansion/compression-ratio limits, OCI digest verification.
+  - loadImage confines to realpath(artifactRoot/ready) — symlink-safe.
+  - Upload paths are server-generated UUIDs; chunks sequential + digest-checked.
+
+Orphan hygiene (15-min GC): cleanupExpiredSessions removes expired session
+.part files, unreferenced ready/*.archive and quarantine/*.part (double DB
+re-check before delete to avoid finalize race).
+
+Backup restore: manifest digest+size verified; control snapshot integrity_check
++ FK check (inside txn before COMMIT) + table/column schema match; pre-restore
+recovery snapshot + compensating rollback. Preserved on restore (security
+invariants): auth tables, api_key, deployment_secret, notification_destination,
+operation_job(+event), upload_session/chunk, artifact, audit_log.
+
+Management-plane: control/ingress/probe/host networks and the 9 protected
+volumes cannot be used by user-created containers or deployment manifests.
+registry-credentials volume is mounted ONLY into engine-agent.
+
+Secrets: AES-256-GCM at rest (deployment secrets, notification webhooks,
+registry credentials) with per-service master keys; api keys SHA-256; internal
+HMAC per-link. All files 0600, auto-generated, no committed .env.
+
+
+================================================================================
+10. DEPLOYMENT PIPELINE
+================================================================================
+1. Upload artifact (chunked, digest-verified) → /artifacts/:id/load
+   (durable job) → image available.
+2. Create deployment_manifest: imageDigest, command, entrypoint, env keys,
+   secrets (by reference), volumes, port, protocol, healthcheck, route,
+   rollout params. protectedNetworks/hostnames rejected.
+3. Release (deploy.release job): engine-agent creates container on `probe`
+   network → healthcheck probe → connect manifest.network + disconnect probe →
+   nginx route upsert → observe → mark healthy. Old container stopped.
+4. Rollback: connect previous release, switch route, verify, disconnect.
+   Failed/interrupted releases are disconnected from probe/control and stopped.
+
+
+================================================================================
+11. BACKUP & RESTORE
+================================================================================
+Backup = control.sqlite snapshot + traffic.sqlite snapshot + manifest.json
+(createdAt, digests, sizes). Scheduled via backup_schedule (interval, 24h
+default, retention 7). Restore is OWNER + recent-auth + UUID confirmation,
+runs under maintenance mode with pre-restore recovery snapshot and automatic
+rollback on failure. See docs/BACKUP-RESTORE.md.
+
+
+================================================================================
+12. DEVELOPMENT COMMANDS
+================================================================================
+bun install              # install deps (frozen via bun.lock)
+bun run dev              # run all workspaces in watch
+bun run typecheck        # tsc --noEmit across all workspaces
+bun run lint             # eslint .
+bun run format           # prettier --write .
+bun test                 # bun test (unit + integration, SQLite in-memory)
+bun run build            # production build all workspaces
+bun run check            # typecheck + lint + test + build
+
+Docker:
+  ./scripts/setup-macos.sh        # interactive macOS setup + smoke test
+  docker compose build
+  docker compose up -d --wait
+  docker compose ps               # expect 5 healthy services
+
+Tests (160) cover: auth/api-key, backup/restore, deployment release state
+machine, nginx config apply + protected contract, upload chunk integrity,
+engine control guards, stream parsers, traffic analytics.

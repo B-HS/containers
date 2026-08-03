@@ -4,3 +4,4 @@ dist
 node_modules
 bun.lock
 apps/web/next-env.d.ts
+docs/llm.txt

@@ -66,4 +66,17 @@ packages/
 infra/nginx/      edge nginx (rate limits, security headers)
 ```
 
-Documentation lives in [`docs/`](docs/README.md).
+## For AI
+
+Coding agents should read **`docs/llm.txt`** first — it is a single, self-contained
+reference of the architecture, every API endpoint, the SQLite schema, the auth
+and security model, and the deployment pipeline, tuned for LLM consumption.
+
+- `docs/llm.txt` — full AI-ready project reference (endpoints, DB, security, flows)
+- `docs/ci-examples/` — ready-to-drop CI workflows:
+    - `github-actions.yml` — `.github/workflows/ci.yml`
+    - `gitea-actions.yml` — `.gitea/workflows/ci.yml`
+    - `gitlab-ci.yml` — `.gitlab-ci.yml`
+- `docs/README.md` — human-facing documentation index
+
+Human-facing documentation lives in [`docs/`](docs/README.md).
