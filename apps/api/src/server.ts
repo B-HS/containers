@@ -10,6 +10,14 @@ import { createNginxStatusClient } from './service/shared/nginx/create-nginx-sta
 import { createNginxRouteProbeClient } from './service/shared/nginx/create-nginx-route-probe-client'
 import { createTrafficWorkerClient } from './service/shared/traffic-worker-client/create-traffic-worker-client'
 import { compose } from './compose/compose'
+import { runStartupTasks, startRecurringTask } from './boot/run-startup-tasks'
+
+const MINUTE_MS = 60 * 1_000
+const HOUR_MS = 60 * MINUTE_MS
+const BACKUP_SCHEDULE_INTERVAL_MS = MINUTE_MS
+const CONTAINER_CLEANUP_INTERVAL_MS = HOUR_MS
+const JOB_CLEANUP_INTERVAL_MS = HOUR_MS
+const UPLOAD_SESSION_CLEANUP_INTERVAL_MS = 15 * MINUTE_MS
 
 const envSchema = z
     .object({
@@ -83,10 +91,12 @@ const composed = compose({
         backupRetentionCount: env.BACKUP_RETENTION_COUNT,
         backupRoot: env.BACKUP_ROOT,
         controlMigrationsPath: env.CONTROL_MIGRATIONS_PATH,
+        deploymentSecretKeyFile: env.DEPLOYMENT_SECRET_KEY_FILE,
         diskHardAvailableBytes: env.UPLOAD_DISK_HARD_AVAILABLE_BYTES,
         diskSoftAvailableBytes: env.UPLOAD_DISK_SOFT_AVAILABLE_BYTES,
         invitationBaseUrl: env.PANEL_PUBLIC_URL,
         nginxStatusUrl: env.NGINX_STATUS_URL,
+        notificationSecretKeyFile: env.NOTIFICATION_SECRET_KEY_FILE,
         probeNetworkName: env.PROBE_NETWORK_NAME,
         protectedHostnames: ['api.containers.local', 'panel.containers.local', new URL(env.PANEL_PUBLIC_URL).hostname],
         trafficWorkerInternalUrl: env.TRAFFIC_WORKER_INTERNAL_URL,
@@ -116,20 +126,39 @@ const {
     uploadService,
 } = composed
 
-await deploymentReleaseService.reconcileInterrupted()
-await deploymentReleaseService.cleanupExpiredContainers()
-setInterval(() => void deploymentReleaseService.cleanupExpiredContainers().catch(() => undefined), 60 * 60 * 1_000)
-await uploadService.cleanupExpiredSessions().catch(() => undefined)
-setInterval(() => void uploadService.cleanupExpiredSessions().catch(() => undefined), 15 * 60 * 1_000)
-await operationJobService.reconcileInterrupted()
-operationJobService.start()
-await notificationDeliveryService.reconcileQueued()
-await nginxProxyRouteService.reconcileRoutes().catch((error: unknown) => {
-    console.error('[api] nginx route reconcile failed', error)
+await runStartupTasks({
+    tasks: [
+        { name: 'deployment-release-reconcile-interrupted', run: () => deploymentReleaseService.reconcileInterrupted() },
+        { name: 'deployment-release-cleanup-expired-containers', run: () => deploymentReleaseService.cleanupExpiredContainers() },
+        { name: 'upload-cleanup-expired-sessions', run: () => uploadService.cleanupExpiredSessions() },
+        { name: 'operation-job-reconcile-interrupted', run: () => operationJobService.reconcileInterrupted() },
+        { name: 'operation-job-start', run: async () => operationJobService.start() },
+        { name: 'notification-delivery-reconcile-queued', run: () => notificationDeliveryService.reconcileQueued() },
+        { name: 'nginx-route-reconcile', run: () => nginxProxyRouteService.reconcileRoutes() },
+        { name: 'backup-schedule-enqueue-if-due', run: () => backupScheduleService.enqueueIfDue() },
+    ],
 })
-await backupScheduleService.enqueueIfDue()
-setInterval(() => void backupScheduleService.enqueueIfDue().catch(() => undefined), 60 * 1_000)
-setInterval(() => void operationJobService.cleanupFinished().catch(() => undefined), 60 * 60 * 1_000)
+
+startRecurringTask({
+    intervalMs: CONTAINER_CLEANUP_INTERVAL_MS,
+    name: 'deployment-release-cleanup-expired-containers',
+    run: () => deploymentReleaseService.cleanupExpiredContainers(),
+})
+startRecurringTask({
+    intervalMs: UPLOAD_SESSION_CLEANUP_INTERVAL_MS,
+    name: 'upload-cleanup-expired-sessions',
+    run: () => uploadService.cleanupExpiredSessions(),
+})
+startRecurringTask({
+    intervalMs: BACKUP_SCHEDULE_INTERVAL_MS,
+    name: 'backup-schedule-enqueue-if-due',
+    run: () => backupScheduleService.enqueueIfDue(),
+})
+startRecurringTask({
+    intervalMs: JOB_CLEANUP_INTERVAL_MS,
+    name: 'operation-job-cleanup-finished',
+    run: () => operationJobService.cleanupFinished(),
+})
 
 const app = createApp({
     apiKeyService,
