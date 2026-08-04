@@ -124,6 +124,9 @@ setInterval(() => void uploadService.cleanupExpiredSessions().catch(() => undefi
 await operationJobService.reconcileInterrupted()
 operationJobService.start()
 await notificationDeliveryService.reconcileQueued()
+await nginxProxyRouteService.reconcileRoutes().catch((error: unknown) => {
+    console.error('[api] nginx route reconcile failed', error)
+})
 await backupScheduleService.enqueueIfDue()
 setInterval(() => void backupScheduleService.enqueueIfDue().catch(() => undefined), 60 * 1_000)
 setInterval(() => void operationJobService.cleanupFinished().catch(() => undefined), 60 * 60 * 1_000)

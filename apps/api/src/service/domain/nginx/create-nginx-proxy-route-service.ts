@@ -95,6 +95,28 @@ export const renderNginxProxyRoutes = (currentConfig: string, routes: NginxProxy
     return `${withoutRoutes.slice(0, closingBraceIndex).trimEnd()}\n${block}${withoutRoutes.slice(closingBraceIndex).trimStart()}`
 }
 
+const toUpdateRecord = (route: NginxProxyRoute) => ({
+    bodySizeMegabytes: route.bodySizeMegabytes,
+    enabled: route.enabled,
+    hostname: route.hostname,
+    path: route.path,
+    pathMode: route.pathMode,
+    protocol: route.protocol,
+    stripPrefix: route.stripPrefix,
+    targetContainer: route.targetContainer,
+    targetPort: route.targetPort,
+    timeoutSeconds: route.timeoutSeconds,
+    updatedAt: new Date(route.updatedAt),
+})
+
+const toInsertRecord = (route: NginxProxyRoute): NginxRouteRow => ({
+    ...toUpdateRecord(route),
+    createdAt: new Date(route.createdAt),
+    id: route.id,
+})
+
+const describeFailure = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
 export const createNginxProxyRouteService = ({
     db,
     engineAgentClient,
@@ -102,6 +124,17 @@ export const createNginxProxyRouteService = ({
     protectedContainers,
     protectedHostnames,
 }: NginxProxyRouteServiceDependencies) => {
+    let pending: Promise<unknown> = Promise.resolve()
+
+    const serialize = <T>(task: () => Promise<T>) => {
+        const next = pending.then(task, task)
+        pending = next.then(
+            () => undefined,
+            () => undefined,
+        )
+        return next
+    }
+
     const assertProtectedTarget = (payload: { targetContainer: string }) => {
         if (protectedContainers.includes(payload.targetContainer)) {
             throw createAppError('NGINX_ROUTE_PROTECTED_TARGET')
@@ -124,72 +157,106 @@ export const createNginxProxyRouteService = ({
         })
     }
 
-    return {
-        create: async (input: unknown) => {
-            const payload = nginxProxyRouteInputSchema.parse(input)
-            if (protectedHostnames.includes(payload.hostname)) {
-                throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
+    const applyWithCompensation = async (routes: NginxProxyRoute[], compensate: () => Promise<void>) => {
+        try {
+            return await applyRoutes(routes)
+        } catch (error) {
+            try {
+                await compensate()
+            } catch (compensationError) {
+                throw createAppError('NGINX_CONFIG_APPLY_FAILED', error, {
+                    applyFailure: describeFailure(error),
+                    compensationFailure: describeFailure(compensationError),
+                    compensationSucceeded: false,
+                })
             }
-            assertProtectedTarget(payload)
-            const collision = await db.findCollision(payload.hostname, payload.path, payload.pathMode)
-            if (collision !== undefined) {
-                throw createAppError('NGINX_ROUTE_COLLISION')
-            }
+            throw error
+        }
+    }
 
-            const timestamp = now()
-            const route = nginxProxyRouteListSchema.element.parse({
-                ...payload,
-                createdAt: timestamp.toISOString(),
-                id: randomUUID(),
-                updatedAt: timestamp.toISOString(),
-            })
-            const result = await applyRoutes([...(await list()), route])
-            await db.insert({
-                ...payload,
-                createdAt: timestamp,
-                id: route.id,
-                updatedAt: timestamp,
-            })
-            return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
-        },
+    return {
+        create: async (input: unknown) =>
+            serialize(async () => {
+                const payload = nginxProxyRouteInputSchema.parse(input)
+                if (protectedHostnames.includes(payload.hostname)) {
+                    throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
+                }
+                assertProtectedTarget(payload)
+                const collision = await db.findCollision(payload.hostname, payload.path, payload.pathMode)
+                if (collision !== undefined) {
+                    throw createAppError('NGINX_ROUTE_COLLISION')
+                }
+
+                const timestamp = now()
+                const route = nginxProxyRouteListSchema.element.parse({
+                    ...payload,
+                    createdAt: timestamp.toISOString(),
+                    id: randomUUID(),
+                    updatedAt: timestamp.toISOString(),
+                })
+                const routes = [...(await list()), route]
+                await db.insert(toInsertRecord(route))
+                const result = await applyWithCompensation(routes, () => db.delete(route.id))
+                return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
+            }),
         list,
-        remove: async (id: string, confirmation: string) => {
-            const route = (await list()).find((candidate) => candidate.id === id)
-            if (!route) {
-                throw createAppError('NGINX_ROUTE_NOT_FOUND')
-            }
-            if (confirmation !== `${route.hostname}${route.path}`) {
-                throw createAppError('CONFIRMATION_MISMATCH')
-            }
-            const result = await applyRoutes((await list()).filter((candidate) => candidate.id !== id))
-            await db.delete(id)
-            return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
-        },
-        upsert: async (input: unknown) => {
-            const payload = nginxProxyRouteInputSchema.parse(input)
-            if (protectedHostnames.includes(payload.hostname)) {
-                throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
-            }
-            assertProtectedTarget(payload)
-            const existing = (await list()).find(
-                (route) => route.hostname === payload.hostname && route.path === payload.path && route.pathMode === payload.pathMode,
-            )
-            const timestamp = now()
-            const route = nginxProxyRouteListSchema.element.parse({
-                ...payload,
-                createdAt: existing?.createdAt ?? timestamp.toISOString(),
-                id: existing?.id ?? randomUUID(),
-                updatedAt: timestamp.toISOString(),
-            })
-            const routes = [...(await list()).filter((candidate) => candidate.id !== existing?.id), route]
-            const result = await applyRoutes(routes)
-            if (existing) {
-                await db.update(existing.id, { ...payload, updatedAt: timestamp })
-            } else {
-                await db.insert({ ...payload, createdAt: timestamp, id: route.id, updatedAt: timestamp })
-            }
-            return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
-        },
+        reconcileRoutes: async () =>
+            serialize(async () => {
+                const routes = await list()
+                const state = await engineAgentClient.getNginxConfig()
+                const config = renderNginxProxyRoutes(state.config, routes)
+                if (config === state.config) {
+                    return { applied: false, configSha256: state.sha256 }
+                }
+                const result = await engineAgentClient.applyNginxConfig({ config, expectedSha256: state.sha256 })
+                return { applied: true, configSha256: result.sha256 }
+            }),
+        remove: async (id: string, confirmation: string) =>
+            serialize(async () => {
+                const routes = await list()
+                const route = routes.find((candidate) => candidate.id === id)
+                if (!route) {
+                    throw createAppError('NGINX_ROUTE_NOT_FOUND')
+                }
+                if (confirmation !== `${route.hostname}${route.path}`) {
+                    throw createAppError('CONFIRMATION_MISMATCH')
+                }
+                await db.delete(id)
+                const result = await applyWithCompensation(
+                    routes.filter((candidate) => candidate.id !== id),
+                    () => db.insert(toInsertRecord(route)),
+                )
+                return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
+            }),
+        upsert: async (input: unknown) =>
+            serialize(async () => {
+                const payload = nginxProxyRouteInputSchema.parse(input)
+                if (protectedHostnames.includes(payload.hostname)) {
+                    throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
+                }
+                assertProtectedTarget(payload)
+                const current = await list()
+                const existing = current.find(
+                    (route) => route.hostname === payload.hostname && route.path === payload.path && route.pathMode === payload.pathMode,
+                )
+                const timestamp = now()
+                const route = nginxProxyRouteListSchema.element.parse({
+                    ...payload,
+                    createdAt: existing?.createdAt ?? timestamp.toISOString(),
+                    id: existing?.id ?? randomUUID(),
+                    updatedAt: timestamp.toISOString(),
+                })
+                const routes = [...current.filter((candidate) => candidate.id !== existing?.id), route]
+                if (existing) {
+                    await db.update(existing.id, { ...payload, updatedAt: timestamp })
+                } else {
+                    await db.insert(toInsertRecord(route))
+                }
+                const result = await applyWithCompensation(routes, () =>
+                    existing ? db.update(existing.id, toUpdateRecord(existing)) : db.delete(route.id),
+                )
+                return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
+            }),
     }
 }
 
