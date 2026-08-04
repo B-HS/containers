@@ -1,7 +1,10 @@
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
+import { resolveTrustedOrigins } from '@containers/config/origin'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { schema } from '@containers/db-schema/schema'
 import { betterAuth } from 'better-auth'
+
+const HTTPS_PREFIX = 'https://'
 
 type AuthDependencies = {
     baseUrl: string
@@ -12,6 +15,7 @@ type AuthDependencies = {
 
 export const createAuth = ({ baseUrl, db, secret, trustedOrigins }: AuthDependencies) =>
     betterAuth({
+        advanced: { useSecureCookies: baseUrl.startsWith(HTTPS_PREFIX) },
         baseURL: baseUrl,
         database: drizzleAdapter(db, { provider: 'sqlite', schema }),
         emailAndPassword: {
@@ -21,7 +25,7 @@ export const createAuth = ({ baseUrl, db, secret, trustedOrigins }: AuthDependen
             minPasswordLength: 12,
         },
         secret,
-        trustedOrigins,
+        trustedOrigins: resolveTrustedOrigins({ baseUrl, origins: trustedOrigins }),
     })
 
 export type Auth = ReturnType<typeof createAuth>

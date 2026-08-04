@@ -29,7 +29,7 @@
 23. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0028 모노레포 계층·DB·쿼리·env 접근 컨벤션 정합)
 24. `history/` — 세션별 작업 이력 (시간순, 현재 상태가 아님)
 
-macOS 에서 처음 설치·기동할 때는 저장소 루트의 `scripts/setup-macos.sh` 를 실행한다(환경 확인 → compose 검증·override 생성 → 기동 → 스모크 테스트).
+처음 설치·기동할 때는 저장소 루트의 `scripts/setup.sh` 를 실행한다(환경 확인 → compose 검증·override 생성 → 기동 → 스모크 테스트). macOS(Docker Desktop)와 Linux(rootful Docker Engine)를 모두 지원하며, Linux 에서는 `/var/run/docker.sock` 의 그룹 GID 를 탐지해 override 의 `engine-agent.group_add` 에 기록한다. 패널 포트·호스트를 바꾸면 `AUTH_BASE_URL`·`PANEL_PUBLIC_URL`·`AUTH_TRUSTED_ORIGINS` 를 함께 기록해 인증 origin 검사가 깨지지 않게 한다. `scripts/setup-macos.sh` 는 `setup.sh` 로 위임하는 하위호환 래퍼다.
 
 ## 적용 우선순위
 

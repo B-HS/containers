@@ -5,10 +5,11 @@
     "type": "module",
     "exports": {
         "./env": "./src/env.ts",
+        "./origin": "./src/origin.ts",
         "./secret": "./src/secret.ts"
     },
     "scripts": {
-        "build": "bun build src/env.ts src/secret.ts --outdir dist --target bun",
+        "build": "bun build src/env.ts src/origin.ts src/secret.ts --outdir dist --target bun",
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
