@@ -45,10 +45,15 @@ rotate_access_log() {
 nginx -c /etc/nginx/managed/current.conf -g 'daemon off;' &
 nginx_pid=$!
 
+# PID 1 is this shell, so signals sent to the container (docker kill --signal)
+# must be relayed to the nginx master. HUP drives config reload, USR1 reopens logs.
 forward_signal() {
-    kill -TERM "$nginx_pid" 2>/dev/null || true
+    kill -"$1" "$nginx_pid" 2>/dev/null || true
 }
-trap forward_signal INT TERM
+trap 'forward_signal TERM' INT TERM
+trap 'forward_signal HUP' HUP
+trap 'forward_signal USR1' USR1
+trap 'forward_signal QUIT' QUIT
 
 (
     while true; do
