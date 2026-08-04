@@ -1,6 +1,6 @@
 'use client'
 
-import type { FC } from 'react'
+import type { FC, PropsWithChildren } from 'react'
 import { useState } from 'react'
 import {
     AlertDialog,
@@ -16,9 +16,10 @@ import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
 import { Spinner } from '@shared/ui/spinner'
 
-type BackupConfirmDialogProps = {
+type BackupConfirmDialogProps = PropsWithChildren<{
     actionLabel: string
     cancelLabel: string
+    confirmDisabled?: boolean
     confirmationLabel: string
     description: string
     expectedConfirmation: string
@@ -29,11 +30,13 @@ type BackupConfirmDialogProps = {
     pending: boolean
     targetLabel: string
     title: string
-}
+}>
 
 export const BackupConfirmDialog: FC<BackupConfirmDialogProps> = ({
     actionLabel,
     cancelLabel,
+    children,
+    confirmDisabled = false,
     confirmationLabel,
     description,
     expectedConfirmation,
@@ -64,6 +67,7 @@ export const BackupConfirmDialog: FC<BackupConfirmDialogProps> = ({
                     <p className="truncate text-sm font-medium text-text-strong">{targetLabel}</p>
                     <p className="truncate font-mono text-xs tabular-nums text-text-subtle">{expectedConfirmation}</p>
                 </div>
+                {children}
                 <div className="grid gap-2">
                     <Label htmlFor={inputId}>{confirmationLabel}</Label>
                     <Input
@@ -78,7 +82,7 @@ export const BackupConfirmDialog: FC<BackupConfirmDialogProps> = ({
                     <AlertDialogCancel disabled={pending}>{cancelLabel}</AlertDialogCancel>
                     <AlertDialogAction
                         className="bg-destructive text-destructive-foreground hover:opacity-85"
-                        disabled={!matches || pending}
+                        disabled={!matches || pending || confirmDisabled}
                         onClick={(event) => {
                             event.preventDefault()
                             onConfirm(confirmation.trim())

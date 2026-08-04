@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
+import { BACKUP_RESTORE_MODE, type BackupRestoreMode } from '@containers/contracts/backup'
 import { backupQueryOptions, useRemoveBackup, useRestoreBackup } from '@entities/backup/backup.query'
 import { BackupConfirmDialog } from '@features/backup-confirm-dialog/backup-confirm-dialog'
 import { formatBytes } from '@shared/lib/format-bytes'
@@ -12,12 +13,17 @@ import { formatDateTime } from '@shared/lib/format-date-time'
 import { Alert, AlertTitle } from '@shared/ui/alert'
 import { Button } from '@shared/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
+import { Input } from '@shared/ui/input'
+import { Label } from '@shared/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
 import { Skeleton } from '@shared/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@shared/ui/table'
 import { WidgetSection } from '@shared/common/widget-section'
 import { BackupCreateForm } from '@widgets/backup/backup-create-form'
 
 const SKELETON_ROW_COUNT = 3
+const RESTORE_MODES = [BACKUP_RESTORE_MODE.PRESERVE_HOST, BACKUP_RESTORE_MODE.FULL]
+const PASSPHRASE_MIN_LENGTH = 12
 
 type BackupDialog = {
     backupId: string
@@ -30,6 +36,8 @@ type BackupWidgetProps = {
 
 export const BackupWidget: FC<BackupWidgetProps> = ({ canManage }) => {
     const [dialog, setDialog] = useState<BackupDialog>()
+    const [restoreMode, setRestoreMode] = useState<BackupRestoreMode>(BACKUP_RESTORE_MODE.PRESERVE_HOST)
+    const [restorePassphrase, setRestorePassphrase] = useState('')
     const translations = useTranslations('Dashboard')
     const backups = useQuery({ ...backupQueryOptions(), enabled: canManage })
     const removeBackup = useRemoveBackup()
@@ -37,13 +45,18 @@ export const BackupWidget: FC<BackupWidgetProps> = ({ canManage }) => {
 
     const items = backups.data ?? []
     const target = items.find((backup) => backup.id === dialog?.backupId)
+    const passphraseTooShort = restorePassphrase !== '' && restorePassphrase.length < PASSPHRASE_MIN_LENGTH
 
-    const closeDialog = () => setDialog(undefined)
+    const closeDialog = () => {
+        setDialog(undefined)
+        setRestoreMode(BACKUP_RESTORE_MODE.PRESERVE_HOST)
+        setRestorePassphrase('')
+    }
 
     const restore = (confirmation: string) => {
         if (!target) return
         restoreBackup.mutate(
-            { backupId: target.id, confirmation },
+            { backupId: target.id, confirmation, mode: restoreMode, passphrase: restorePassphrase === '' ? null : restorePassphrase },
             {
                 onError: (restoreError) => toast.error(restoreError instanceof Error ? restoreError.message : translations('backupFailed')),
                 onSuccess: () => {
@@ -151,11 +164,50 @@ export const BackupWidget: FC<BackupWidgetProps> = ({ canManage }) => {
                     expectedConfirmation={target.id}
                     inputId={`backup-restore-confirmation-${target.id}`}
                     pending={restoreBackup.isPending}
+                    confirmDisabled={passphraseTooShort}
                     targetLabel={target.label ?? target.id}
                     title={translations('backupRestoreTitle')}
                     onConfirm={restore}
                     onOpenChange={closeDialog}
-                />
+                >
+                    <div className="grid gap-2">
+                        <Label htmlFor={`backup-restore-mode-${target.id}`}>{translations('backupRestoreMode')}</Label>
+                        <Select value={restoreMode} onValueChange={(value) => setRestoreMode(value as BackupRestoreMode)}>
+                            <SelectTrigger id={`backup-restore-mode-${target.id}`} className="w-full">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {RESTORE_MODES.map((mode) => (
+                                    <SelectItem key={mode} value={mode}>
+                                        {translations(mode === BACKUP_RESTORE_MODE.FULL ? 'backupRestoreModeFull' : 'backupRestoreModePreserveHost')}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-text-subtle">
+                            {translations(
+                                restoreMode === BACKUP_RESTORE_MODE.FULL
+                                    ? 'backupRestoreModeFullDescription'
+                                    : 'backupRestoreModePreserveHostDescription',
+                            )}
+                        </p>
+                    </div>
+                    {target.secretsIncluded ? (
+                        <div className="grid gap-2">
+                            <Label htmlFor={`backup-restore-passphrase-${target.id}`}>{translations('backupPassphrase')}</Label>
+                            <Input
+                                id={`backup-restore-passphrase-${target.id}`}
+                                type="password"
+                                autoComplete="off"
+                                minLength={PASSPHRASE_MIN_LENGTH}
+                                value={restorePassphrase}
+                                aria-invalid={passphraseTooShort}
+                                onChange={(event) => setRestorePassphrase(event.target.value)}
+                            />
+                            <p className="text-xs text-text-subtle">{translations('backupRestorePassphraseDescription')}</p>
+                        </div>
+                    ) : null}
+                </BackupConfirmDialog>
             ) : null}
             {target && dialog?.mode === 'remove' ? (
                 <BackupConfirmDialog

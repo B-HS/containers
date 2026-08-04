@@ -1,7 +1,7 @@
 'use client'
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { backupManifestSchema, backupListSchema } from '@containers/contracts/backup'
+import { backupManifestSchema, backupListSchema, type BackupRestoreMode } from '@containers/contracts/backup'
 import { clientFetch, clientFetchData } from '@shared/lib/client-fetch'
 import { QUERY_KEY } from '@shared/lib/query-key'
 import { z } from 'zod'
@@ -19,10 +19,10 @@ export const useGetBackups = () => useQuery(backupQueryOptions())
 export const useCreateBackup = () => {
     const queryClient = useQueryClient()
     return useMutation({
-        mutationFn: async (label: string | null) =>
+        mutationFn: async (input: { label: string | null; passphrase: string | null }) =>
             backupCreateSchema.parse(
                 await clientFetch('/api/backups', {
-                    body: JSON.stringify({ label }),
+                    body: JSON.stringify(input),
                     headers: { 'content-type': 'application/json' },
                     method: 'POST',
                 }),
@@ -51,9 +51,9 @@ export const useRemoveBackup = () => {
 export const useRestoreBackup = () => {
     const queryClient = useQueryClient()
     return useMutation({
-        mutationFn: (input: { backupId: string; confirmation: string }) =>
+        mutationFn: (input: { backupId: string; confirmation: string; mode: BackupRestoreMode; passphrase: string | null }) =>
             clientFetchData<unknown>(`/api/backups/${encodeURIComponent(input.backupId)}/restore`, {
-                body: JSON.stringify({ confirmation: input.confirmation }),
+                body: JSON.stringify({ confirmation: input.confirmation, mode: input.mode, passphrase: input.passphrase }),
                 headers: { 'content-type': 'application/json' },
                 method: 'POST',
             }),
