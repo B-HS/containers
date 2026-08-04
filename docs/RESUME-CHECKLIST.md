@@ -4,21 +4,15 @@
 
 ## 1. 마지막 확인된 안전 중단점
 
-확인 시각: **2026-08-01 16:00 KST**
+확인 시각: **2026-08-05**
 
 - 작업 경로: `/Users/gkn/containers`
-- 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `rest-work/deepseekv4`). 변경 범위는 `git status`·diff 로 판단한다.
+- 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `dev`). 변경 범위는 `git status`·diff 로 판단한다. **2026-08-05 커밋 4건(`2c87a95`~`157ffdb`)은 아직 push 하지 않았다.**
 - Compose 5개 서비스 `nginx`, `web`, `api`, `engine-agent`, `traffic-worker`가 모두 healthy다.
-- `control.sqlite`, `traffic.sqlite`의 `PRAGMA integrity_check` 결과가 모두 `ok`다.
-- `queued`, `running`, `cancelling` durable job은 0개다.
-- maintenance gate는 정상 mutation인 traffic export가 `202`로 접수된 뒤 성공했으므로 비활성 상태다.
-- Phase 16 CSV export job `de995dd6-ab88-46a5-a57c-b75ae6e1b423`과 NDJSON export job `6efa547b-3c48-4c3a-af7e-162ce2086f80`은 `succeeded`로 종결됐다.
-- 두 export는 owner UI에서 생성·download됐고 create/download audit가 남았다. 파일은 `0600 bun:bun`, IP는 mask됐으며 user agent와 원본 client IP 필드는 없다.
-- traffic live tail은 owner UI에서 실수신, pause 중 12초 고정, resume 후 신규 행 수신, 브라우저 console error 0건을 확인했다.
-- Traffic checkpoint는 `/data/ingest-checkpoint.json`, 권한은 `0600 bun:bun`이다.
-- 보존 backup directory는 `374f1798-c75f-4152-938d-be2d09d12d51`, `ddabc56c-ba20-4431-b52d-3ff3ba1b6e1e` 두 개다.
-- managed Nginx current SHA-256은 `ccbe28ce36ba39e7b241950bc810f8b8477ea9a3c8814670594baf7b1e2f7d11`이다.
-- 마지막 전체 gate: 7 workspace typecheck, ESLint, Prettier, 121 tests/401 assertions/31 files, backend bundle, Compose Web Turbopack production build 성공.
+- 마지막 전체 gate: typecheck 8/8, ESLint 0, Prettier, **296 tests / 47 files**, build 8/8.
+- 세션 상태 요약은 [HANDOFF.md](./HANDOFF.md)가 소유한다. 이 문서는 재개 절차와 안전 불변식만 담는다.
+
+아래 §3의 읽기 전용 점검으로 현재 값을 직접 확인한다. `integrity_check`가 `ok`, 활성 durable job 0, checkpoint 권한 `600 bun:bun`이 기대 핵심 결과다.
 
 이 값은 재개 시점의 기대값이지 영구 상수가 아니다. 서비스 uptime, traffic row 수, schedule 시각, job 목록은 정상적으로 변할 수 있다.
 
@@ -29,7 +23,8 @@
 - [ ] [HANDOFF-STATUS.md](./HANDOFF-STATUS.md)의 구현 범위·한계·검증 증거를 읽는다.
 - [ ] [PROCESS.md](./PROCESS.md)의 마지막 활성 Phase를 읽는다.
 - [ ] [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md)과 [quality-assurance/ACCEPTANCE.md](./quality-assurance/ACCEPTANCE.md)에서 선택한 작업의 완료 조건을 확인한다.
-- [ ] 관련 최신 `acknowledge/` 문서를 읽는다. 현재 최신은 [0025](./acknowledge/0025-web-panel-sidebar-navigation.md)이다.
+- [ ] 관련 최신 `acknowledge/` 문서를 읽는다. 현재 최신은 [0029](./acknowledge/0029-monotone-design-system.md)이다.
+- [ ] 세션 인수인계는 [HANDOFF.md](./HANDOFF.md)가 단일 진입점이다. 이 체크리스트보다 먼저 읽는다.
 - [ ] UI 변경이면 [SHADCN-COMPONENTS.md](./SHADCN-COMPONENTS.md)와 `/Users/gkn/flunti-otel` 패턴을 먼저 확인한다.
 
 ## 3. 재개 직후 읽기 전용 점검

@@ -104,7 +104,7 @@ Hono Route가 인증·DTO 검증·인가·위험도 판정을 수행하고 job�
 
 ## 8. macOS와 disk 경계
 
-- 지원 host는 M1 Max Apple Silicon macOS와 Docker Desktop이다. 기본 workload platform은 `linux/arm64`다.
+- 지원 host는 macOS Docker Desktop(Apple Silicon 기준 개발·검증)과 rootful Docker Engine 을 쓰는 Linux 다. Linux 는 `DOCKER_GID` 로 docker 소켓 그룹을 주입해야 engine-agent 가 Engine 에 붙는다(`compose.yaml` `group_add`, `scripts/setup.sh` 가 자동 탐지). 기본 workload platform 은 `linux/arm64` 이며, Linux 실기 검증은 아직 수행되지 않았다.
 - `linux/amd64`는 Docker Desktop 에뮬레이션 가용성을 검사한 뒤 선택적으로 허용한다.
 - 384GB 설정값, Engine `/system/df`, 제품 volume의 filesystem `statfs`, 영역별 quota를 서로 다른 신호로 저장·표시한다.
 - macOS host 전체 free disk는 Engine API의 보장 범위가 아니다. 별도 지원 integration 없이 정확한 host 수치라고 표시하지 않는다.

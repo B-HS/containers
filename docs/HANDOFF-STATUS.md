@@ -12,7 +12,7 @@
 - durable operation job queue(상태 machine·재시도·취소·timeline·boot reconciliation)가 구현됐고 자동 backup 이 첫 소비자다. [acknowledge/0014](./acknowledge/0014-durable-operation-job-queue.md)
 - Docker events·logs·stats 실시간 SSE 가 Agent 정규화 → API 인증 proxy → 패널 실시간 로그 UI 까지 구현됐다. [acknowledge/0015](./acknowledge/0015-docker-stream-sse.md)
 - 전체 typecheck, ESLint, Prettier가 통과한다.
-- 전체 테스트는 37 files, 199 pass, 732 assertions다. (2026-08-04 기준)
+- 전체 테스트는 46 files, 292 pass, 927 assertions다. (2026-08-04 세션 종료 기준)
 - container kill·update·rename·wait·top·changes 와 image pull(durable job)·tag 가 agent E2E 로 실측 검증됐다. [acknowledge/0017](./acknowledge/0017-docker-command-completeness.md)
 - Compose project label 기반 관리 plane container·image·network·volume 보호, 자체 prune dry-run preview, image 삭제 dependency impact와 force owner 제한이 구현됐다. [acknowledge/0018](./acknowledge/0018-prune-preview-management-protection.md)
 - owner 최근 인증·preview SHA 재검증·volume opt-in·후보별 보호·취소 지점·단일 attempt를 적용한 `system.prune` durable job과 패널이 구현됐다. [acknowledge/0019](./acknowledge/0019-durable-system-prune.md)

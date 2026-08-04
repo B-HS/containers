@@ -512,3 +512,22 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 이전 기록의 "라우트 생성 후 프록시 응답 307"은 **오판이었다.** 당시 패널 server 블록이 `default_server`여서 요청이 패널로 흘러 Next.js가 307을 반환한 것이고, 라우트 블록은 타지 않았다. catch-all 도입 후에는 라우트 블록으로 정확히 들어가며, 대상 컨테이너가 edge 네트워크에 없으면 upstream 해석에 실패한다(배포 파이프라인이 붙이는 컨테이너는 해당 없음).
 
 판정: 실운영 **no-go**(조건 충족 전), CI API 운용 **부분 가능**(시작은 되나 성패 판정·검증·교착 해소 불가).
+
+## 작업: 3단계 착수 전 1순위 마무리 (2026-08-05)
+
+기준: [HANDOFF.md](./HANDOFF.md) §8 1순위. 결정 기록은 [acknowledge/0030](./acknowledge/0030-ci-verification-surface-and-exposure-scope.md).
+
+- [x] a. `GET /api/images` 에 `engine:read` API key 분기 추가 — `create-control-route.ts` 에 `apiKeyService` 의존성과 `authenticateEngineRead()` 신설, 통합 테스트 4건, CI 워크플로 예제에 load 후 digest 확인 단계
+- [x] b. API key scope UI 하드코딩 제거 — 위젯이 9종을 직접 나열해 2단계 신설 scope 4종을 선택할 수 없던 문제. `API_KEY_SCOPE_VALUES` 사용
+- [x] c. 백업 복구 UI 에 복구 범위·암호 입력 추가 — `preserve-host` 고정·키 미복원 해소. 암호 입력은 `secretsIncluded` 인 백업에만 노출. 생성 폼에도 암호 추가(없으면 복구 쪽 입력이 죽은 UI)
+- [x] d. `scripts/setup.sh` 비대화식 모드 — `--non-interactive`(비-TTY 자동 적용)·`--start-mode`·`--write-override`/`--replace-override`·값 플래그 8종·`--help`
+- [x] e. 미해결 질문 2건 사용자 확인 — 관리 plane 컨테이너 은닉/`/api/readyz` 노출 범위 **둘 다 현행 유지**. `/api/readyz` 는 이미 요약/상세를 분리하고 있어 HANDOFF §6 의 서술이 부정확했다(0030 에 정정)
+- [ ] f. 3단계(장기 운영 안정화) — 미착수. 범위 확인 필요
+
+### 실측 (2026-08-05)
+
+- 게이트: typecheck 8/8, lint 0, **test 296 pass / 47 files**, format:check, build 8/8
+- `GET /api/images`: `engine:read` 키 200(목록 반환) / scope 없는 키 403 / 미인증 401 / 키 회수 후 401. 검증용 키 2개 즉시 회수
+- 패널: API key 화면 scope 13종 표시, 복구 다이얼로그 범위 Select 2종과 설명 교체·확인 버튼 잠금, 생성 폼 암호 길이 미달 시 제출 잠금. console error 0, 500px 폭 가로 스크롤 0
+- setup: `--help`·옵션 오류 exit 2·비대화식 전 구간·override 생성/보존/`--replace-override` 백업 확인 후 검증 파일 삭제
+- 미검증: 복구 다이얼로그 암호 입력 실렌더(현 백업 2건이 `secretsIncluded: false`, 암호 포함 백업 생성은 recent 세션 필요). 다크 모드는 토큰 임시 주입 미리보기로만 확인
