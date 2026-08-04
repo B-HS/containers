@@ -85,6 +85,13 @@
             "when": 1785822581541,
             "tag": "0011_magical_doctor_octopus",
             "breakpoints": true
+        },
+        {
+            "idx": 12,
+            "version": "6",
+            "when": 1785829171978,
+            "tag": "0012_little_the_professor",
+            "breakpoints": true
         }
     ]
 }

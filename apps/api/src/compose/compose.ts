@@ -8,7 +8,6 @@ import { createTrafficWorkerClient } from '../service/shared/traffic-worker-clie
 import { createArtifactInspectionService } from '../service/domain/upload/create-artifact-inspection-service'
 import { createBackupScheduleService } from '../service/domain/job/create-backup-schedule-service'
 import { createJobHandlers } from '../service/domain/job/create-job-handlers'
-import { createMaintenanceService } from '../service/domain/maintenance/create-maintenance-service'
 import type { OperationJobService } from '../service/domain/job/create-operation-job-service'
 import { createAppError } from '../lib/error'
 import { composeApiKey } from './compose-api-key'
@@ -20,6 +19,8 @@ import { composeDeployment } from './compose-deployment'
 import { composeDeploymentManifest } from './compose-deployment-manifest'
 import { composeDeploymentRelease } from './compose-deployment-release'
 import { composeDeploymentSecret } from './compose-deployment-secret'
+import { composeHealth } from './compose-health'
+import { composeMaintenance } from './compose-maintenance'
 import { composeNginxProxyRoute } from './compose-nginx'
 import { composeNotificationDelivery } from './compose-notification-delivery'
 import { composeNotificationDestination } from './compose-notification'
@@ -47,6 +48,8 @@ type ComposeEnv = {
     backupIntervalHours: number
     backupRetentionCount: number
     backupRoot: string
+    backupSizeMarginRatio: number
+    backupTotalQuotaBytes: number
     controlMigrationsPath: string
     deploymentSecretKeyFile: string
     diskHardAvailableBytes: number
@@ -123,14 +126,18 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
     const { backupService } = composeBackup({
         backupRoot: env.backupRoot,
         deploymentSecretKeyFile: env.deploymentSecretKeyFile,
+        getAvailableBytes: async () => (await clients.engineAgentClient.getOverview()).disk.availableBytes,
+        minimumAvailableBytes: env.diskHardAvailableBytes,
         nginxConfigProvider: async () => (await clients.engineAgentClient.getNginxConfig()).config,
         notificationSecretKeyFile: env.notificationSecretKeyFile,
         now,
         retentionCount: env.backupRetentionCount,
+        sizeMarginRatio: env.backupSizeMarginRatio,
         sqlite,
+        totalQuotaBytes: env.backupTotalQuotaBytes,
         trafficWorkerClient: clients.trafficWorkerClient,
     })
-    const maintenanceService = createMaintenanceService({ now, sleep: Bun.sleep })
+    const { maintenanceService } = composeMaintenance({ db, now, sleep: Bun.sleep })
     const { controlPlaneStatusService } = composeControlPlane({
         db,
         sqlite,
@@ -196,6 +203,16 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         operationJobService: operationJobResult.operationJobService,
     })
 
+    const { readinessService } = composeHealth({
+        agentInternalUrl: env.agentInternalUrl,
+        backupSchedule: () => backupScheduleService.getSchedule(),
+        db,
+        maintenanceService,
+        now,
+        sqlite,
+        trafficWorkerInternalUrl: env.trafficWorkerInternalUrl,
+    })
+
     return {
         apiKeyService,
         auth,
@@ -204,6 +221,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         backupService,
         backupScheduleService,
         controlPlaneStatusService,
+        readinessService,
         deploymentManifestService,
         deploymentReleaseService,
         deploymentSecretService,

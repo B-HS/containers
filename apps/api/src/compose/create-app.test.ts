@@ -273,7 +273,7 @@ const createAppTestDependencies = () => ({
         disable: () => undefined,
         enable: () => true,
         enter: () => undefined,
-        getStatus: () => ({ enabled: false, reason: null, startedAt: null }),
+        getStatus: () => ({ actorId: null, enabled: false, jobId: null, reason: null, startedAt: null }),
         isEnabled: () => false,
         leave: () => undefined,
     },
@@ -282,8 +282,24 @@ const createAppTestDependencies = () => ({
             activeJobCount: 0,
             databaseIntegrity: { control: 'ok' },
             lastBackupAt: null,
-            maintenance: { enabled: false, reason: null, startedAt: null },
+            maintenance: { actorId: null, enabled: false, jobId: null, reason: null, startedAt: null },
             migrations: { applied: [], pending: [] },
+            version: '0.1.0',
+        }),
+    },
+    readinessService: {
+        getReadiness: async () => ({
+            checks: {
+                backup: { ageSeconds: 0, lastSuccessAt: '2026-08-01T00:00:00.000Z', status: 'ok' as const, thresholdSeconds: 172_800 },
+                controlDatabase: { integrity: 'ok', status: 'ok' as const },
+                engineAgent: { status: 'ok' as const },
+                jobs: { active: 0, stalled: 0, status: 'ok' as const },
+                maintenance: { enabled: false, status: 'ok' as const },
+                trafficWorker: { status: 'ok' as const },
+            },
+            service: 'api',
+            status: 'ok' as const,
+            timestamp: '2026-08-01T00:00:00.000Z',
             version: '0.1.0',
         }),
     },
@@ -420,6 +436,50 @@ describe('API 애플리케이션', () => {
 
         expect(response.status).toBe(200)
         expect(healthSchema.parse(body.data).service).toBe('api')
+    })
+
+    test('세션 권한이 있으면 준비 상태 상세를 반환합니다', async () => {
+        const response = await createApp(createAppTestDependencies()).request('/api/readyz')
+        const body = await response.json()
+
+        expect(response.status).toBe(200)
+        expect(body.data.checks.jobs).toEqual({ active: 0, stalled: 0, status: 'ok' })
+        expect(body.data.version).toBe('0.1.0')
+    })
+
+    test('미인증 요청에는 check 별 status 만 노출하고 degraded 는 503 으로 응답합니다', async () => {
+        const dependencies = createAppTestDependencies()
+        const readiness = await dependencies.readinessService.getReadiness()
+        const app = createApp({
+            ...dependencies,
+            authService: {
+                ...dependencies.authService,
+                requireRole: async () => {
+                    throw createAppError('AUTH_REQUIRED')
+                },
+            },
+            readinessService: {
+                getReadiness: async () => ({
+                    ...readiness,
+                    checks: { ...readiness.checks, engineAgent: { status: 'degraded' as const } },
+                    status: 'degraded' as const,
+                }),
+            },
+        })
+
+        const response = await app.request('/api/readyz')
+        const body = await response.json()
+
+        expect(response.status).toBe(503)
+        expect(body.data.checks).toEqual({
+            backup: 'ok',
+            controlDatabase: 'ok',
+            engineAgent: 'degraded',
+            jobs: 'ok',
+            maintenance: 'ok',
+            trafficWorker: 'ok',
+        })
+        expect(body.data.version).toBeUndefined()
     })
 
     test('Engine 상태를 RPC 응답 계약으로 반환합니다', async () => {

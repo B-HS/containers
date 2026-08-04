@@ -398,6 +398,16 @@ export const nginxRoute = sqliteTable(
     ],
 )
 
+export const maintenanceState = sqliteTable('maintenance_state', {
+    id: text('id').primaryKey(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+    reason: text('reason'),
+    actorId: text('actor_id'),
+    jobId: text('job_id'),
+    startedAt: integer('started_at', { mode: 'timestamp' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
 export const notificationDestination = sqliteTable(
     'notification_destination',
     {
@@ -431,7 +441,7 @@ export const notificationDelivery = sqliteTable(
             .references(() => notificationDestination.id, { onDelete: 'cascade' }),
         jobId: text('job_id').references(() => operationJob.id, { onDelete: 'set null' }),
         sourceJobId: text('source_job_id').notNull(),
-        eventType: text('event_type', { enum: ['backup.failed', 'test'] }).notNull(),
+        eventType: text('event_type', { enum: ['backup.failed', 'deploy.failed', 'job.failed', 'restore.failed', 'test'] }).notNull(),
         failureCode: text('failure_code'),
         status: text('status', { enum: ['queued', 'delivered', 'failed'] }).notNull(),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
@@ -454,6 +464,7 @@ export const schema = {
     deploymentRelease,
     deploymentSecret,
     invitation,
+    maintenanceState,
     nginxRoute,
     notificationDelivery,
     notificationDestination,

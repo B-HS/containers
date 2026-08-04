@@ -25,7 +25,7 @@ const createTestContext = async () => {
     const service = createControlPlaneStatusService({
         backupService: { list: async () => [] },
         db: buildControlPlaneStatusServiceDb(database.db, database.sqlite),
-        maintenanceService: { getStatus: () => ({ enabled: false, reason: null, startedAt: null }) },
+        maintenanceService: { getStatus: () => ({ actorId: null, enabled: false, jobId: null, reason: null, startedAt: null }) },
         migrationsFolder: resolve(process.cwd(), 'packages/db-schema/drizzle'),
     })
     return { ...database, service, timestamp }
@@ -66,7 +66,7 @@ describe('control plane status service', () => {
         expect(status.migrations.pending).toEqual([])
         expect(status.migrations.applied.every((migration) => migration.appliedAt !== null)).toBe(true)
         expect(status.databaseIntegrity.control).toBe('ok')
-        expect(status.maintenance).toEqual({ enabled: false, reason: null, startedAt: null })
+        expect(status.maintenance).toEqual({ actorId: null, enabled: false, jobId: null, reason: null, startedAt: null })
         expect(status.activeJobCount).toBe(0)
         expect(status.lastBackupAt).toBeNull()
         sqlite.close()
@@ -86,7 +86,7 @@ describe('control plane status service', () => {
         const statusService = createControlPlaneStatusService({
             backupService: { list: async () => [] },
             db: buildControlPlaneStatusServiceDb(db, sqlite),
-            maintenanceService: { getStatus: () => ({ enabled: false, reason: null, startedAt: null }) },
+            maintenanceService: { getStatus: () => ({ actorId: null, enabled: false, jobId: null, reason: null, startedAt: null }) },
             migrationsFolder,
         })
 
@@ -139,7 +139,7 @@ describe('control plane status service', () => {
                 ],
             },
             db: buildControlPlaneStatusServiceDb(db, sqlite),
-            maintenanceService: { getStatus: () => ({ enabled: false, reason: null, startedAt: null }) },
+            maintenanceService: { getStatus: () => ({ actorId: null, enabled: false, jobId: null, reason: null, startedAt: null }) },
             migrationsFolder: resolve(process.cwd(), 'packages/db-schema/drizzle'),
         })
 

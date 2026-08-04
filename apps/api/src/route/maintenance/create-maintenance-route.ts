@@ -58,7 +58,7 @@ export const createMaintenanceRoute = ({ auditService, authService, maintenanceS
                 try {
                     await auditService.record({ ...audit, ...principal, detail: { enabled: payload.enabled }, result: 'attempt' })
                     if (payload.enabled) {
-                        maintenanceService.enable(payload.reason ?? DEFAULT_MANUAL_REASON)
+                        maintenanceService.enable(payload.reason ?? DEFAULT_MANUAL_REASON, { actorId: session.user.id })
                     } else {
                         maintenanceService.disable()
                     }

@@ -118,6 +118,11 @@ export const buildBackupServiceDb = ({ sqlite }: BuildBackupServiceDbDependencie
                 throw createAppError('BACKUP_CONTROL_FOREIGN_KEY_INVALID')
             }
         },
+        estimateSnapshotBytes: () => {
+            const pageCount = sqlite.query<{ page_count: number }, []>('PRAGMA page_count').get()?.page_count ?? 0
+            const pageSize = sqlite.query<{ page_size: number }, []>('PRAGMA page_size').get()?.page_size ?? 0
+            return pageCount * pageSize
+        },
         restoreControlSnapshot,
         snapshot: () => sqlite.serialize(),
         validateControlSnapshot,
@@ -127,31 +132,43 @@ export const buildBackupServiceDb = ({ sqlite }: BuildBackupServiceDbDependencie
 type ComposeBackupDependencies = {
     backupRoot: string
     deploymentSecretKeyFile: string
+    getAvailableBytes: () => Promise<number>
+    minimumAvailableBytes: number
     nginxConfigProvider: () => Promise<string>
     notificationSecretKeyFile: string
     now: () => Date
     retentionCount: number
+    sizeMarginRatio: number
     sqlite: Database
+    totalQuotaBytes: number
     trafficWorkerClient: Pick<TrafficWorkerClient, 'createBackup' | 'restoreBackup'>
 }
 
 export const composeBackup = ({
     backupRoot,
     deploymentSecretKeyFile,
+    getAvailableBytes,
+    minimumAvailableBytes,
     nginxConfigProvider,
     notificationSecretKeyFile,
     now,
     retentionCount,
+    sizeMarginRatio,
     sqlite,
+    totalQuotaBytes,
     trafficWorkerClient,
 }: ComposeBackupDependencies) => ({
     backupService: createBackupService({
         backupRoot,
         db: buildBackupServiceDb({ sqlite }),
+        getAvailableBytes,
+        minimumAvailableBytes,
         nginxConfigProvider,
         now,
         retentionCount,
         secretKeyFiles: { deployment: deploymentSecretKeyFile, notification: notificationSecretKeyFile },
+        sizeMarginRatio,
+        totalQuotaBytes,
         trafficWorkerClient,
     }),
 })

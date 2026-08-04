@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { websocket } from 'hono/bun'
+import { openAPIRouteHandler } from 'hono-openapi'
 import { parseEnv } from '@containers/config/env'
+import { CONTROL_PLANE_VERSION } from '@containers/contracts/control-plane'
 import { loadOrCreateSecret } from '@containers/config/secret'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { createEngineAgentClient } from './service/shared/engine-agent-client/create-engine-agent-client'
@@ -18,6 +20,7 @@ const BACKUP_SCHEDULE_INTERVAL_MS = MINUTE_MS
 const CONTAINER_CLEANUP_INTERVAL_MS = HOUR_MS
 const JOB_CLEANUP_INTERVAL_MS = HOUR_MS
 const UPLOAD_SESSION_CLEANUP_INTERVAL_MS = 15 * MINUTE_MS
+const OPENAPI_SPEC_PATH = '/api/openapi.json'
 
 const envSchema = z
     .object({
@@ -28,6 +31,8 @@ const envSchema = z
         BACKUP_INTERVAL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
         BACKUP_RETENTION_COUNT: z.coerce.number().int().min(2).max(90).default(7),
         BACKUP_ROOT: z.string().min(1).default('/backups'),
+        BACKUP_SIZE_MARGIN_RATIO: z.coerce.number().min(1).max(10).default(1.5),
+        BACKUP_TOTAL_QUOTA_BYTES: z.coerce.number().int().positive().default(68_719_476_736),
         AUTH_BASE_URL: z.url(),
         AUTH_SECRET_FILE: z.string().min(1),
         AUTH_TRUSTED_ORIGINS: z
@@ -43,6 +48,7 @@ const envSchema = z
         NOTIFICATION_SECRET_KEY_FILE: z.string().min(1).default('/data/notification-secret-key'),
         PANEL_PUBLIC_URL: z.url(),
         API_KEY_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(10).max(10_000).default(120),
+        API_DOCS_ENABLED: z.stringbool().default(false),
         TRAFFIC_WORKER_INTERNAL_URL: z.url(),
         TRAFFIC_WORKER_SHARED_SECRET_FILE: z.string().min(1),
         TRAFFIC_EXPORT_ROOT: z.string().min(1).default('/backups/traffic-exports'),
@@ -90,6 +96,8 @@ const composed = compose({
         backupIntervalHours: env.BACKUP_INTERVAL_HOURS,
         backupRetentionCount: env.BACKUP_RETENTION_COUNT,
         backupRoot: env.BACKUP_ROOT,
+        backupSizeMarginRatio: env.BACKUP_SIZE_MARGIN_RATIO,
+        backupTotalQuotaBytes: env.BACKUP_TOTAL_QUOTA_BYTES,
         controlMigrationsPath: env.CONTROL_MIGRATIONS_PATH,
         deploymentSecretKeyFile: env.DEPLOYMENT_SECRET_KEY_FILE,
         diskHardAvailableBytes: env.UPLOAD_DISK_HARD_AVAILABLE_BYTES,
@@ -123,6 +131,7 @@ const {
     notificationDeliveryService,
     notificationDestinationService,
     operationJobService,
+    readinessService,
     uploadService,
 } = composed
 
@@ -179,10 +188,26 @@ const app = createApp({
     notificationDeliveryService,
     notificationDestinationService,
     operationJobService,
+    readinessService,
     trafficExportRoot: env.TRAFFIC_EXPORT_ROOT,
     trafficWorkerClient,
     uploadService,
 })
+
+if (env.API_DOCS_ENABLED) {
+    app.get(
+        OPENAPI_SPEC_PATH,
+        openAPIRouteHandler(app, {
+            documentation: {
+                info: {
+                    description: 'Containers control plane API. 비production 환경에서만 노출한다.',
+                    title: 'Containers Control Plane API',
+                    version: CONTROL_PLANE_VERSION,
+                },
+            },
+        }),
+    )
+}
 
 export default {
     fetch: app.fetch,

@@ -20,6 +20,7 @@ import type { TrafficWorkerClient } from '../../../service/shared/traffic-worker
 
 type BackupServiceDb = {
     checkForeignKeys: () => Promise<void>
+    estimateSnapshotBytes: () => number
     restoreControlSnapshot: (filePath: string, mode: BackupRestoreMode) => Promise<void>
     snapshot: () => Uint8Array
     validateControlSnapshot: (filePath: string) => Promise<void>
@@ -33,10 +34,14 @@ type BackupSecretKeyFiles = {
 type BackupServiceDependencies = {
     backupRoot: string
     db: BackupServiceDb
+    getAvailableBytes: () => Promise<number>
+    minimumAvailableBytes: number
     nginxConfigProvider: () => Promise<string>
     now: () => Date
     retentionCount: number
     secretKeyFiles: BackupSecretKeyFiles
+    sizeMarginRatio: number
+    totalQuotaBytes: number
     trafficWorkerClient: Pick<TrafficWorkerClient, 'createBackup' | 'restoreBackup'>
 }
 
@@ -52,6 +57,10 @@ const SECRET_SALT_LENGTH = 16
 const SECRET_INITIALIZATION_VECTOR_LENGTH = 12
 const SECRET_KEY_FILE_MODE = 0o600
 const RESTORE_PASSPHRASE_TTL_MS = 15 * 60 * 1_000
+const MINIMUM_RETAINED_BACKUP_COUNT = 1
+
+const manifestTotalBytes = (manifest: BackupManifest) =>
+    manifest.controlBytes + manifest.trafficBytes + (manifest.nginxBytes ?? 0) + (manifest.secretsBytes ?? 0)
 
 const sha256File = async (filePath: string) => {
     const hash = createHash('sha256')
@@ -123,10 +132,14 @@ const decryptSecretBundle = (envelopeInput: unknown, passphrase: string) => {
 export const createBackupService = ({
     backupRoot,
     db,
+    getAvailableBytes,
+    minimumAvailableBytes,
     nginxConfigProvider,
     now,
     retentionCount,
     secretKeyFiles,
+    sizeMarginRatio,
+    totalQuotaBytes,
     trafficWorkerClient,
 }: BackupServiceDependencies) => {
     const manifestPath = (id: string) => join(backupRoot, id, 'manifest.json')
@@ -172,8 +185,35 @@ export const createBackupService = ({
     }
 
     const cleanupRetention = async () => {
-        const expired = (await list()).slice(retentionCount)
-        await Promise.all(expired.map((manifest) => rm(join(backupRoot, manifest.id), { force: true, recursive: true })))
+        const manifests = await list()
+        const retained = manifests.slice(0, retentionCount)
+        const removals = manifests.slice(retentionCount)
+        let retainedBytes = retained.reduce((total, manifest) => total + manifestTotalBytes(manifest), 0)
+        let retainedCount = retained.length
+        for (const manifest of [...retained].reverse()) {
+            if (retainedBytes <= totalQuotaBytes || retainedCount <= MINIMUM_RETAINED_BACKUP_COUNT) {
+                break
+            }
+            removals.push(manifest)
+            retainedBytes -= manifestTotalBytes(manifest)
+            retainedCount -= 1
+        }
+        await Promise.all(removals.map((manifest) => rm(join(backupRoot, manifest.id), { force: true, recursive: true })))
+    }
+
+    const ensureDiskCapacity = async () => {
+        const manifests = await list()
+        const trafficBytes = manifests.reduce((largest, manifest) => Math.max(largest, manifest.trafficBytes), 0)
+        const estimatedBytes = Math.ceil((db.estimateSnapshotBytes() + trafficBytes) * sizeMarginRatio)
+        let availableBytes: number
+        try {
+            availableBytes = await getAvailableBytes()
+        } catch {
+            throw createAppError('DISK_STATUS_UNAVAILABLE')
+        }
+        if (availableBytes - estimatedBytes < minimumAvailableBytes) {
+            throw createAppError('BACKUP_DISK_INSUFFICIENT', undefined, { availableBytes, estimatedBytes, minimumAvailableBytes })
+        }
     }
 
     const captureNginxConfig = async (id: string) => {
@@ -222,6 +262,7 @@ export const createBackupService = ({
 
     const createSnapshot = async (input: unknown, applyRetention: boolean) => {
         const payload = backupCreateSchema.parse(input)
+        await ensureDiskCapacity()
         await db.checkForeignKeys()
         const id = randomUUID()
         const directory = join(backupRoot, id)

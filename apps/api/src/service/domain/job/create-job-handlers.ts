@@ -58,7 +58,7 @@ export const createJobHandlers = ({
 
     const handleBackupRestore: OperationJobHandler = async ({ job, reportProgress }) => {
         const payload = backupRestoreJobPayloadSchema.parse(job.payload)
-        const enabledByJob = maintenanceService.enable(RESTORE_MAINTENANCE_REASON)
+        const enabledByJob = maintenanceService.enable(RESTORE_MAINTENANCE_REASON, { actorId: job.createdBy, jobId: job.id })
         try {
             await reportProgress('drain')
             await maintenanceService.drain(RESTORE_DRAIN_TIMEOUT_MS)

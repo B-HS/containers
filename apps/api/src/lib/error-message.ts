@@ -25,6 +25,7 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.BACKUP_CONTROL_FOREIGN_KEY_INVALID]: '백업 control 스냅샷의 외래 키가 올바르지 않습니다.',
     [ERROR_CODE.BACKUP_CONTROL_INVALID]: '백업 control 스냅샷이 올바르지 않습니다.',
     [ERROR_CODE.BACKUP_DIGEST_MISMATCH]: '백업 digest가 일치하지 않습니다.',
+    [ERROR_CODE.BACKUP_DISK_INSUFFICIENT]: '백업을 시작할 디스크 여유 공간이 부족합니다.',
     [ERROR_CODE.BACKUP_ENGINE_FAILED]: '백업 중 engine 작업이 실패했습니다.',
     [ERROR_CODE.BACKUP_FAILED]: '백업을 완료할 수 없습니다.',
     [ERROR_CODE.BACKUP_FOREIGN_KEY_INVALID]: '백업 데이터의 외래 키가 올바르지 않습니다.',

@@ -1,7 +1,9 @@
 import { z } from 'zod'
 
 export const maintenanceStatusSchema = z.object({
+    actorId: z.string().nullable(),
     enabled: z.boolean(),
+    jobId: z.string().nullable(),
     reason: z.string().nullable(),
     startedAt: z.iso.datetime().nullable(),
 })

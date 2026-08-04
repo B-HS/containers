@@ -14,6 +14,10 @@ const PASSPHRASE = 'correct horse battery staple'
 const DEPLOYMENT_KEY = 'deployment-master-key-0123456789abcdef'
 const NOTIFICATION_KEY = 'notification-master-key-0123456789abcdef'
 const NGINX_CONFIG = 'events {}\nhttp { server { listen 8080; } }\n'
+const DEFAULT_AVAILABLE_BYTES = 1_099_511_627_776
+const DEFAULT_TOTAL_QUOTA_BYTES = 68_719_476_736
+const MINIMUM_AVAILABLE_BYTES = 17_179_869_184
+const SIZE_MARGIN_RATIO = 1.5
 
 const temporaryDirectories: string[] = []
 
@@ -21,7 +25,13 @@ afterEach(async () => {
     await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
 })
 
-const createTestContext = async (retentionCount = 7) => {
+type TestContextOptions = {
+    availableBytes?: number
+    totalQuotaBytes?: number
+}
+
+const createTestContext = async (retentionCount = 7, options: TestContextOptions = {}) => {
+    const disk = { availableBytes: options.availableBytes ?? DEFAULT_AVAILABLE_BYTES }
     const directory = await mkdtemp(join(tmpdir(), 'containers-backup-'))
     temporaryDirectories.push(directory)
     const backupRoot = join(directory, 'backups')
@@ -46,10 +56,14 @@ const createTestContext = async (retentionCount = 7) => {
     const service = createBackupService({
         backupRoot,
         db: buildBackupServiceDb({ sqlite: database.sqlite }),
+        getAvailableBytes: async () => disk.availableBytes,
+        minimumAvailableBytes: MINIMUM_AVAILABLE_BYTES,
         nginxConfigProvider: async () => NGINX_CONFIG,
         now: () => new Date(clock++),
         retentionCount,
         secretKeyFiles,
+        sizeMarginRatio: SIZE_MARGIN_RATIO,
+        totalQuotaBytes: options.totalQuotaBytes ?? DEFAULT_TOTAL_QUOTA_BYTES,
         trafficWorkerClient: {
             createBackup: createTrafficSnapshot,
             restoreBackup: async (id) => {
@@ -58,7 +72,7 @@ const createTestContext = async (retentionCount = 7) => {
             },
         },
     })
-    return { backupRoot, database, secretKeyFiles, service }
+    return { backupRoot, database, disk, secretKeyFiles, service }
 }
 
 const timestamp = new Date('2026-08-01T00:00:00.000Z')
@@ -134,6 +148,24 @@ describe('Control·Traffic backup orchestration', () => {
         database.sqlite.exec('PRAGMA foreign_keys = ON')
 
         expect(service.create({ label: 'invalid' })).rejects.toThrow('BACKUP_CONTROL_FOREIGN_KEY_INVALID')
+        database.sqlite.close()
+    })
+
+    test('디스크 여유가 예상 크기에 못 미치면 snapshot을 시작하지 않습니다', async () => {
+        const { database, service } = await createTestContext(7, { availableBytes: MINIMUM_AVAILABLE_BYTES })
+
+        expect(service.create({ label: 'insufficient' })).rejects.toThrow('BACKUP_DISK_INSUFFICIENT')
+        expect(await service.list()).toEqual([])
+        database.sqlite.close()
+    })
+
+    test('총 용량 상한을 넘기면 오래된 set부터 지우되 최소 1개는 남깁니다', async () => {
+        const { database, service } = await createTestContext(7, { totalQuotaBytes: 1 })
+        const first = await service.create({ label: 'first' })
+        const second = await service.create({ label: 'second' })
+
+        expect((await service.list()).map((backup) => backup.id)).toEqual([second.id])
+        expect((await service.list()).map((backup) => backup.id)).not.toContain(first.id)
         database.sqlite.close()
     })
 
