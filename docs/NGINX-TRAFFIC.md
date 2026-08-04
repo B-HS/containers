@@ -98,6 +98,8 @@ stateDiagram-v2
 
 Nginx는 새 설정 적용에 실패하면 기존 설정과 worker를 유지하지만, 애플리케이션도 파일·DB 상태가 엇갈리지 않도록 명시적 rollback을 수행한다.
 
+적용에 성공하면 `<sha256>.revision` 파일을 최신순 `NGINX_REVISION_KEEP_COUNT`개(기본 20)만 남기고 정리한다. **직전 revision 은 개수와 무관하게 항상 남긴다** — 롤백 경로가 그 파일을 쓰기 때문이다. 정리 전에는 revision 이 무한히 쌓여 설정 화면의 `getState` 가 매 호출마다 디렉터리 전체를 stat 했다.
+
 ## 5. access log 계약
 
 `log_format`은 `escape=json`을 사용하고 한 요청을 한 JSON line으로 기록한다. 다음 필드를 최소 계약으로 둔다.
@@ -156,7 +158,11 @@ Authorization, Cookie, request·response body, 전체 query string, API key를 �
 
 checkpoint가 가리키는 inode를 로그 디렉터리 어디에서도 찾지 못하면(회전이 너무 빨라 drain 전에 세대가 밀려난 경우 등) worker는 새 active inode로 checkpoint를 reset하고 그 사실을 `GET /traffic/ingestion`의 `checkpointInodeMissing`·`checkpointInodeMissingCount`·`checkpointInodeMissingAt`으로 노출한다. count가 증가하면 유실이 발생한 것이므로 임계값을 올리거나 보존 세대를 늘린다.
 
-### 6.3 후속 목표
+### 6.3 수집·보존 지표 노출
+
+`GET /api/traffic/health`(owner·admin)가 수집 상태(체크포인트 device·inode·offset, 수집/무효/중복 라인 수, inode 유실 여부)와 보존 상태(행수·바이트·회수 가능 바이트·상한·정리 건수·마지막 VACUUM)를 함께 돌려준다. 패널 트래픽 화면 하단의 "수집·보존 상태" 위젯이 이 값을 표시하고, 체크포인트 inode 유실이나 과대 라인 폐기가 감지되면 경고 Alert 를 띄운다. 지표가 없으면 수집이 조용히 멈춰도 사용자가 먼저 알아차려야 했다.
+
+### 6.4 후속 목표
 
 - minute/hour rollup과 route·status·latency histogram 갱신
 - ingest lag, invalid·duplicate·dropped line, disk usage의 Prometheus 형식 metric

@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { createInternalRequestSignature, INTERNAL_AUTH_HEADERS } from '@containers/contracts/internal-auth'
-import { trafficAnalyticsQuerySchema, trafficAnalyticsSchema, trafficLiveQuerySchema, trafficSummarySchema } from '@containers/contracts/traffic'
+import {
+    trafficAnalyticsQuerySchema,
+    trafficAnalyticsSchema,
+    trafficHealthSchema,
+    trafficIngestionStateSchema,
+    trafficLiveQuerySchema,
+    trafficRetentionStateSchema,
+    trafficSummarySchema,
+} from '@containers/contracts/traffic'
 import { backupIdSchema, backupSnapshotResultSchema } from '@containers/contracts/backup'
 import { trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import { trafficExportResultSchema } from '@containers/contracts/traffic'
@@ -94,6 +102,30 @@ export const createTrafficWorkerClient = ({ baseUrl, fetcher = fetch, secret }: 
         }
 
         return trafficAnalyticsSchema.parse(await response.json())
+    },
+    getHealthState: async () => {
+        const request = async (path: string) => {
+            const timestamp = Date.now().toString()
+            const nonce = randomUUID()
+            const signature = createInternalRequestSignature({ body: '', method: 'GET', nonce, path, secret, timestamp })
+            const response = await fetcher(`${baseUrl}${path}`, {
+                headers: {
+                    [INTERNAL_AUTH_HEADERS.NONCE]: nonce,
+                    [INTERNAL_AUTH_HEADERS.SIGNATURE]: signature,
+                    [INTERNAL_AUTH_HEADERS.TIMESTAMP]: timestamp,
+                },
+                signal: AbortSignal.timeout(TRAFFIC_REQUEST_TIMEOUT_MS),
+            })
+            if (!response.ok) {
+                throw createAppError(`Traffic Worker 응답 코드: ${response.status}`)
+            }
+            return response.json()
+        }
+        const [ingestion, retention] = await Promise.all([request('/v1/traffic/ingestion'), request('/v1/traffic/retention')])
+        return trafficHealthSchema.parse({
+            ingestion: trafficIngestionStateSchema.parse(ingestion),
+            retention: trafficRetentionStateSchema.parse(retention),
+        })
     },
     getSummary: async (windowMinutes: number) => {
         const path = `/v1/traffic/summary?windowMinutes=${windowMinutes}`

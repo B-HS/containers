@@ -59,6 +59,18 @@ export const createTrafficRoute = ({
             }),
         )
         .get(
+            '/traffic/health',
+            describeRoute({
+                responses: { 200: { description: '트래픽 수집·보존 상태' } },
+                summary: '트래픽 수집 상태 조회',
+                tags: ['Traffic'],
+            }),
+            withErrorHandling(async (context) => {
+                await authorizeExport(context.req.raw.headers)
+                return context.json(successResponse(await trafficService.getHealthState()), 200)
+            }),
+        )
+        .get(
             '/traffic/live',
             describeRoute({
                 responses: { 200: { description: '실시간 트래픽 SSE' } },

@@ -107,6 +107,7 @@ export const QUERY_KEY = {
         ALL: ['traffic'] as const,
         SUMMARY: ['traffic', 'summary'] as const,
         ANALYTICS: ['traffic', 'analytics'] as const,
+        HEALTH: ['traffic', 'health'] as const,
     },
     USER: {
         ALL: ['user'] as const,

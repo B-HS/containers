@@ -11,6 +11,7 @@ const env = parseEnv(
         ARTIFACT_ROOT: z.string().min(1),
         DOCKER_SOCKET_PATH: z.string().min(1).default('/var/run/docker.sock'),
         NGINX_CONFIG_ROOT: z.string().min(1),
+        NGINX_REVISION_KEEP_COUNT: z.coerce.number().int().min(1).max(500).default(20),
         NGINX_STATUS_URL: z.url(),
         REGISTRY_CREDENTIAL_FILE: z.string().min(1).default('/credentials/registry-credentials.json'),
         REGISTRY_CREDENTIAL_KEY_FILE: z.string().min(1).default('/credentials/registry-credential-key'),
@@ -20,6 +21,7 @@ const env = parseEnv(
 const app = createAgentApp({
     artifactRoot: env.ARTIFACT_ROOT,
     nginxConfigRoot: env.NGINX_CONFIG_ROOT,
+    nginxRevisionKeepCount: env.NGINX_REVISION_KEEP_COUNT,
     nginxStatusUrl: env.NGINX_STATUS_URL,
     registryCredentialFile: env.REGISTRY_CREDENTIAL_FILE,
     registryCredentialSecret: await loadOrCreateSecret(env.REGISTRY_CREDENTIAL_KEY_FILE),

@@ -3,12 +3,14 @@ import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
 import { containerLogStreamQuerySchema } from '@containers/contracts/engine-stream'
 import { USER_ROLE } from '@containers/db-schema/schema'
+import { createAppError } from '../../lib/error'
 import { withErrorHandling } from '../../lib/with-error-handling'
 import type { EngineAgentClient } from '../../service/shared/engine-agent-client/create-engine-agent-client'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const SESSION_RECHECK_INTERVAL_MS = 15_000
+const MAX_CONCURRENT_PROXY_STREAMS = 32
 const containerIdParamSchema = z.object({ containerId: z.string().min(1) })
 
 const SSE_HEADERS = {
@@ -23,10 +25,25 @@ type EngineStreamProxyRouteDependencies = {
 }
 
 export const createEngineStreamProxyRoute = ({ authService, engineAgentClient }: EngineStreamProxyRouteDependencies) => {
+    let activeStreams = 0
+
     const proxy = async (headers: Headers, open: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array>>) => {
         const upstreamController = new AbortController()
         await authService.requireRole(headers, ALL_ROLES)
-        const upstream = await open(upstreamController.signal)
+        if (activeStreams >= MAX_CONCURRENT_PROXY_STREAMS) {
+            throw createAppError('STREAM_LIMIT_REACHED')
+        }
+        activeStreams += 1
+        let released = false
+        const release = () => {
+            if (released) return
+            released = true
+            activeStreams -= 1
+        }
+        const upstream = await open(upstreamController.signal).catch((error: unknown) => {
+            release()
+            throw error
+        })
         const reader = upstream.getReader()
         let recheck: ReturnType<typeof setInterval> | undefined
         const body = new ReadableStream<Uint8Array>({
@@ -40,17 +57,20 @@ export const createEngineStreamProxyRoute = ({ authService, engineAgentClient }:
                     const { done, value } = await reader.read()
                     if (done) {
                         clearInterval(recheck)
+                        release()
                         controller.close()
                         return
                     }
                     controller.enqueue(value)
                 } catch {
                     clearInterval(recheck)
+                    release()
                     controller.close()
                 }
             },
             cancel: () => {
                 clearInterval(recheck)
+                release()
                 upstreamController.abort()
             },
         })

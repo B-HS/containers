@@ -19,6 +19,7 @@ import { createInteractiveExecService } from '../service/domain/create-interacti
 type AgentAppDependencies = {
     artifactRoot: string
     nginxConfigRoot: string
+    nginxRevisionKeepCount: number
     nginxStatusUrl: string
     registryCredentialFile: string
     registryCredentialSecret: string
@@ -29,6 +30,7 @@ type AgentAppDependencies = {
 export const createAgentApp = ({
     artifactRoot,
     nginxConfigRoot,
+    nginxRevisionKeepCount,
     nginxStatusUrl,
     registryCredentialFile,
     registryCredentialSecret,
@@ -56,6 +58,7 @@ export const createAgentApp = ({
         configRoot: nginxConfigRoot,
         dockerEngineClient,
         now: () => new Date(),
+        revisionKeepCount: nginxRevisionKeepCount,
         statusUrl: nginxStatusUrl,
     })
     const nginxConfigRoute = createNginxConfigRoute({ nginxConfigService })

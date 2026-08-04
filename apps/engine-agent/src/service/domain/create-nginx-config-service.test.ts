@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createNginxConfigService } from './create-nginx-config-service'
 
+const REVISION_KEEP_COUNT = 2
 const temporaryDirectories: string[] = []
 
 afterEach(async () => {
@@ -21,6 +22,7 @@ const createTestContext = async (validationExitCode = 0, fetcher?: (input: strin
     const signals: string[] = []
     const service = createNginxConfigService({
         ...(fetcher === undefined ? {} : { fetcher }),
+        revisionKeepCount: REVISION_KEEP_COUNT,
         configRoot: directory,
         dockerEngineClient: {
             executeContainer: async () => ({
@@ -286,5 +288,23 @@ describe('Nginx 설정 서비스', () => {
         )
 
         await expect(service.apply({ config: withExcessiveBurst, expectedSha256: digest(currentConfig) })).rejects.toThrow('NGINX_PROTECTED_CONTRACT')
+    })
+    test('revision 파일이 보관 수를 넘으면 오래된 것부터 지우고 직전 revision 은 남깁니다', async () => {
+        const { currentConfig, directory, service } = await createTestContext()
+        let config = currentConfig
+        let previousConfig = currentConfig
+        for (let index = 0; index < REVISION_KEEP_COUNT + 3; index += 1) {
+            const next = `${config}\n# revision ${index}\n`
+            await service.apply({ config: next, expectedSha256: digest(config) })
+            previousConfig = config
+            config = next
+        }
+
+        const revisions = (await readdir(directory)).filter((entry) => entry.endsWith('.revision'))
+        const state = await service.getState()
+
+        expect(revisions).toHaveLength(REVISION_KEEP_COUNT + 1)
+        expect(revisions).toContain(`${digest(previousConfig)}.revision`)
+        expect(state.history).toHaveLength(REVISION_KEEP_COUNT + 1)
     })
 })

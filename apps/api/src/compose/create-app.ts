@@ -83,7 +83,7 @@ type AppDependencies = {
     notificationDestinationService: Pick<NotificationDestinationService, 'list' | 'remove' | 'resolveWebhook' | 'setEnabled' | 'upsert'>
     operationJobService: Pick<OperationJobService, 'enqueue' | 'get' | 'list' | 'listEvents' | 'requestCancel'>
     secretRotationService: Pick<SecretRotationService, 'getState'>
-    trafficWorkerClient: Pick<TrafficWorkerClient, 'getAnalytics' | 'getSummary' | 'openLiveStream'>
+    trafficWorkerClient: Pick<TrafficWorkerClient, 'getAnalytics' | 'getHealthState' | 'getSummary' | 'openLiveStream'>
     trafficExportRoot?: string
     uploadService: Pick<
         UploadService,

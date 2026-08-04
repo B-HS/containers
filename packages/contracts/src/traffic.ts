@@ -97,6 +97,11 @@ export const trafficRetentionStateSchema = z.object({
     vacuumCount: z.number().int().nonnegative(),
 })
 
+export const trafficHealthSchema = z.object({
+    ingestion: trafficIngestionStateSchema,
+    retention: trafficRetentionStateSchema,
+})
+
 export const trafficExportResultSchema = z.object({
     bytes: z.number().int().nonnegative(),
     fileName: z.string().regex(/^traffic-[0-9a-f-]{36}\.(csv|ndjson)$/),
@@ -136,6 +141,7 @@ export type TrafficAnalytics = z.infer<typeof trafficAnalyticsSchema>
 export type TrafficAnalyticsQuery = z.infer<typeof trafficAnalyticsQuerySchema>
 export type TrafficExportJobParam = z.infer<typeof trafficExportJobParamSchema>
 export type TrafficIngestionState = z.infer<typeof trafficIngestionStateSchema>
+export type TrafficHealth = z.infer<typeof trafficHealthSchema>
 export type TrafficRetentionState = z.infer<typeof trafficRetentionStateSchema>
 export type TrafficLiveEvent = z.infer<typeof trafficLiveEventSchema>
 export type TrafficLiveQuery = z.infer<typeof trafficLiveQuerySchema>

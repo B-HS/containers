@@ -210,6 +210,7 @@ services:
             ARTIFACT_ROOT: /artifacts
             DOCKER_SOCKET_PATH: /var/run/docker.sock
             NGINX_CONFIG_ROOT: /nginx-config
+            NGINX_REVISION_KEEP_COUNT: ${NGINX_REVISION_KEEP_COUNT:-20}
             NGINX_STATUS_URL: http://nginx:8081/status
             REGISTRY_CREDENTIAL_FILE: /registry-credentials/registry-credentials.json
             REGISTRY_CREDENTIAL_KEY_FILE: /registry-credentials/registry-credential-key

@@ -6,6 +6,7 @@ import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { TrafficAnalyticsWidget } from '@widgets/traffic/traffic-analytics-widget'
+import { TrafficHealthWidget } from '@widgets/traffic/traffic-health-widget'
 
 const TrafficPage = async () => {
     const [navTranslations, session] = await Promise.all([getTranslations('Nav'), getSession()])
@@ -25,6 +26,7 @@ const TrafficPage = async () => {
             <div className="grid gap-px">
                 <PageHeader description={navTranslations('subtitles.traffic')} title={navTranslations('items.traffic')} />
                 <TrafficAnalyticsWidget canExport={session.canManageApiKeys} />
+                {session.canManageApiKeys ? <TrafficHealthWidget /> : null}
             </div>
         </HydrationBoundary>
     )

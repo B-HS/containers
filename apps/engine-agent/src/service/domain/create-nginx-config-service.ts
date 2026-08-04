@@ -55,12 +55,14 @@ const REQUIRED_HTTP_DIRECTIVES = [
     { args: [], name: 'real_ip_header' },
 ]
 
+const REVISION_FILE_PATTERN = /^[a-f0-9]{64}\.revision$/
 const PROBE_MAX_ATTEMPTS = 5
 const PROBE_RETRY_DELAY_MS = 250
 const PROBE_TIMEOUT_MS = 2_000
 
 type NginxConfigServiceDependencies = {
     configRoot: string
+    revisionKeepCount: number
     dockerEngineClient: Pick<DockerEngineClient, 'executeContainer' | 'getContainers' | 'signalContainer'>
     fetcher?: (input: string, init?: RequestInit) => Promise<Response>
     now: () => Date
@@ -267,8 +269,31 @@ const verifyProtectedContract = (config: string) => {
     }
 }
 
-export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetcher = fetch, now, statusUrl }: NginxConfigServiceDependencies) => {
+export const createNginxConfigService = ({
+    configRoot,
+    dockerEngineClient,
+    fetcher = fetch,
+    now,
+    revisionKeepCount,
+    statusUrl,
+}: NginxConfigServiceDependencies) => {
     const currentPath = join(configRoot, 'current.conf')
+
+    const listRevisions = async () => {
+        const entries = await readdir(configRoot)
+        return Promise.all(
+            entries
+                .filter((entry) => REVISION_FILE_PATTERN.test(entry))
+                .map(async (entry) => ({ modifiedAtMs: (await stat(join(configRoot, entry))).mtimeMs, name: entry })),
+        )
+    }
+
+    const pruneRevisions = async (keepSha256: string) => {
+        const revisions = (await listRevisions()).sort((left, right) => right.modifiedAtMs - left.modifiedAtMs)
+        const removable = revisions.filter((revision) => revision.name !== `${keepSha256}.revision`).slice(revisionKeepCount)
+        await Promise.all(removable.map((revision) => rm(join(configRoot, revision.name), { force: true })))
+        return removable.length
+    }
 
     const getNginxContainer = async () => {
         const containers = await dockerEngineClient.getContainers()
@@ -355,6 +380,8 @@ export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetch
                 throw error
             }
 
+            await pruneRevisions(previousSha256)
+
             return nginxConfigApplyResultSchema.parse({
                 appliedAt: now().toISOString(),
                 previousSha256,
@@ -364,17 +391,11 @@ export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetch
         },
         getState: async () => {
             const config = await readFile(currentPath, 'utf8')
-            const entries = await readdir(configRoot)
-            const history = await Promise.all(
-                entries
-                    .filter((entry) => /^[a-f0-9]{64}\.revision$/.test(entry))
-                    .map(async (entry) => {
-                        const metadata = await stat(join(configRoot, entry))
-                        return nginxConfigRevisionSchema.parse({
-                            createdAt: metadata.mtime.toISOString(),
-                            sha256: entry.slice(0, 64),
-                        })
-                    }),
+            const history = (await listRevisions()).map((revision) =>
+                nginxConfigRevisionSchema.parse({
+                    createdAt: new Date(revision.modifiedAtMs).toISOString(),
+                    sha256: revision.name.slice(0, 64),
+                }),
             )
             history.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
             return nginxConfigStateSchema.parse({ config, history, sha256: digest(config) })

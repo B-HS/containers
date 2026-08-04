@@ -340,6 +340,33 @@ const createAppTestDependencies = () => ({
         },
     },
     trafficWorkerClient: {
+        getHealthState: async () => ({
+            ingestion: {
+                checkpointInodeMissing: false,
+                checkpointInodeMissingAt: null,
+                checkpointInodeMissingCount: 0,
+                device: null,
+                discardingOversizedLine: false,
+                duplicateLineCount: 0,
+                inode: null,
+                ingestedEventCount: 0,
+                invalidLineCount: 0,
+                offset: 0,
+            },
+            retention: {
+                byteSize: 0,
+                lastRunAt: null,
+                lastVacuumAt: null,
+                maxByteSize: 0,
+                maxRowCount: 0,
+                reclaimableByteSize: 0,
+                removedByAgeCount: 0,
+                removedByByteLimitCount: 0,
+                removedByRowLimitCount: 0,
+                rowCount: 0,
+                vacuumCount: 0,
+            },
+        }),
         getAnalytics: async () => ({
             averageResponseTimeMs: 0,
             bytesSent: 0,

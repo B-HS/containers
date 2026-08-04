@@ -1,7 +1,7 @@
 'use client'
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { trafficAnalyticsSchema, trafficSummarySchema } from '@containers/contracts/traffic'
+import { trafficAnalyticsSchema, trafficHealthSchema, trafficSummarySchema } from '@containers/contracts/traffic'
 import { jobResponseSchema } from '@entities/job/job.api'
 import { clientFetch, clientFetchData } from '@shared/lib/client-fetch'
 import { QUERY_KEY } from '@shared/lib/query-key'
@@ -18,6 +18,14 @@ export const trafficAnalyticsQueryOptions = () =>
         queryKey: QUERY_KEY.TRAFFIC.ANALYTICS,
         queryFn: () => clientFetchData<z.infer<typeof trafficAnalyticsSchema>>('/api/traffic/analytics?limit=25&statusClass=all&windowMinutes=60'),
     })
+
+export const trafficHealthQueryOptions = () =>
+    queryOptions({
+        queryKey: QUERY_KEY.TRAFFIC.HEALTH,
+        queryFn: () => clientFetchData<z.infer<typeof trafficHealthSchema>>('/api/traffic/health'),
+    })
+
+export const useGetTrafficHealth = () => useQuery(trafficHealthQueryOptions())
 
 export const useGetTrafficSummary = () => useQuery(trafficSummaryQueryOptions())
 
