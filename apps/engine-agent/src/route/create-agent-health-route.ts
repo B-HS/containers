@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { describeRoute } from 'hono-openapi'
 import { SERVICE_STATUS } from '@containers/contracts/health'
-import type { AgentHealthService } from '../service/create-agent-health-service'
+import type { AgentHealthService } from '../service/domain/create-agent-health-service'
 import { withErrorHandling } from '../lib/with-error-handling'
 
 type AgentHealthRouteDependencies = {

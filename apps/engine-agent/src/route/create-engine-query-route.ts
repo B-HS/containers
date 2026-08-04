@@ -3,7 +3,7 @@ import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
 import { containerLogRequestSchema } from '@containers/contracts/engine'
 import { containerWaitRequestSchema } from '@containers/contracts/engine-control'
-import type { EngineQueryService } from '../service/create-engine-query-service'
+import type { EngineQueryService } from '../service/domain/create-engine-query-service'
 import { withErrorHandling } from '../lib/with-error-handling'
 
 type EngineQueryRouteDependencies = {
@@ -29,7 +29,9 @@ export const createEngineQueryRoute = ({ engineQueryService }: EngineQueryRouteD
         '/containers/:containerId',
         describeRoute({ tags: ['engine-query'], summary: '컨테이너 상세 조회', responses: { 200: { description: '상세' } } }),
         validator('param', containerIdParamSchema),
-        withErrorHandling(async (context) => context.json(await engineQueryService.getContainer((context.req.valid('param' as never) as { containerId: string }).containerId), 200)),
+        withErrorHandling(async (context) =>
+            context.json(await engineQueryService.getContainer((context.req.valid('param' as never) as { containerId: string }).containerId), 200),
+        ),
     )
     route.get(
         '/containers/:containerId/logs',
@@ -37,20 +39,33 @@ export const createEngineQueryRoute = ({ engineQueryService }: EngineQueryRouteD
         validator('param', containerIdParamSchema),
         validator('query', containerLogRequestSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineQueryService.getContainerLogs((context.req.valid('param' as never) as { containerId: string }).containerId, context.req.valid('query' as never)), 200),
+            context.json(
+                await engineQueryService.getContainerLogs(
+                    (context.req.valid('param' as never) as { containerId: string }).containerId,
+                    context.req.valid('query' as never),
+                ),
+                200,
+            ),
         ),
     )
     route.get(
         '/containers/:containerId/top',
         describeRoute({ tags: ['engine-query'], summary: '컨테이너 프로세스 조회', responses: { 200: { description: '프로세스' } } }),
         validator('param', containerIdParamSchema),
-        withErrorHandling(async (context) => context.json(await engineQueryService.getContainerTop((context.req.valid('param' as never) as { containerId: string }).containerId), 200)),
+        withErrorHandling(async (context) =>
+            context.json(await engineQueryService.getContainerTop((context.req.valid('param' as never) as { containerId: string }).containerId), 200),
+        ),
     )
     route.get(
         '/containers/:containerId/changes',
         describeRoute({ tags: ['engine-query'], summary: '컨테이너 변경 사항 조회', responses: { 200: { description: '변경 사항' } } }),
         validator('param', containerIdParamSchema),
-        withErrorHandling(async (context) => context.json(await engineQueryService.getContainerChanges((context.req.valid('param' as never) as { containerId: string }).containerId), 200)),
+        withErrorHandling(async (context) =>
+            context.json(
+                await engineQueryService.getContainerChanges((context.req.valid('param' as never) as { containerId: string }).containerId),
+                200,
+            ),
+        ),
     )
     route.post(
         '/containers/:containerId/wait',
@@ -58,7 +73,13 @@ export const createEngineQueryRoute = ({ engineQueryService }: EngineQueryRouteD
         validator('param', containerIdParamSchema),
         validator('json', containerWaitRequestSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineQueryService.waitContainer((context.req.valid('param' as never) as { containerId: string }).containerId, context.req.valid('json' as never)), 200),
+            context.json(
+                await engineQueryService.waitContainer(
+                    (context.req.valid('param' as never) as { containerId: string }).containerId,
+                    context.req.valid('json' as never),
+                ),
+                200,
+            ),
         ),
     )
 

@@ -7,9 +7,9 @@ import {
     type ContainerStatsSample,
     type EngineStreamEvent,
 } from '@containers/contracts/engine-stream'
-import type { createDockerEngineClient } from '../docker/create-docker-engine-client'
-import { createAppError } from '../lib/error'
-import { createLineParser, createMultiplexFrameParser } from './create-stream-parsers'
+import type { createDockerEngineClient } from '../shared/create-docker-engine-client'
+import { createAppError } from '../../lib/error'
+import { createLineParser, createMultiplexFrameParser } from '../shared/create-stream-parsers'
 
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
 const MANAGEMENT_LABEL = 'managed-by'

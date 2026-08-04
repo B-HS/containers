@@ -29,8 +29,8 @@ import {
     volumeCreateRequestSchema,
 } from '@containers/contracts/engine-control'
 import { imageLoadRequestSchema, imageLoadResultSchema } from '@containers/contracts/upload'
-import type { DockerEngineClient } from '../docker/create-docker-engine-client'
-import { createAppError } from '../lib/error'
+import type { DockerEngineClient } from '../shared/create-docker-engine-client'
+import { createAppError } from '../../lib/error'
 import type { RegistryCredentialService } from './create-registry-credential-service'
 
 type EngineControlServiceDependencies = {

@@ -16,7 +16,7 @@ import {
     volumeCreateRequestSchema,
 } from '@containers/contracts/engine-control'
 import { imageLoadRequestSchema } from '@containers/contracts/upload'
-import type { EngineControlService } from '../service/create-engine-control-service'
+import type { EngineControlService } from '../service/domain/create-engine-control-service'
 import { withErrorHandling } from '../lib/with-error-handling'
 
 type EngineControlRouteDependencies = {
@@ -49,7 +49,9 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         '/images/:imageId/removal-impact',
         describeRoute({ tags: ['engine-control'], summary: '이미지 삭제 영향도 조회', responses: { 200: { description: '영향도' } } }),
         validator('param', imageIdParamSchema),
-        withErrorHandling(async (context) => context.json(await engineControlService.getImageRemovalImpact((context.req.valid('param' as never) as { imageId: string }).imageId), 200)),
+        withErrorHandling(async (context) =>
+            context.json(await engineControlService.getImageRemovalImpact((context.req.valid('param' as never) as { imageId: string }).imageId), 200),
+        ),
     )
     route.get(
         '/networks',
@@ -97,7 +99,13 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         validator('param', imageIdParamSchema),
         validator('json', imageTagRequestSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineControlService.tagImage((context.req.valid('param' as never) as { imageId: string }).imageId, context.req.valid('json' as never)), 200),
+            context.json(
+                await engineControlService.tagImage(
+                    (context.req.valid('param' as never) as { imageId: string }).imageId,
+                    context.req.valid('json' as never),
+                ),
+                200,
+            ),
         ),
     )
     route.post(
@@ -112,7 +120,13 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         validator('param', containerIdParamSchema),
         validator('json', containerActionSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineControlService.performContainerAction((context.req.valid('param' as never) as { containerId: string }).containerId, context.req.valid('json' as never)), 200),
+            context.json(
+                await engineControlService.performContainerAction(
+                    (context.req.valid('param' as never) as { containerId: string }).containerId,
+                    context.req.valid('json' as never),
+                ),
+                200,
+            ),
         ),
     )
     route.post(
@@ -121,7 +135,13 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         validator('param', containerIdParamSchema),
         validator('json', containerExecRequestSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineControlService.executeContainer((context.req.valid('param' as never) as { containerId: string }).containerId, context.req.valid('json' as never)), 200),
+            context.json(
+                await engineControlService.executeContainer(
+                    (context.req.valid('param' as never) as { containerId: string }).containerId,
+                    context.req.valid('json' as never),
+                ),
+                200,
+            ),
         ),
     )
     route.post(
@@ -130,7 +150,13 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         validator('param', containerIdParamSchema),
         validator('json', containerNetworkAttachmentSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineControlService.connectContainerNetwork((context.req.valid('param' as never) as { containerId: string }).containerId, context.req.valid('json' as never)), 200),
+            context.json(
+                await engineControlService.connectContainerNetwork(
+                    (context.req.valid('param' as never) as { containerId: string }).containerId,
+                    context.req.valid('json' as never),
+                ),
+                200,
+            ),
         ),
     )
     route.post(
@@ -140,7 +166,10 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         validator('json', containerNetworkAttachmentSchema),
         withErrorHandling(async (context) =>
             context.json(
-                await engineControlService.disconnectContainerNetwork((context.req.valid('param' as never) as { containerId: string }).containerId, context.req.valid('json' as never)),
+                await engineControlService.disconnectContainerNetwork(
+                    (context.req.valid('param' as never) as { containerId: string }).containerId,
+                    context.req.valid('json' as never),
+                ),
                 200,
             ),
         ),
@@ -151,7 +180,13 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         validator('param', containerIdParamSchema),
         validator('json', containerHealthProbeRequestSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineControlService.probeContainer((context.req.valid('param' as never) as { containerId: string }).containerId, context.req.valid('json' as never)), 200),
+            context.json(
+                await engineControlService.probeContainer(
+                    (context.req.valid('param' as never) as { containerId: string }).containerId,
+                    context.req.valid('json' as never),
+                ),
+                200,
+            ),
         ),
     )
     route.delete(
@@ -160,7 +195,13 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         validator('param', imageIdParamSchema),
         validator('json', imageRemoveRequestSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineControlService.removeImage((context.req.valid('param' as never) as { imageId: string }).imageId, context.req.valid('json' as never)), 200),
+            context.json(
+                await engineControlService.removeImage(
+                    (context.req.valid('param' as never) as { imageId: string }).imageId,
+                    context.req.valid('json' as never),
+                ),
+                200,
+            ),
         ),
     )
     route.delete(
@@ -169,7 +210,13 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         validator('param', networkIdParamSchema),
         validator('json', dockerResourceRemoveRequestSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineControlService.removeNetwork((context.req.valid('param' as never) as { networkId: string }).networkId, context.req.valid('json' as never)), 200),
+            context.json(
+                await engineControlService.removeNetwork(
+                    (context.req.valid('param' as never) as { networkId: string }).networkId,
+                    context.req.valid('json' as never),
+                ),
+                200,
+            ),
         ),
     )
     route.delete(
@@ -178,7 +225,13 @@ export const createEngineControlRoute = ({ engineControlService }: EngineControl
         validator('param', volumeNameParamSchema),
         validator('json', dockerResourceRemoveRequestSchema),
         withErrorHandling(async (context) =>
-            context.json(await engineControlService.removeVolume((context.req.valid('param' as never) as { volumeName: string }).volumeName, context.req.valid('json' as never)), 200),
+            context.json(
+                await engineControlService.removeVolume(
+                    (context.req.valid('param' as never) as { volumeName: string }).volumeName,
+                    context.req.valid('json' as never),
+                ),
+                200,
+            ),
         ),
     )
 

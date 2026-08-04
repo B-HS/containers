@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
 import { containerLogStreamQuerySchema } from '@containers/contracts/engine-stream'
-import type { EngineStreamService } from '../service/create-engine-stream-service'
+import type { EngineStreamService } from '../service/domain/create-engine-stream-service'
 import { withErrorHandling } from '../lib/with-error-handling'
 
 type EngineStreamRouteDependencies = {

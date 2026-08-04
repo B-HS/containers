@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { interactiveExecTicketRequestSchema, interactiveExecTicketSchema } from '@containers/contracts/engine-control'
-import type { DockerEngineClient } from '../docker/create-docker-engine-client'
-import { createAppError } from '../lib/error'
+import type { DockerEngineClient } from '../shared/create-docker-engine-client'
+import { createAppError } from '../../lib/error'
 
 type InteractiveExecServiceDependencies = {
     dockerEngineClient: Pick<DockerEngineClient, 'createInteractiveExec' | 'getContainers' | 'inspectInteractiveExec' | 'resizeInteractiveExec'>

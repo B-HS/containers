@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { nginxConfigApplySchema } from '@containers/contracts/nginx'
-import type { NginxConfigService } from '../service/create-nginx-config-service'
+import type { NginxConfigService } from '../service/domain/create-nginx-config-service'
 import { withErrorHandling } from '../lib/with-error-handling'
 
 type NginxConfigRouteDependencies = {

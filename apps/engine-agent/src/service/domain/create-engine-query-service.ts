@@ -1,3 +1,4 @@
+import { statfs } from 'node:fs/promises'
 import {
     containerDetailSchema,
     containerLogRequestSchema,
@@ -11,8 +12,8 @@ import {
     containerWaitRequestSchema,
     containerWaitResultSchema,
 } from '@containers/contracts/engine-control'
-import type { DockerEngineClient } from '../docker/create-docker-engine-client'
-import { createAppError } from '../lib/error'
+import { createAppError } from '../../lib/error'
+import type { DockerEngineClient } from '../shared/create-docker-engine-client'
 
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
 const MANAGEMENT_LABEL = 'managed-by'
@@ -25,13 +26,8 @@ const isManagementPlaneResource = (labels: Record<string, string>) =>
 const containerMatchesReference = (containerId: string, containerNames: string[], reference: string) =>
     containerId === reference || containerId.startsWith(reference) || containerNames.includes(reference)
 
-type FilesystemUsage = {
-    availableBytes: number
-    capacityBytes: number
-    usedBytes: number
-}
-
 type EngineQueryServiceDependencies = {
+    artifactRoot: string
     dockerEngineClient: Pick<
         DockerEngineClient,
         | 'changesContainer'
@@ -44,12 +40,23 @@ type EngineQueryServiceDependencies = {
         | 'topContainer'
         | 'waitContainer'
     >
-    getFilesystemUsage: () => Promise<FilesystemUsage>
 }
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0)
 
-export const createEngineQueryService = ({ dockerEngineClient, getFilesystemUsage }: EngineQueryServiceDependencies) => {
+const getFilesystemUsage = async (artifactRoot: string) => {
+    const filesystem = await statfs(artifactRoot)
+    const capacityBytes = filesystem.blocks * filesystem.bsize
+    const availableBytes = filesystem.bavail * filesystem.bsize
+
+    return {
+        availableBytes,
+        capacityBytes,
+        usedBytes: capacityBytes - filesystem.bfree * filesystem.bsize,
+    }
+}
+
+export const createEngineQueryService = ({ artifactRoot, dockerEngineClient }: EngineQueryServiceDependencies) => {
     const assertNotManagementPlane = async (containerId: string) => {
         const containers = await dockerEngineClient.getContainers()
         const container = containers.find((candidate) =>
@@ -159,7 +166,7 @@ export const createEngineQueryService = ({ dockerEngineClient, getFilesystemUsag
                 dockerEngineClient.getVersion(),
                 dockerEngineClient.getInfo(),
                 dockerEngineClient.getDiskUsage(),
-                getFilesystemUsage(),
+                getFilesystemUsage(artifactRoot),
             ])
             const buildCacheBytes = sum(diskUsage.BuildCache.map((cache) => cache.Size))
             const containerWritableBytes = sum(diskUsage.Containers.map((container) => container.SizeRw))

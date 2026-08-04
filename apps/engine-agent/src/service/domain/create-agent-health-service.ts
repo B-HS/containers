@@ -1,5 +1,5 @@
 import { SERVICE_STATUS, healthSchema } from '@containers/contracts/health'
-import type { DockerEngineClient } from '../docker/create-docker-engine-client'
+import type { DockerEngineClient } from '../shared/create-docker-engine-client'
 
 type AgentHealthServiceDependencies = {
     dockerEngineClient: Pick<DockerEngineClient, 'getVersion'>

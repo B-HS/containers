@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
-import { statfs } from 'node:fs/promises'
-import { createDockerEngineClient } from '../docker/create-docker-engine-client'
+import { createDockerEngineClient } from '../service/shared/create-docker-engine-client'
 import { createInternalAuthMiddleware } from '../middleware/create-internal-auth-middleware'
 import { createAgentHealthRoute } from '../route/create-agent-health-route'
 import { createEngineControlRoute } from '../route/create-engine-control-route'
@@ -9,13 +8,13 @@ import { createEngineStreamRoute } from '../route/create-engine-stream-route'
 import { createNginxConfigRoute } from '../route/create-nginx-config-route'
 import { createRegistryCredentialRoute } from '../route/create-registry-credential-route'
 import { createInteractiveExecRoute } from '../route/create-interactive-exec-route'
-import { createAgentHealthService } from '../service/create-agent-health-service'
-import { createEngineControlService } from '../service/create-engine-control-service'
-import { createEngineQueryService } from '../service/create-engine-query-service'
-import { createEngineStreamService } from '../service/create-engine-stream-service'
-import { createNginxConfigService } from '../service/create-nginx-config-service'
-import { createRegistryCredentialService } from '../service/create-registry-credential-service'
-import { createInteractiveExecService } from '../service/create-interactive-exec-service'
+import { createAgentHealthService } from '../service/domain/create-agent-health-service'
+import { createEngineControlService } from '../service/domain/create-engine-control-service'
+import { createEngineQueryService } from '../service/domain/create-engine-query-service'
+import { createEngineStreamService } from '../service/domain/create-engine-stream-service'
+import { createNginxConfigService } from '../service/domain/create-nginx-config-service'
+import { createRegistryCredentialService } from '../service/domain/create-registry-credential-service'
+import { createInteractiveExecService } from '../service/domain/create-interactive-exec-service'
 
 type AgentAppDependencies = {
     artifactRoot: string
@@ -39,20 +38,7 @@ export const createAgentApp = ({
     const dockerEngineClient = createDockerEngineClient({ socketPath })
     const agentHealthService = createAgentHealthService({ dockerEngineClient, now: () => new Date() })
     const agentHealthRoute = createAgentHealthRoute({ agentHealthService })
-    const engineQueryService = createEngineQueryService({
-        dockerEngineClient,
-        getFilesystemUsage: async () => {
-            const filesystem = await statfs(artifactRoot)
-            const capacityBytes = filesystem.blocks * filesystem.bsize
-            const availableBytes = filesystem.bavail * filesystem.bsize
-
-            return {
-                availableBytes,
-                capacityBytes,
-                usedBytes: capacityBytes - filesystem.bfree * filesystem.bsize,
-            }
-        },
-    })
+    const engineQueryService = createEngineQueryService({ artifactRoot, dockerEngineClient })
     const engineQueryRoute = createEngineQueryRoute({ engineQueryService })
     const registryCredentialService = createRegistryCredentialService({
         filePath: registryCredentialFile,

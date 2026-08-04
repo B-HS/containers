@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { createAppError } from '../lib/error'
+import { createAppError } from '../../lib/error'
 import { createInteractiveExecService } from './create-interactive-exec-service'
 
 const nonManagementContainers = async () => []

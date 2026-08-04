@@ -3,8 +3,8 @@ import { describeRoute, validator } from 'hono-openapi'
 import { createBunWebSocket } from 'hono/bun'
 import type { WSContext } from 'hono/ws'
 import { execTicketParamSchema, interactiveExecClientMessageSchema, interactiveExecTicketRequestSchema } from '@containers/contracts/engine-control'
-import { createInteractiveExecSessionGuard } from '../service/create-interactive-exec-session-guard'
-import type { InteractiveExecService } from '../service/create-interactive-exec-service'
+import { createInteractiveExecSessionGuard } from '../service/shared/create-interactive-exec-session-guard'
+import type { InteractiveExecService } from '../service/domain/create-interactive-exec-service'
 import { withErrorHandling } from '../lib/with-error-handling'
 
 const { upgradeWebSocket } = createBunWebSocket()

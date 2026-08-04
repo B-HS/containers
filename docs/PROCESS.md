@@ -420,3 +420,13 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] e. 검증 — 12라운드 누적 typecheck(7 workspace)·lint·format:check·test 160 pass, 모든 재빌드 healthy
 - [x] f. 최근 변경분 집중 검증 — webhook IPv6 파서(공개 통과·private 차단 ALL PASS), nginx auth-location regex(panel+api 적용·nginx -t 통과·trailing-slash 404로 우회 불가), restore preserved(nginx_route/deployment 복원 가능) 확인, 브라우저 실측(로그인 유지·nginx GUI 렌더·console error 0)
 - [x] g. 문서 정리 — PROCESS.md 체크 기록. (보안 감사 반복 루프는 사용자 `/goal clear`로 중단; 외부 무인증 공격자 기준 잔여 위험은 관리자 자격증명 탈취·DNS-rebinding TOCTOU(관리자 신뢰 경계 내)뿐)
+
+## 작업: convention-audit-refactor Wave 3-9 — engine-agent 계층 정리 (2026-08-04)
+
+기준: `.omo/plans/convention-audit-refactor.md` todo 9 — backend.md §1·§2 계층 구조 정리. engine-agent는 DB 미사용이라 `*ServiceDb`/composeXxx skip.
+
+- [x] a. `src/docker/` 제거 — `create-docker-engine-client.ts`(Docker Engine HTTP client)를 `src/service/shared/`로 git mv, 내부 `lib/error` 상대 경로 갱신, 참조처 7개(compose + domain 서비스 6) import 경로 갱신
+- [x] b. `service/` flat → `service/domain/`(7개: agent-health·engine-control·engine-query·engine-stream·interactive-exec·nginx-config·registry-credential) + `service/shared/`(3개: docker-engine-client·stream-parsers·interactive-exec-session-guard) 분리, route 6개·compose import 경로 전부 갱신
+- [x] c. statfs 이관 — `create-agent-app.ts:44-54` 인라인 `getFilesystemUsage`(statfs)를 `create-engine-query-service.ts` 내부로 이동, deps는 `getFilesystemUsage: () => Promise<...>` 대신 `artifactRoot: string` 수신해 내부 계산(동작·반환 형태 보존: availableBytes/capacityBytes/usedBytes). compose에서 `import { statfs }` 제거
+- [x] d. 테스트 갱신 — engine-query-service 테스트가 `getFilesystemUsage` 주입 대신 임시 디렉터리 + 실제 `statfs` 계산으로 동작 등가 검증(기대값을 실 statfs 결과로 도출, afterEach 정리)
+- [x] e. 검증 — 루트 `bun run typecheck`(7 workspace)·`bun run lint`·`bun test` 160 pass, format:check는 이번 변경분 3개 route 포맷 수정. `src/docker/` 없음, `src/service/`에 domain/shared만, `grep statfs src/compose` 0건

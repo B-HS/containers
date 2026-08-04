@@ -1,5 +1,24 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdtemp, rm, statfs } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createEngineQueryService } from './create-engine-query-service'
+
+const directoriesToRemove: string[] = []
+
+const createTemporaryDirectory = async () => mkdtemp(join(tmpdir(), 'engine-query-service-'))
+
+const getExpectedFilesystemUsage = async (artifactRoot: string) => {
+    const filesystem = await statfs(artifactRoot)
+    const capacityBytes = filesystem.blocks * filesystem.bsize
+    const availableBytes = filesystem.bavail * filesystem.bsize
+
+    return {
+        availableBytes,
+        capacityBytes,
+        usedBytes: capacityBytes - filesystem.bfree * filesystem.bsize,
+    }
+}
 
 const createDockerEngineClientStub = () => ({
     changesContainer: async () => [{ kind: 'added' as const, path: '/tmp/file' }],
@@ -95,31 +114,41 @@ const createDockerEngineClientStub = () => ({
 })
 
 describe('Engine 조회 서비스', () => {
+    afterEach(async () => {
+        for (const directory of directoriesToRemove) {
+            await rm(directory, { force: true, recursive: true })
+        }
+        directoriesToRemove.length = 0
+    })
+
     test('Docker 원문을 안정된 Engine 요약으로 변환합니다', async () => {
+        const artifactRoot = await createTemporaryDirectory()
+        directoriesToRemove.push(artifactRoot)
+        const filesystem = await getExpectedFilesystemUsage(artifactRoot)
         const service = createEngineQueryService({
             dockerEngineClient: createDockerEngineClientStub(),
-            getFilesystemUsage: async () => ({ availableBytes: 600, capacityBytes: 1_000, usedBytes: 400 }),
+            artifactRoot,
         })
         const overview = await service.getOverview()
 
         expect(overview.version).toBe('29.6.2')
         expect(overview.containers).toEqual({ paused: 0, running: 1, stopped: 1, total: 2 })
         expect(overview.disk).toEqual({
-            availableBytes: 600,
+            ...filesystem,
             buildCacheBytes: 30,
-            capacityBytes: 1_000,
             containerWritableBytes: 70,
             estimatedReclaimableBytes: 180,
             layersBytes: 100,
             localVolumeBytes: 170,
-            usedBytes: 400,
         })
     })
 
     test('컨테이너 이름과 생성 시간을 정규화합니다', async () => {
+        const artifactRoot = await createTemporaryDirectory()
+        directoriesToRemove.push(artifactRoot)
         const service = createEngineQueryService({
             dockerEngineClient: createDockerEngineClientStub(),
-            getFilesystemUsage: async () => ({ availableBytes: 600, capacityBytes: 1_000, usedBytes: 400 }),
+            artifactRoot,
         })
         const containers = await service.getContainers()
 
@@ -130,9 +159,11 @@ describe('Engine 조회 서비스', () => {
     })
 
     test('inspect에서 secret 값은 제거하고 key와 runtime 상태만 반환합니다', async () => {
+        const artifactRoot = await createTemporaryDirectory()
+        directoriesToRemove.push(artifactRoot)
         const service = createEngineQueryService({
             dockerEngineClient: createDockerEngineClientStub(),
-            getFilesystemUsage: async () => ({ availableBytes: 600, capacityBytes: 1_000, usedBytes: 400 }),
+            artifactRoot,
         })
         const detail = await service.getContainer('container-id')
 
