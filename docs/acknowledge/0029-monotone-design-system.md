@@ -183,6 +183,6 @@ button · input · textarea · label · card · badge 6종을 공식 소스 기�
 - 감사: `limit=3` 기준 `{page,limit,total,totalPages}` 봉투, page 2 offset, `result=success` 필터 일치, `from>to` 400, `limit=500` 400 을 실측했고 total 이 DB 실제 행 수와 일치했다.
 - 브라우저: 감사 로그 서버 필터 UI(검색·선택·기간·적용/초기화)와 표 렌더, console error 0건, 페이지 가로 스크롤 0.
 
-### 정책 판단이 필요한 잔여 1건
+### 감사 로그 열람 role 불일치 — 문서를 구현에 맞추기로 확정
 
-감사 로그 열람 role 이 문서(`docs/llm.txt` 는 owner/admin)와 구현(owner·admin·viewer·auditor)에서 불일치한다. 이번 작업은 구현을 바꾸지 않고 유지했다. 문서를 구현에 맞출지, 구현을 좁힐지는 사용자 결정이 필요하다.
+사용자 결정: **구현(`owner`·`admin`·`viewer`·`auditor`)을 정본으로 두고 문서를 맞춘다.** 감사 로그는 읽기 전용 관측 수단이고 `viewer`·`auditor` 는 정의상 읽기 role 이기 때문이다. `docs/llm.txt` 의 `/api/audit GET (owner/admin, read-only)` 을 정정하고, 권한 모델 정본인 `docs/SECURITY.md` 에 §5.1 을 신설해 열람 role·노출 필드·원본 IP 미노출(`auditEventSchema` 에 `sourceIp` 필드가 없어 Zod 가 제거)을 명시했다.

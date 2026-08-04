@@ -485,3 +485,4 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] e. 실측에서 드러난 결함 2건 수정 — ① 공유 파서가 주석 줄 다음 블록 헤드를 삼켜 계층이 무너지던 버그(웹 GUI 편집기 손상 잠재 경로) ② 새 계약 검증이 닫는 중괄호 앞 주석을 불균형으로 판정해 **route 생성이 원천 불가**하던 회귀. 둘 다 정적 검사는 통과했고 Compose 실측에서만 드러났다
 - [x] f. Dockerfile 4종에 신규 workspace 패키지 COPY 추가 — 누락 시 이미지 빌드가 깨진다(에이전트 산출물에 없었고 메인 세션이 잡음)
 - [x] g. 검증 — typecheck 8/8·lint 0·test 230 pass·format:check·build 8/8, Compose 5개 healthy, route 생성→프록시 응답→삭제 후 SHA 원복, 로테이션 실회전(중복 0), 감사 필터·페이지네이션 실측, 브라우저 console error 0
+- [x] h. 감사 로그 열람 role 문서 정합 — 사용자 결정에 따라 구현(owner·admin·viewer·auditor)을 정본으로 두고 `docs/llm.txt` 를 정정, `docs/SECURITY.md` §5.1 신설(열람 role·노출 필드·원본 IP 미노출 근거). 겸해 llm.txt 의 API key owner 전용 scope 이중 강제와 backup restore session-only 도 실제 구현에 맞춰 갱신

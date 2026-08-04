@@ -155,6 +155,9 @@ Recent-auth (step-up): all DESTRUCTIVE writes require a session <= 15 min old
   exec-ticket.
 
 API keys: `ctk_` + 32-byte random; only SHA-256 stored; scopes deny-by-default.
+  Owner-only scopes (backup:write, secret:write) are enforced twice: at issue time
+  (owner + recent) and at use time (the issuer's current role must still be owner),
+  so keys issued before the policy or held by a demoted account stop working.
   authenticate() inner-joins user_role and rejects if disabledAt set or revoked.
   Disabling/demoting a user revokes their api keys + deletes sessions in one txn.
   Scopes: artifact:read, artifact:upload, backup:read, backup:write,
@@ -177,10 +180,14 @@ Auth (better-auth): /api/auth/* — sign-in/email, sign-up/email (404), session.
   /api/invitations/accept POST | /api/users GET (owner/admin) |
   /api/users/:id PATCH (owner recent, demote/disable revokes keys+sessions)
 
-API keys:        /api/api-keys GET/POST (admin recent), /api/api-keys/:id DELETE
-Audit:           /api/audit GET (owner/admin, read-only)
-Backup:          /api/backups GET/POST (owner), /api/backups/:id/restore POST,
-                 /api/backups/:id DELETE (owner + recent)
+API keys:        /api/api-keys GET/POST (admin recent; scopes backup:write and
+                 secret:write require owner + recent), /api/api-keys/:id DELETE
+Audit:           /api/audit GET (owner/admin/viewer/auditor, read-only, paginated;
+                 server-side filters actorEmail/targetId/operation/result/
+                 targetType/from/to + page/limit, default 50 max 200)
+Backup:          /api/backups GET/POST (owner), /api/backups/:id/restore POST
+                 (session-only: an Authorization header is rejected with 403;
+                 owner + recent), /api/backups/:id DELETE (owner + recent)
 Control plane:   /api/control-plane/status GET (owner/admin)
 Maintenance:     /api/maintenance GET (all) / POST (owner recent)
 Engine:          /api/system/engine GET, /api/containers GET,
@@ -227,6 +234,8 @@ Streams:         /api/stream/containers/:id/logs|stats, /api/stream/events
                  (SSE, role-gated; management-plane events filtered)
 
 Response envelope: { "success": true, "data": ... } |
+  { "success": true, "data": [...], "pagination": { page, limit, total, totalPages } }
+    (paginated list routes such as /api/audit) |
   { "success": false, "error": { "code": "...", "message": "...", "requestId": "..." } }
   Codes are UPPER_SNAKE (AUTH_REQUIRED, FORBIDDEN, RECENT_AUTH_REQUIRED,
   MANAGEMENT_RESOURCE_PROTECTED, NGINX_CONFIG_CONFLICT, ...).

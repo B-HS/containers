@@ -48,6 +48,16 @@ API 키에는 root-equivalent scope를 기본 발급하지 않는다. owner가 �
 
 Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 actor context를 받아 정책을 재확인한다. Agent는 API의 판정을 맹신하지 않고 operation별 허용 DTO와 internal service credential을 검증한다.
 
+### 5.1 감사 로그 열람 role (구현 기준, 2026-08-04 확정)
+
+`GET /api/audit`은 **`owner`·`admin`·`viewer`·`auditor` 네 role**이 조회할 수 있다(`create-audit-route.ts`). 설계 문서에 한때 owner/admin으로 적혀 있었으나 구현을 정본으로 삼아 문서를 맞춘다 — 감사 로그는 읽기 전용 관측 수단이고 `viewer`·`auditor`는 정의상 읽기 role이기 때문이다.
+
+노출 범위와 통제는 다음과 같다.
+
+- 응답에는 actor 이메일, operation, `targetType`/`targetId`, `detail`, 결과, 요청 ID가 포함된다. 따라서 `viewer`도 누가 무엇을 했는지 전부 볼 수 있다.
+- **원본 IP는 노출되지 않는다.** `auditEventSchema`에 `sourceIp` 필드 자체가 없어 Zod가 제거하고 `sourceIpMasked`만 내보낸다. §12의 원본 IP 통제는 이 경로에서도 유지된다.
+- 감사 로그는 append-only이며 열람에 쓰기 권한이 필요 없다. 열람 role을 좁혀야 할 요구가 생기면 route의 role 배열 한 곳만 바꾸면 된다.
+
 ## 6. API 키
 
 - Better Auth API key plugin 또는 동등한 검증된 구현을 사용한다.
