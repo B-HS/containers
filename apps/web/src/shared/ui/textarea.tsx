@@ -5,7 +5,11 @@ export const Textarea: FC<ComponentProps<'textarea'>> = ({ className, ...props }
     <textarea
         data-slot="textarea"
         className={cn(
-            'min-h-24 w-full resize-y border border-muted bg-background px-3 py-2 font-mono text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-foreground',
+            'bg-input field-sizing-content flex min-h-16 w-full px-3 py-2 text-base transition-[color,box-shadow] outline-none',
+            'placeholder:text-text-subtle md:text-sm',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+            'focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+            'aria-invalid:ring-destructive/40 aria-invalid:ring-[3px]',
             className,
         )}
         {...props}

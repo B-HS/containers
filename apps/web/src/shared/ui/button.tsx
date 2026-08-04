@@ -1,27 +1,39 @@
 import type { ComponentProps, FC } from 'react'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { Slot } from 'radix-ui'
 import { cn } from '@shared/lib/utils'
 
-type ButtonVariant = 'default' | 'destructive' | 'outline' | 'ghost'
-
-type ButtonProps = ComponentProps<'button'> & {
-    variant?: ButtonVariant
-}
-
-const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-    default: 'bg-primary text-primary-foreground',
-    destructive: 'bg-destructive text-destructive-foreground',
-    outline: 'border border-border bg-transparent hover:bg-muted',
-    ghost: 'bg-transparent hover:bg-muted',
-}
-
-export const Button: FC<ButtonProps> = ({ className, variant = 'outline', ...props }) => (
-    <button
-        data-slot="button"
-        className={cn(
-            'inline-flex h-9 items-center justify-center whitespace-nowrap px-4 text-sm font-medium transition-opacity hover:opacity-85 disabled:pointer-events-none disabled:opacity-50',
-            VARIANT_CLASSES[variant],
-            className,
-        )}
-        {...props}
-    />
+export const buttonVariants = cva(
+    "inline-flex shrink-0 items-center justify-center gap-2 text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:ring-[3px] aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+    {
+        variants: {
+            variant: {
+                default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+                destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/40',
+                outline: 'bg-overlay-subtle text-foreground hover:bg-overlay-hover',
+                secondary: 'bg-secondary text-secondary-foreground hover:bg-overlay-active',
+                ghost: 'text-foreground hover:bg-overlay-hover',
+                link: 'text-primary underline-offset-4 hover:underline',
+            },
+            size: {
+                default: 'h-9 px-4 py-2 has-[>svg]:px-3',
+                xs: "h-7 gap-1 px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+                sm: 'h-8 gap-1.5 px-3 has-[>svg]:px-2.5',
+                lg: 'h-10 px-6 has-[>svg]:px-4',
+                icon: 'size-9',
+            },
+        },
+        defaultVariants: {
+            variant: 'default',
+            size: 'default',
+        },
+    },
 )
+
+type ButtonProps = ComponentProps<'button'> & VariantProps<typeof buttonVariants> & { asChild?: boolean }
+
+export const Button: FC<ButtonProps> = ({ className, variant = 'default', size = 'default', asChild = false, ...props }) => {
+    const Comp = asChild ? Slot.Root : 'button'
+
+    return <Comp data-slot="button" data-variant={variant} data-size={size} className={cn(buttonVariants({ variant, size, className }))} {...props} />
+}
