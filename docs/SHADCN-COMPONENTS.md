@@ -122,3 +122,24 @@ custom feature도 Button, Scroll Area, Badge, Tooltip, Empty, Alert 같은 primi
 5. 레퍼런스 토큰과 radius·shadow·padding을 적용한다.
 6. keyboard, focus, disabled, loading, dark mode를 Story 또는 test route에서 검증한다.
 7. custom wrapper는 두 화면 이상에서 같은 조합이 반복될 때만 만든다.
+
+## 6. 실제 도입 현황 (2026-08-04)
+
+`apps/web/src/shared/ui`에 존재하는 컴포넌트는 다음과 같다.
+
+| 구분      | 컴포넌트                                                                                                                                  |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 입력·표시 | button, input, textarea, label, checkbox, switch, select, badge, card, alert, table, skeleton, empty, spinner, separator, accordion, tabs |
+| 오버레이  | dialog, alert-dialog, sheet, popover, dropdown-menu, tooltip, scroll-area, sonner                                                         |
+| 셸        | sidebar (+ `shared/hooks/use-mobile.ts`)                                                                                                  |
+
+미도입: chart, command, combobox, calendar, date picker, data table, pagination, breadcrumb, avatar, progress, item, field, input group, button group, kbd, toggle group, collapsible, drawer, hover card, context menu, native select.
+
+### 설치 방식 — CLI 대신 공식 소스 이식
+
+§5의 "shadcn CLI 실행" 절차는 이 프로젝트에서 **쓰지 않는다.** CLI가 `globals.css`와 `components.json`을 덮어써 모노톤 토큰 체계를 파괴하기 때문이다. 대신 다음을 따른다.
+
+1. `https://ui.shadcn.com/r/styles/new-york-v4/<component>.json`에서 공식 소스를 받아 **구조 기준선**으로 삼는다(cva variants, `data-slot`, Radix 위임, `focus-visible` ring, `aria-invalid`).
+2. 레포 컨벤션으로 옮긴다 — arrow function, 반환타입 미명시, 주석 제거, named export.
+3. 시각 표현만 치환한다: `border border-input` → `bg-input`/`bg-overlay-subtle`, 색 없는 `border`·`border-t/b` → 제거(구분은 `grid gap-px bg-background` 또는 `bg-overlay-subtle`), 인플로우 `shadow-xs` 제거(떠 있는 표면의 `shadow-lg`는 유지), 하드코딩 팔레트 → `--danger`/`--warning`/`--success` 토큰. `rounded-*`는 `--radius: 0` 매핑으로 자동 0이 되므로 새로 쓰지 않고, `rounded-full`은 형태가 곧 의미인 곳(Switch 트랙·썸, ScrollArea thumb, 상태 dot)만 유지한다.
+4. Radix는 통합 패키지 `radix-ui`에서 import한다(`import { Dialog as DialogPrimitive } from 'radix-ui'`). 개별 `@radix-ui/react-*` 패키지를 추가하지 않는다.

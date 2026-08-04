@@ -131,3 +131,29 @@ button · input · textarea · label · card · badge 6종을 공식 소스 기�
 - 런타임: Compose 5개 healthy, 미인증 401, `/api/health` 200.
 - 브라우저: 전 패널 페이지를 라이트·다크 · 데스크톱(1440)·모바일(390)에서 확인, console error 0건.
 - 디자인 회귀 방지 grep: 앱 코드에 `border-`·`rounded-`(형태 예외 제외)·Tailwind 기본 팔레트 색(`red-`·`emerald-`·`amber-`·`zinc-`) 0건.
+
+## 10. 구현 결과 (2026-08-04)
+
+### 반영된 결정
+
+- 토큰: `globals.css` 재작성 완료. 전역 `* { border-radius: 0 }` 제거하고 `--radius: 0rem` + `@theme inline` 매핑으로 대체, `@layer base` 의 `border-color` 가드 도입, surface 3단·overlay 4단·텍스트 3단 스케일과 shadcn 표준 토큰(secondary·sidebar-\*·chart-\*) 보강, `--input` 을 입력 채움 토큰으로 재정의, 시스템 폰트 스택 적용.
+- 컴포넌트: primitive 6종 공식 교체 + 14종 신규 도입 + 기존 6종 시각 정합. `inline-alert.tsx` 삭제, `@radix-ui/react-slot` 개별 의존성 제거(통합 `radix-ui` 의 Slot 사용).
+- 정보구조: 셸을 Sidebar 로 교체해 `children` 이중 렌더 해소, 대시보드를 요약 전용으로 축소, 사이드바에서 액션 경로 제거.
+- 데이터 경로: `window.location.reload` 전량 제거, 위젯이 엔티티 쿼리 훅 구독, 리터럴 쿼리 키 제거.
+- 백엔드: §7 의 10건 전부 수정하고 테스트를 함께 추가했다(166 → 199 pass).
+
+### 실측에서 추가로 발견해 고친 것
+
+1. **모듈 싱글턴 QueryClient** — `shared/lib/query-provider.tsx` 가 모듈 레벨에서 `new QueryClient()` 를 만들어 **서버에서 모든 요청이 같은 캐시를 공유**했다. 단일 사용자 패널이라 실제 유출로 이어지진 않았지만 요청 간 격리가 없는 것은 명백한 결함이다. 서버는 요청마다 새로 만들고 브라우저만 재사용하도록 바꿨다.
+2. **layout ↔ page 이중 프리페치** — 사이드바 `EngineInfo`(layout)와 대시보드 카드(page)가 같은 `ENGINE.OVERVIEW` 키를 서로 다른 시점의 값으로 각각 채워, 클라이언트 하이드레이션 중 값이 교체되며 React #418 이 발생했다. 엔진 상태는 셸이 소유하도록 layout 에서 한 번만 프리페치하고, 페이지는 컨테이너 목록만 채운다(`getEngineDashboard` → `getEngineOverview` + `getContainerList` 분리).
+
+### 검증
+
+- 기계: typecheck 7/7, lint 0, test **199 pass**, format:check, build 7/7.
+- 런타임: Compose 5개 healthy, 미인증 401, 전 패널 라우트 200.
+- 브라우저: 라이트·다크, 1440·390, console error **0건**. 파괴적 작업 다이얼로그의 확인 문구 잠금·ESC·포커스 복귀, 모바일 Sheet 드로어, 표 zebra, 편집기 내부 가로 스크롤(페이지 가로 스크롤 0) 확인.
+- 회귀 방지 grep: 앱 코드의 border 유틸·`rounded-*`(형태 예외 제외)·Tailwind 기본 팔레트 색·`window.location.reload`·템플릿 리터럴 className 전부 0건.
+
+### 남은 것
+
+§8 의 보류 4건(nginx 보호 계약 파서화, nginx route apply-then-persist 순서, access log 로테이션, 감사 로그 서버 필터)은 그대로 미착수다. 대시보드는 요약 전용으로 줄이면서 여백이 넓어졌으므로, 이후 최근 작업·경고 요약 같은 카드를 추가할지는 별도 판단이 필요하다.

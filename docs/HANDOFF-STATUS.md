@@ -12,7 +12,7 @@
 - durable operation job queue(상태 machine·재시도·취소·timeline·boot reconciliation)가 구현됐고 자동 backup 이 첫 소비자다. [acknowledge/0014](./acknowledge/0014-durable-operation-job-queue.md)
 - Docker events·logs·stats 실시간 SSE 가 Agent 정규화 → API 인증 proxy → 패널 실시간 로그 UI 까지 구현됐다. [acknowledge/0015](./acknowledge/0015-docker-stream-sse.md)
 - 전체 typecheck, ESLint, Prettier가 통과한다.
-- 전체 테스트는 34 files, 158 pass, 530 assertions다.
+- 전체 테스트는 37 files, 199 pass, 732 assertions다. (2026-08-04 기준)
 - container kill·update·rename·wait·top·changes 와 image pull(durable job)·tag 가 agent E2E 로 실측 검증됐다. [acknowledge/0017](./acknowledge/0017-docker-command-completeness.md)
 - Compose project label 기반 관리 plane container·image·network·volume 보호, 자체 prune dry-run preview, image 삭제 dependency impact와 force owner 제한이 구현됐다. [acknowledge/0018](./acknowledge/0018-prune-preview-management-protection.md)
 - owner 최근 인증·preview SHA 재검증·volume opt-in·후보별 보호·취소 지점·단일 attempt를 적용한 `system.prune` durable job과 패널이 구현됐다. [acknowledge/0019](./acknowledge/0019-durable-system-prune.md)
@@ -371,3 +371,32 @@ docker compose up -d --wait
 6. 이 handoff의 완료 범위·검증 수치·다음 우선순위
 
 체크박스는 코드가 존재한다는 이유만으로 체크하지 않는다. 실제 단위/통합/브라우저/Docker 증거 중 위험에 비례한 검증이 완료됐을 때만 체크한다.
+
+## 13. 2026-08-04 웹 UI/UX 전면 개편과 백엔드 결함 수정
+
+브랜치 `feat/web-ui-refresh`. 스펙은 [acknowledge/0029](./acknowledge/0029-monotone-design-system.md), 감사 원본은 [quality-assurance/2026-08-04-ui-backend-audit.md](./quality-assurance/2026-08-04-ui-backend-audit.md)다.
+
+### 디자인 시스템
+
+- `globals.css`를 모노톤 토큰 체계로 재작성했다 — surface 3단, overlay 4단, 텍스트 3단 opacity 스케일 + shadcn 표준 토큰. cascade layer 밖에서 모든 `rounded-*`를 무력화하던 전역 `* { border-radius: 0 }` 우회를 제거하고 `--radius: 0rem` 매핑으로 대체했다.
+- `shared/ui` primitive 6종을 공식 new-york 구조로 교체(그동안 **키보드 focus-visible 표시가 전무**했다)하고 14종을 신규 도입했다. border·shadow는 surface elevation으로, 하드코딩 팔레트는 의미색 토큰으로 치환한다. 설치 방식은 [SHADCN-COMPONENTS.md](./SHADCN-COMPONENTS.md) §6을 따른다(CLI 금지).
+
+### 구조·UX
+
+- **`panel-shell`이 `children`을 모바일·데스크톱 `main`에 각각 렌더해 모든 위젯이 2회 마운트되던 결함**을 shadcn Sidebar 도입으로 해소했다(SSE 2중 연결·폴링 2배·DOM id 중복).
+- `window.location.reload` 12~14곳을 제거하고 위젯이 엔티티 쿼리를 구독하도록 바꿨다. 리터럴 쿼리 키를 없애 `invalidateQueries` 접두사 매칭이 실제로 성립한다.
+- 파괴적 작업은 AlertDialog(확인 문구 일치 시에만 활성)로, 일시 피드백은 toast, 지속 상태는 Alert로 통일했다. 목록은 Table, 로딩은 Skeleton, 빈 상태는 Empty다.
+- 대시보드는 요약 전용으로 축소하고 트래픽 상세는 `/traffic`으로 옮겼다(두 페이지가 동일 위젯을 통째로 중복 렌더했다).
+
+### 백엔드
+
+[SECURITY.md](./SECURITY.md) §15와 [acknowledge/0029](./acknowledge/0029-monotone-design-system.md) §7 참조. traffic-worker 수집 영구 정지, api 에러 매핑 붕괴(모든 agent 실패가 500), engine-agent `tagImage` 보호 부재와 참조 해석 fail-open, API key scope 권한 상승, durable job stall 미회수 등 10건을 테스트와 함께 고쳤다.
+
+### 검증
+
+typecheck 7/7, lint 0, **test 199 pass**, format:check, build 7/7. Compose 5개 healthy, 미인증 401, 전 패널 라우트 200. 브라우저 실측(라이트·다크, 1440·390) console error 0건 — 실측 중 hydration 불일치 2건(모듈 싱글턴 QueryClient, layout↔page 동일 키 이중 프리페치)을 발견해 근본 수정했다.
+
+### 주의
+
+- E2E용으로 owner 비밀번호를 재설정했다(better-auth `hashPassword`로 `account.password`만 교체, 사용자·역할 행 미변경, integrity `ok`). **값은 저장소 어디에도 기록하지 않는다** — 필요하면 패널에서 다시 변경한다.
+- 남은 보류 4건은 acknowledge 0029 §8에 있다.

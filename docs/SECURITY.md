@@ -147,3 +147,28 @@ Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 act
 - 손상 backup은 복구할 수 없지만 정확한 UUID confirmation으로 삭제할 수 있다.
 - 로컬 snapshot 자체는 별도 파일 암호화를 하지 않는다. deployment secret 값은 DB 안에서 AES-256-GCM ciphertext지만 사용자·세션·password hash 등 민감 metadata가 있으므로 named volume 접근을 secret 수준으로 다룬다.
 - R2 전송을 구현할 때는 client-side envelope encryption, key rotation, object lock 또는 retention, multipart digest와 민감 metadata 제외가 선행되어야 한다.
+
+## 15. 2026-08-04 보안 감사 반영
+
+전수 감사([quality-assurance/2026-08-04-ui-backend-audit.md](./quality-assurance/2026-08-04-ui-backend-audit.md)) 결과 아래를 수정했다.
+
+### 관리 plane 자기 보호
+
+- `tagImage`에 보호 검사가 전혀 없어(바로 아래 `removeImage`에는 존재) admin이 제어 plane 이미지를 재태그해 다음 기동에서 Docker socket을 가진 컨테이너를 탈취할 수 있었다. 대상 이미지가 관리 plane 컨테이너의 ImageID이거나 요청 repository가 관리 plane repository 집합과 일치·prefix 관계면 `MANAGEMENT_RESOURCE_PROTECTED`로 거부한다.
+- 참조 해석의 `endsWith` 매칭을 제거했다. 가드는 digest 꼬리로 대상을 찾고 Docker에는 사용자 원문을 넘겨 **가드 대상과 실제 대상이 갈릴 수 있었다.** 이제 exact → `sha256:` 제거 후 prefix 순으로 유일 매치를 해석해 canonical ID로만 Docker를 호출하고, 다중 매치는 모호성 오류, 미해석은 `DOCKER_NOT_FOUND`로 fail-closed 한다(기존에는 대상 미발견 시 가드를 통과했다).
+
+### API key 권한 상승 차단
+
+- admin이 `backup:write` scope의 API key를 스스로 발급해 **owner 전용** 백업 복원을 수행할 수 있었다(API key 경로가 role 검사와 최근 인증을 동시에 우회). `backup:write`·`secret:write`는 발급 시 owner + 최근 인증을 요구하고, **사용 시에도 발급자의 현재 role이 owner인지 재확인**한다. 정책 도입 이전 발급분과 강등된 계정의 키는 자동으로 무력화된다.
+- 백업 복원(`POST /api/backups/:id/restore`)은 **session-only**로 전환했다. `authorization` 헤더가 있으면 거부하고 owner 세션 + 최근 인증만 허용한다. API key는 정의상 "최근 인증된 사람의 의사"를 표현할 수 없기 때문이다. 백업 생성·조회·삭제의 API key 경로는 자동화 용도가 있어 유지한다.
+
+### 안정성 (가용성 측면)
+
+- durable job의 `heartbeatAt`을 읽는 경로가 없어 좀비 running job이 리소스 잠금을 영구화했다. 주기 stall 스윕으로 회수한다.
+- 백업 실패가 60초마다 무한 재큐잉되던 것을 지수 백오프로 바꿨다.
+- engine-agent 이벤트 스트림이 슬롯 획득 후 실패 시 반납하지 않아 동시 스트림 한도가 영구 소진됐다.
+- traffic-worker가 완결 라인 0건 청크에서 예외를 내 체크포인트가 전진하지 못하고 **수집이 영구 정지**했다.
+
+### 보류 (승인 필요)
+
+nginx 보호 계약 검증이 substring·first-match 파싱이라 decoy server 블록으로 rate limit·CSP 계약을 우회할 여지가 있다(admin 권한 전제). 실제 파서로의 교체는 변경 폭이 커 [acknowledge/0029](./acknowledge/0029-monotone-design-system.md) §8에 보류로 기록했다.

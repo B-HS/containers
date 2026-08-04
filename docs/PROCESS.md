@@ -462,8 +462,14 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 - [x] a. 조사 — 6개 영역 병렬 감사(UX·정보구조 25 / shadcn 23 / 디자인 토큰 20 / web 컨벤션·Query 25 / 백엔드 로직 22 / 보안 17 = findings 132건) + 교차검증(중복 병합·심각도 재평가·쟁점 8건 확정). 리포트: [quality-assurance/2026-08-04-ui-backend-audit.md](./quality-assurance/2026-08-04-ui-backend-audit.md). critical 4건(panel-shell children 이중 렌더 / traffic-worker 빈 배열 insert로 수집 영구 정지 / api createAppError가 code·statusCode 미부착 / engine-agent tagImage 관리 plane 보호 부재)은 메인 세션에서 코드로 직접 재확인
 - [x] b. 방향 — 토큰 체계(surface 3단·overlay 3단·텍스트 3단·shadcn 표준 토큰 보강·의미색 3쌍), 컴포넌트 정책(기존 6종 공식 교체 + 14종 신규 도입 + border/shadow→elevation 치환 규칙), 정보구조 재설계(Sidebar 단일 main·대시보드 요약화·데이터 경로 단일화), 백엔드 즉시 수정 10건과 보류 4건을 [acknowledge/0029](./acknowledge/0029-monotone-design-system.md) 로 확정
-- [ ] c. 구현 1 — 토큰·globals.css·shared/ui primitive 재작성(공식 shadcn 기준 + 신규 컴포넌트 도입)
-- [ ] d. 구현 2 — 위젯·features·페이지를 신규 디자인 시스템으로 병렬 이관(도메인별 분할)
-- [ ] e. 백엔드 — 감사에서 확정된 로직 오류·보안 결함 수정과 테스트 보강
-- [ ] f. 검증 — typecheck→lint→format:check→test→build 전체 gate, Compose 재빌드, 브라우저 E2E(라이트·다크, 데스크톱·모바일, console error 0)
-- [ ] g. 문서 — PROCESS·HANDOFF-STATUS·UI-UX·SHADCN-COMPONENTS·SECURITY·acknowledge 갱신, 단계별 커밋·푸시
+- [x] c. 구현 1 — `globals.css` 재작성(surface 3단·overlay 4단·텍스트 3단 opacity 스케일, shadcn 표준 토큰 보강, 전역 `* { border-radius: 0 }` 우회 제거, `@layer base` border-color 가드, 시스템 폰트 스택). primitive 6종(button·input·textarea·label·card·badge)을 공식 new-york 구조로 교체하고 14종(alert·alert-dialog·dialog·sheet·popover·dropdown-menu·separator·scroll-area·sonner·table·skeleton·empty·spinner·sidebar) 신규 도입, 기존 6종(accordion·select·checkbox·switch·tabs·tooltip) 시각 정합
+- [x] d. 구현 2 — 엔티티 쿼리 계층 정합(리터럴 키 전량 제거, `QUERY_KEY` 접두사 무효화, 누락 훅 보강, SSR 프리페치 20페이지) 후 위젯·features 6그룹 병렬 이관. `window.location.reload` 12~14곳 제거, 파괴적 작업 AlertDialog 승격, toast/Alert 이원화, Table·Skeleton·Empty 도입, border·radius·기본 팔레트 색 전량 치환, `InlineAlert` 삭제
+- [x] e. 백엔드 — traffic-worker 수집 영구 정지(빈 배열 insert), api 에러 매핑 복구(code·statusCode 부착 + `:` 분리 + engine-agent 코드 contracts 공유), engine-agent `tagImage` 관리 plane 보호·참조 해석 fail-closed·스트림 슬롯 누수·nginx probe 오탐, api durable job stall 회수·취소 보존·백업 백오프·API key scope role 강제·백업 복원 session-only. 각 항목 테스트 동반(166 → 199 pass)
+- [x] f. 검증 — typecheck 7/7·lint 0·test 199 pass·format:check·build 7/7, Compose 5개 healthy·미인증 401, 브라우저 실측(라이트·다크 토큰, 1440·390, 전 패널 라우트 200, console error 0). 실측 중 발견한 hydration 불일치 2건(모듈 싱글턴 QueryClient, layout↔page 동일 키 이중 프리페치)을 근본 수정
+- [x] g. 문서 — PROCESS·HANDOFF-STATUS·UI-UX·SHADCN-COMPONENTS·SECURITY·acknowledge 0029 갱신, 단계별 커밋 10건 후 `feat/web-ui-refresh` push
+
+### 실측 검증 기록 (2026-08-04)
+
+- E2E 계정: 기존 owner(`owner@containers.local`)의 비밀번호를 알 수 없어 better-auth `hashPassword`(1.6.25)로 새 해시를 만들어 api 컨테이너 안에서 `account.password`만 교체했다. 사용자·역할 행 미변경, control DB `integrity_check` `ok`. **비밀번호 값은 저장소·문서·로그에 기록하지 않는다.**
+- 확인 항목: 대시보드 요약 카드 SSR 즉시 렌더(스켈레톤 깜빡임 0), 컨테이너 삭제 AlertDialog(확인 문구 불일치 시 비활성·ESC 닫힘·포커스 복귀), 트래픽 Table zebra·라이브 테일, nginx raw 편집기 내부 가로 스크롤(페이지 가로 스크롤 0), 인프라 Tabs·MasterDetail, 모바일 390 드로어(Sheet) 열림·활성 표시
+- 다크 모드는 `dark:` 유틸 0건·토큰 전환만으로 동작함을 확인(라이트 토큰을 다크 값으로 치환해 실렌더 대조)

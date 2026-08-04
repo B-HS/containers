@@ -164,3 +164,22 @@ Tabs:
 - 한국어·일본어의 줄바꿈과 영문의 긴 label을 desktop·tablet·mobile에서 각각 실렌더한다.
 - 번역 누락 시 key 문자열을 production에 노출하지 않고 build를 실패시킨다.
 - 새 locale은 registry와 catalog를 추가하면 언어 선택기와 SSR loader에 자동 등록되어야 한다.
+
+## 12. 구현 현황 (2026-08-04, `feat/web-ui-refresh`)
+
+정본 스펙은 [acknowledge/0029](./acknowledge/0029-monotone-design-system.md)다. 이 문서의 설계 목표 중 실제 구현과 다른 부분을 아래에 명시한다.
+
+### 반영된 것
+
+- radius 0, shadow 없음(떠 있는 표면만 예외), 모노톤 + semantic warning·destructive·success 3쌍.
+- 배경 명도 3단(sidebar·canvas·card)을 `--surface-1|2|3` 로 토큰화하고, 여기에 **오버레이 4단**(`--overlay-subtle|hover|active|strong`)과 **텍스트 3단**(`--text-strong|muted|subtle`)을 추가했다. border 유틸리티는 앱 코드에서 쓰지 않는다.
+- 셸은 shadcn `Sidebar`(`SidebarProvider`/`Sidebar`/`SidebarInset`)로 구현했고 모바일은 내장 Sheet 드로어다.
+- 위험 작업은 전부 `AlertDialog` + 대상명 입력 잠금, 일시 피드백은 `sonner` toast, 지속 상태는 `Alert`.
+- 로딩 `Skeleton`, 빈 상태 `Empty`, 표 `Table`(row 구분은 border 대신 zebra·hover).
+
+### 설계와 다른 것
+
+- **우측 context panel(3단 셸)은 구현하지 않았다.** 좌측 Sidebar + 중앙 작업 영역의 2단이며, 선택 대상 상세는 화면 안 MasterDetail(목록 240px + 상세)로 표현한다. 3단 셸은 화면당 정보량이 적어 이득이 없다고 판단했다.
+- 콘텐츠 밀도는 균질한 12px 대신 목적별로 나눈다 — 목록·표는 `px-3 py-2`, 요약·폼은 `p-4`~`p-6`, 블록 간격은 1px 유지.
+- tablet icon rail은 미구현이다(데스크톱 expanded / 모바일 Sheet 2단계).
+- 테마 토글은 없다. `prefers-color-scheme` 기반이며 앱 코드에 `dark:` 유틸이 0건이라 토큰 교체만으로 양쪽이 동작한다.
