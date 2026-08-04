@@ -1,4 +1,3 @@
-import { Database } from 'bun:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -13,46 +12,22 @@ import {
 import { createAppError } from '../../../lib/error'
 import type { TrafficWorkerClient } from '../../../service/shared/traffic-worker-client/create-traffic-worker-client'
 
+type BackupServiceDb = {
+    checkForeignKeys: () => Promise<void>
+    restoreControlSnapshot: (filePath: string) => Promise<void>
+    snapshot: () => Uint8Array
+    validateControlSnapshot: (filePath: string) => Promise<void>
+}
+
 type BackupServiceDependencies = {
     backupRoot: string
+    db: BackupServiceDb
     now: () => Date
     retentionCount: number
-    sqlite: Database
     trafficWorkerClient: Pick<TrafficWorkerClient, 'createBackup' | 'restoreBackup'>
 }
 
-const quoteIdentifier = (value: string) => `"${value.replaceAll('"', '""')}"`
-const quoteSqlValue = (value: string) => `'${value.replaceAll("'", "''")}'`
-
-const getTables = (database: Database, schema = 'main') =>
-    database
-        .query<{ name: string }, []>(`SELECT name FROM ${schema}.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
-        .all()
-        .map((record) => record.name)
-
-const validateControlSnapshot = async (sqlite: Database, filePath: string) => {
-    const bytes = new Uint8Array(await Bun.file(filePath).arrayBuffer())
-    const source = new Database(filePath, { strict: true })
-    try {
-        const integrity = source.query<{ integrity_check: string }, []>('PRAGMA integrity_check').get()?.integrity_check
-        const foreignKeyViolation = source.query('PRAGMA foreign_key_check').get()
-        const sourceTables = getTables(source)
-        const currentTables = getTables(sqlite)
-        if (integrity !== 'ok' || foreignKeyViolation || sourceTables.join(',') !== currentTables.join(',')) {
-            throw createAppError('BACKUP_CONTROL_INVALID')
-        }
-        for (const table of currentTables) {
-            const sourceColumns = source.query<{ name: string }, []>(`PRAGMA table_info(${quoteIdentifier(table)})`).all()
-            const currentColumns = sqlite.query<{ name: string }, []>(`PRAGMA table_info(${quoteIdentifier(table)})`).all()
-            if (sourceColumns.map((column) => column.name).join(',') !== currentColumns.map((column) => column.name).join(',')) {
-                throw createAppError('BACKUP_SCHEMA_MISMATCH')
-            }
-        }
-    } finally {
-        source.close()
-    }
-    return bytes
-}
+export type { BackupServiceDb }
 
 const sha256File = async (filePath: string) => {
     const hash = createHash('sha256')
@@ -67,55 +42,7 @@ const sha256File = async (filePath: string) => {
     return hash.digest('hex')
 }
 
-const restoreControlSnapshot = (sqlite: Database, filePath: string) => {
-    const tables = getTables(sqlite)
-    const preservedTables = new Set([
-        'account',
-        'api_key',
-        'artifact',
-        'audit_log',
-        'deployment_secret',
-        'invitation',
-        'notification_delivery',
-        'notification_destination',
-        'operation_job',
-        'operation_job_event',
-        'session',
-        'upload_chunk',
-        'upload_session',
-        'user',
-        'user_role',
-        'verification',
-    ])
-    sqlite.exec(`ATTACH DATABASE ${quoteSqlValue(filePath)} AS backup_source`)
-    sqlite.exec('PRAGMA foreign_keys = OFF')
-    try {
-        sqlite.exec('BEGIN IMMEDIATE')
-        for (const table of [...tables].reverse()) {
-            if (!preservedTables.has(table)) {
-                sqlite.exec(`DELETE FROM main.${quoteIdentifier(table)}`)
-            }
-        }
-        for (const table of tables) {
-            if (!preservedTables.has(table)) {
-                sqlite.exec(`INSERT INTO main.${quoteIdentifier(table)} SELECT * FROM backup_source.${quoteIdentifier(table)}`)
-            }
-        }
-        const foreignKeyViolation = sqlite.query('PRAGMA foreign_key_check').get()
-        if (foreignKeyViolation) {
-            throw createAppError('BACKUP_FOREIGN_KEY_INVALID')
-        }
-        sqlite.exec('COMMIT')
-    } catch (error) {
-        sqlite.exec('ROLLBACK')
-        throw error
-    } finally {
-        sqlite.exec('PRAGMA foreign_keys = ON')
-        sqlite.exec('DETACH DATABASE backup_source')
-    }
-}
-
-export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, trafficWorkerClient }: BackupServiceDependencies) => {
+export const createBackupService = ({ backupRoot, db, now, retentionCount, trafficWorkerClient }: BackupServiceDependencies) => {
     const manifestPath = (id: string) => join(backupRoot, id, 'manifest.json')
     const controlPath = (id: string) => join(backupRoot, id, 'control.sqlite')
     const trafficPath = (id: string) => join(backupRoot, id, 'traffic.sqlite')
@@ -148,15 +75,13 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
 
     const createSnapshot = async (input: unknown, applyRetention: boolean) => {
         const payload = backupCreateSchema.parse(input)
-        if (sqlite.query('PRAGMA foreign_key_check').get()) {
-            throw createAppError('BACKUP_CONTROL_FOREIGN_KEY_INVALID')
-        }
+        await db.checkForeignKeys()
         const id = randomUUID()
         const directory = join(backupRoot, id)
         await mkdir(directory, { recursive: true })
         try {
             const traffic = await trafficWorkerClient.createBackup(id)
-            const controlSnapshot = sqlite.serialize()
+            const controlSnapshot = db.snapshot()
             const controlDestination = controlPath(id)
             await Bun.write(`${controlDestination}.tmp`, controlSnapshot)
             await rename(`${controlDestination}.tmp`, controlDestination)
@@ -206,7 +131,7 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
         ) {
             throw createAppError('BACKUP_DIGEST_MISMATCH')
         }
-        await validateControlSnapshot(sqlite, controlPath(id))
+        await db.validateControlSnapshot(controlPath(id))
         return manifest
     }
 
@@ -241,13 +166,13 @@ export const createBackupService = ({ backupRoot, now, retentionCount, sqlite, t
                 if (traffic.bytes !== manifest.trafficBytes || traffic.sha256 !== manifest.trafficSha256) {
                     throw createAppError('BACKUP_TRAFFIC_DIGEST_MISMATCH')
                 }
-                restoreControlSnapshot(sqlite, controlPath(id))
+                await db.restoreControlSnapshot(controlPath(id))
                 await cleanupRetention()
                 return { backup: manifest, recoveryBackupId: recovery.id, restored: true as const }
             } catch (error) {
                 try {
                     await trafficWorkerClient.restoreBackup(recovery.id)
-                    restoreControlSnapshot(sqlite, controlPath(recovery.id))
+                    await db.restoreControlSnapshot(controlPath(recovery.id))
                 } catch (rollbackError) {
                     console.error(
                         JSON.stringify({

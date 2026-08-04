@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Database } from 'bun:sqlite'
 import {
     CONTROL_PLANE_VERSION,
     controlPlaneMigrationSchema,
@@ -13,20 +12,6 @@ import type { BackupService } from '../backup/create-backup-service'
 import type { MaintenanceService } from '../maintenance/create-maintenance-service'
 
 const ACTIVE_JOB_STATUSES = ['queued', 'running', 'cancelling'] as const
-
-type ControlPlaneStatusServiceDb = {
-    countActiveJobs: (statuses: string[]) => Promise<number>
-}
-
-type ControlPlaneStatusServiceDependencies = {
-    backupService: Pick<BackupService, 'list'>
-    db: ControlPlaneStatusServiceDb
-    maintenanceService: Pick<MaintenanceService, 'getStatus'>
-    migrationsFolder: string
-    sqlite: Database
-}
-
-export type { ControlPlaneStatusServiceDb }
 
 type JournalEntry = {
     idx: number
@@ -40,16 +25,30 @@ type AppliedMigrationRecord = {
     hash: string
 }
 
+type ControlPlaneStatusServiceDb = {
+    checkIntegrity: () => Promise<string | undefined>
+    countActiveJobs: (statuses: string[]) => Promise<number>
+    listMigrations: () => Promise<AppliedMigrationRecord[]>
+}
+
+type ControlPlaneStatusServiceDependencies = {
+    backupService: Pick<BackupService, 'list'>
+    db: ControlPlaneStatusServiceDb
+    maintenanceService: Pick<MaintenanceService, 'getStatus'>
+    migrationsFolder: string
+}
+
+export type { ControlPlaneStatusServiceDb, AppliedMigrationRecord }
+
 export const createControlPlaneStatusService = ({
     backupService,
     db,
     maintenanceService,
     migrationsFolder,
-    sqlite,
 }: ControlPlaneStatusServiceDependencies) => {
     const listAppliedMigrations = async (): Promise<AppliedMigrationRecord[]> => {
         try {
-            return (await sqlite.query('SELECT hash, created_at AS createdAt FROM __drizzle_migrations').all()) as AppliedMigrationRecord[]
+            return await db.listMigrations()
         } catch {
             return []
         }
@@ -70,7 +69,7 @@ export const createControlPlaneStatusService = ({
         const applied: ControlPlaneMigration[] = []
         const pending: ControlPlaneMigration[] = []
         for (const entry of entries) {
-            const sql = await readFile(join(migrationsFolder, `${entry.tag}.sql`), 'utf8')
+            const sql = await readFile(join(migrationsFolder, entry.tag + '.sql'), 'utf8')
             const hash = createHash('sha256').update(sql).digest('hex')
             const appliedAt = appliedByHash.get(hash)
             const migration = controlPlaneMigrationSchema.parse({
@@ -88,13 +87,13 @@ export const createControlPlaneStatusService = ({
 
     const getStatus = async () => {
         const [migrations, backups] = await Promise.all([resolveMigrations(), backupService.list()])
-        const integrity = (await sqlite.query('PRAGMA integrity_check').get()) as { integrity_check: string }
+        const integrity = await db.checkIntegrity()
         const activeJobCount = await db.countActiveJobs([...ACTIVE_JOB_STATUSES])
         const maintenance = maintenanceService.getStatus()
         return controlPlaneStatusSchema.parse({
             activeJobCount,
             databaseIntegrity: {
-                control: integrity?.integrity_check ?? 'unavailable',
+                control: integrity ?? 'unavailable',
             },
             lastBackupAt: backups[0]?.createdAt ?? null,
             maintenance,

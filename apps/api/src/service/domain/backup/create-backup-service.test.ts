@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { user } from '@containers/db-schema/schema'
+import { buildBackupServiceDb } from '../../../compose/compose-backup'
 import { createBackupService } from './create-backup-service'
 
 const temporaryDirectories: string[] = []
@@ -35,9 +36,9 @@ const createTestContext = async (retentionCount = 7) => {
     }
     const service = createBackupService({
         backupRoot,
+        db: buildBackupServiceDb({ sqlite: database.sqlite }),
         now: () => new Date(clock++),
         retentionCount,
-        sqlite: database.sqlite,
         trafficWorkerClient: {
             createBackup: createTrafficSnapshot,
             restoreBackup: async (id) => {

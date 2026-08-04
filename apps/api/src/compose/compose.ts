@@ -6,7 +6,6 @@ import { createNginxStatusClient } from '../service/shared/nginx/create-nginx-st
 import { createNginxRouteProbeClient } from '../service/shared/nginx/create-nginx-route-probe-client'
 import { createTrafficWorkerClient } from '../service/shared/traffic-worker-client/create-traffic-worker-client'
 import { createArtifactInspectionService } from '../service/domain/upload/create-artifact-inspection-service'
-import { createBackupService } from '../service/domain/backup/create-backup-service'
 import { createBackupScheduleService } from '../service/domain/job/create-backup-schedule-service'
 import { createJobHandlers } from '../service/domain/job/create-job-handlers'
 import { createMaintenanceService } from '../service/domain/maintenance/create-maintenance-service'
@@ -15,6 +14,7 @@ import { createAppError } from '../lib/error'
 import { composeApiKey } from './compose-api-key'
 import { composeAudit } from './compose-audit'
 import { composeAuth } from './compose-auth'
+import { composeBackup } from './compose-backup'
 import { composeControlPlane } from './compose-control-plane'
 import { composeDeployment } from './compose-deployment'
 import { composeDeploymentManifest } from './compose-deployment-manifest'
@@ -118,7 +118,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         protectedHostnames: env.protectedHostnames,
     })
     const { deploymentSecretService } = composeDeploymentSecret({ db, masterSecret: secrets.deploymentSecretKey })
-    const backupService = createBackupService({
+    const { backupService } = composeBackup({
         backupRoot: env.backupRoot,
         now,
         retentionCount: env.backupRetentionCount,

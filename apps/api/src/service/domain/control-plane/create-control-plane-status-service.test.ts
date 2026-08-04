@@ -24,10 +24,9 @@ const createTestContext = async () => {
     const timestamp = new Date('2026-08-01T00:00:00.000Z')
     const service = createControlPlaneStatusService({
         backupService: { list: async () => [] },
-        db: buildControlPlaneStatusServiceDb(database.db),
+        db: buildControlPlaneStatusServiceDb(database.db, database.sqlite),
         maintenanceService: { getStatus: () => ({ enabled: false, reason: null, startedAt: null }) },
         migrationsFolder: resolve(process.cwd(), 'packages/db-schema/drizzle'),
-        sqlite: database.sqlite,
     })
     return { ...database, service, timestamp }
 }
@@ -86,10 +85,9 @@ describe('control plane status service', () => {
         sqlite.query('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)').run(firstHash, firstWhen)
         const statusService = createControlPlaneStatusService({
             backupService: { list: async () => [] },
-            db: buildControlPlaneStatusServiceDb(db),
+            db: buildControlPlaneStatusServiceDb(db, sqlite),
             maintenanceService: { getStatus: () => ({ enabled: false, reason: null, startedAt: null }) },
             migrationsFolder,
-            sqlite,
         })
 
         const status = await statusService.getStatus()
@@ -135,10 +133,9 @@ describe('control plane status service', () => {
                     },
                 ],
             },
-            db: buildControlPlaneStatusServiceDb(db),
+            db: buildControlPlaneStatusServiceDb(db, sqlite),
             maintenanceService: { getStatus: () => ({ enabled: false, reason: null, startedAt: null }) },
             migrationsFolder: resolve(process.cwd(), 'packages/db-schema/drizzle'),
-            sqlite,
         })
 
         const status = await statusService.getStatus()
