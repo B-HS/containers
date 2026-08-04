@@ -27,10 +27,7 @@ export const NAV_SECTIONS: NavSection[] = [
     },
     {
         key: 'containers',
-        items: [
-            { href: '/containers', icon: 'Container', key: 'containers' },
-            { href: '/containers/new', icon: 'Rocket', key: 'containersNew' },
-        ],
+        items: [{ href: '/containers', icon: 'Container', key: 'containers' }],
     },
     {
         key: 'images',
@@ -56,10 +53,7 @@ export const NAV_SECTIONS: NavSection[] = [
     },
     {
         key: 'infrastructure',
-        items: [
-            { href: '/infrastructure', icon: 'Network', key: 'infrastructure' },
-            { href: '/infrastructure/prune', icon: 'Eraser', key: 'prune', requiredPermission: 'canManageApiKeys' },
-        ],
+        items: [{ href: '/infrastructure', icon: 'Network', key: 'infrastructure' }],
     },
     {
         key: 'operations',

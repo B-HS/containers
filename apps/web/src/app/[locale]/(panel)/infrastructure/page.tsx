@@ -1,9 +1,12 @@
 import { getTranslations } from 'next-intl/server'
+import { Eraser } from 'lucide-react'
+import { Button } from '@shared/ui/button'
 import { getInfrastructure } from '@entities/infrastructure/infrastructure.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { InfrastructureWidget } from '@widgets/infrastructure/infrastructure-widget'
+import { Link } from '../../../../i18n/navigation'
 
 const InfrastructurePage = async () => {
     const [translations, navTranslations, session] = await Promise.all([getTranslations('Dashboard'), getTranslations('Nav'), getSession()])
@@ -16,7 +19,20 @@ const InfrastructurePage = async () => {
 
     return (
         <div className="grid gap-px">
-            <PageHeader description={navTranslations('subtitles.infrastructure')} title={navTranslations('items.infrastructure')} />
+            <PageHeader
+                actions={
+                    session.canManageApiKeys ? (
+                        <Button asChild size="sm" variant="outline">
+                            <Link href="/infrastructure/prune">
+                                <Eraser aria-hidden="true" />
+                                {navTranslations('items.prune')}
+                            </Link>
+                        </Button>
+                    ) : null
+                }
+                description={navTranslations('subtitles.infrastructure')}
+                title={navTranslations('items.infrastructure')}
+            />
             <InfrastructureWidget
                 networks={infrastructure.networks}
                 role={session.session.role}

@@ -3,6 +3,7 @@ import { hasLocale, NextIntlClientProvider } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { TanstackQueryProvider } from '@shared/lib/query-provider'
+import { Toaster } from '@shared/ui/sonner'
 import { routing } from '../../i18n/routing'
 import '../globals.css'
 
@@ -26,7 +27,10 @@ const LocaleLayout = async ({ children, params }: LocaleLayoutProps) => {
         <html lang={locale}>
             <body>
                 <TanstackQueryProvider>
-                    <NextIntlClientProvider>{children}</NextIntlClientProvider>
+                    <NextIntlClientProvider>
+                        {children}
+                        <Toaster />
+                    </NextIntlClientProvider>
                 </TanstackQueryProvider>
             </body>
         </html>

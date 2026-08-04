@@ -46,7 +46,6 @@ const PanelLayout = async ({ children }: PanelLayoutProps) => {
             }}
             labels={{
                 brand: translations('brand'),
-                close: translations('close'),
                 logout: authTranslations('logout'),
                 menu: translations('menu'),
                 items: Object.fromEntries(
@@ -56,7 +55,6 @@ const PanelLayout = async ({ children }: PanelLayoutProps) => {
                         'audit',
                         'backups',
                         'containers',
-                        'containersNew',
                         'controlPlane',
                         'deploymentSecrets',
                         'deployments',
@@ -68,7 +66,6 @@ const PanelLayout = async ({ children }: PanelLayoutProps) => {
                         'nginxRoutes',
                         'notifications',
                         'overview',
-                        'prune',
                         'registry',
                         'traffic',
                         'users',

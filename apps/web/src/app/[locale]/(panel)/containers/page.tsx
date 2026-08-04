@@ -1,10 +1,13 @@
 import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
 import { getTranslations } from 'next-intl/server'
+import { Rocket } from 'lucide-react'
+import { Button } from '@shared/ui/button'
 import { getEngineDashboard } from '@entities/engine/engine.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { ContainerControlWidget } from '@widgets/container/container-control-widget'
+import { Link } from '../../../../i18n/navigation'
 
 const ContainersPage = async () => {
     const [translations, navTranslations, session] = await Promise.all([getTranslations('Dashboard'), getTranslations('Nav'), getSession()])
@@ -22,7 +25,18 @@ const ContainersPage = async () => {
     return (
         <HydrationBoundary state={dehydrate(queryClient)}>
             <div className="grid gap-px">
-                <PageHeader description={navTranslations('subtitles.containers')} title={navTranslations('items.containers')} />
+                <PageHeader
+                    actions={
+                        <Button asChild size="sm">
+                            <Link href="/containers/new">
+                                <Rocket aria-hidden="true" />
+                                {navTranslations('items.containersNew')}
+                            </Link>
+                        </Button>
+                    }
+                    description={navTranslations('subtitles.containers')}
+                    title={navTranslations('items.containers')}
+                />
                 <ContainerControlWidget
                     containers={engineDashboard?.containers ?? []}
                     role={session.session.role}
