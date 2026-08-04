@@ -1,10 +1,13 @@
 import { Hono } from 'hono'
 import { createBunWebSocket } from 'hono/bun'
+import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
 import { interactiveExecTicketRequestSchema } from '@containers/contracts/engine-control'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../agent/create-engine-agent-client'
 import { createAppError } from '../../lib/error'
-import { errorResponse, successResponse } from '../../lib/response'
+import { successResponse } from '../../lib/response'
+import { withErrorHandling } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { MaintenanceService } from '../../service/domain/maintenance/create-maintenance-service'
@@ -15,6 +18,8 @@ const EXEC_RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const EXEC_SESSION_RECHECK_INTERVAL_MS = 15_000
 const EXEC_MAX_BUFFERED_OUTPUT_BYTES = 1_048_576
 const EXEC_MAX_QUEUED_INPUT_BYTES = 65_536
+
+const containerIdParamSchema = z.object({ containerId: z.string().min(1) })
 
 type InteractiveExecProxyRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
@@ -42,13 +47,20 @@ export const createInteractiveExecProxyRoute = ({
     maintenanceService,
 }: InteractiveExecProxyRouteDependencies) =>
     new Hono()
-        .post('/containers/:containerId/exec-tickets', async (context) => {
-            let actorId: string | undefined
-            const containerId = context.req.param('containerId')
-            try {
-                const session = await authService.requireRecentRole(context.req.raw.headers, EXEC_ROLES, 15 * 60 * 1_000)
-                actorId = session.user.id
-                const input = interactiveExecTicketRequestSchema.parse(await context.req.json())
+        .post(
+            '/containers/:containerId/exec-tickets',
+            describeRoute({
+                responses: { 201: { description: 'Interactive exec ticket 생성' } },
+                summary: 'Interactive exec ticket 생성',
+                tags: ['Control'],
+            }),
+            validator('param', containerIdParamSchema),
+            validator('json', interactiveExecTicketRequestSchema),
+            withErrorHandling(async (context) => {
+                const containerId = (context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>).containerId
+                const session = await authService.requireRecentRole(context.req.raw.headers, EXEC_ROLES, EXEC_RECENT_AUTH_MAX_AGE_MS)
+                const actorId = session.user.id
+                const input = context.req.valid('json' as never) as z.infer<typeof interactiveExecTicketRequestSchema>
                 await auditService.record({
                     actorId,
                     detail: { argumentCount: input.command.length - 1, executable: input.command[0] ?? '' },
@@ -59,20 +71,20 @@ export const createInteractiveExecProxyRoute = ({
                     targetId: containerId,
                     targetType: 'container',
                 })
-                const ticket = await engineAgentClient.createInteractiveExecTicket(containerId, input)
-                await auditService.record({
-                    actorId,
-                    operation: 'container.exec.interactive.ticket',
-                    requestId: context.get('requestId'),
-                    result: 'success',
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: containerId,
-                    targetType: 'container',
-                })
-                return context.json(successResponse({ ...ticket, websocketPath: `/api/exec/ws/${encodeURIComponent(ticket.ticket)}` }), 201)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'EXEC_TICKET_FAILED'
-                if (actorId) {
+                try {
+                    const ticket = await engineAgentClient.createInteractiveExecTicket(containerId, input)
+                    await auditService.record({
+                        actorId,
+                        operation: 'container.exec.interactive.ticket',
+                        requestId: context.get('requestId'),
+                        result: 'success',
+                        sourceIp: getSourceIp(context.req.raw.headers),
+                        targetId: containerId,
+                        targetType: 'container',
+                    })
+                    return context.json(successResponse({ ...ticket, websocketPath: `/api/exec/ws/${encodeURIComponent(ticket.ticket)}` }), 201)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'EXEC_TICKET_FAILED'
                     await auditService.record({
                         actorId,
                         detail: { code },
@@ -83,11 +95,10 @@ export const createInteractiveExecProxyRoute = ({
                         targetId: containerId,
                         targetType: 'container',
                     })
+                    throw error
                 }
-                const status = code === 'AUTH_REQUIRED' || code === 'RECENT_AUTH_REQUIRED' ? 401 : code === 'FORBIDDEN' ? 403 : 400
-                return context.json(errorResponse(code, 'Interactive exec ticket을 생성할 수 없습니다.', context.get('requestId')), status)
-            }
-        })
+            }),
+        )
         .get(
             '/exec/ws/:ticket',
             upgradeWebSocket(async (context) => {

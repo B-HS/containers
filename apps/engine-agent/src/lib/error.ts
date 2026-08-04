@@ -2,9 +2,8 @@ import { ERROR_CODE } from './error-code'
 import { ERROR_MESSAGE } from './error-message'
 import type { ErrorCode } from './error-code'
 
-export type AppError = {
-    code: ErrorCode
-    message: string
+export type AppError = Error & {
+    code: string
     statusCode: number
     details?: Record<string, unknown>
 }
@@ -57,7 +56,20 @@ export const STATUS_MAP: Record<ErrorCode, number> = {
 
 export const getStatusCode = (code: ErrorCode): number => STATUS_MAP[code]
 
-export const createAppError = (code: string, cause?: unknown) => new Error(code, cause === undefined ? undefined : { cause })
+const statusForCode = (code: string): number => {
+    if (code in STATUS_MAP) {
+        return STATUS_MAP[code as ErrorCode]
+    }
+    const baseCode = code.split(':')[0] as ErrorCode
+    return baseCode in STATUS_MAP ? STATUS_MAP[baseCode] : 500
+}
+
+export const createAppError = (code: string, cause?: unknown): AppError => {
+    const error = new Error(code, cause === undefined ? undefined : { cause }) as unknown as AppError
+    error.code = code
+    error.statusCode = statusForCode(code)
+    return error
+}
 
 export const isAppError = (error: unknown): error is AppError =>
     typeof error === 'object' &&

@@ -1,8 +1,11 @@
 import { Hono } from 'hono'
+import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
 import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { OPERATION_JOB_KIND } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
-import { errorResponse, successResponse } from '../../lib/response'
+import { successResponse } from '../../lib/response'
+import { withErrorHandling } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -12,6 +15,8 @@ import type { OperationJobService } from '../../service/domain/job/create-operat
 const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const RELEASE_READ_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const RELEASE_WRITE_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
+const releaseIdParamSchema = z.object({ id: z.uuid() })
+const manifestIdParamSchema = z.object({ manifestId: z.uuid() })
 
 type DeploymentReleaseRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
@@ -23,28 +28,28 @@ type DeploymentReleaseRouteDependencies = {
 
 const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-const errorStatus = (code: string) => {
-    if (code === 'API_KEY_RATE_LIMITED') {
-        return 429 as const
+const authenticateRead = async (
+    headers: Headers,
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>,
+    authService: Pick<AuthService, 'requireRole'>,
+) => {
+    if (headers.has('authorization')) {
+        await apiKeyService.authenticate(headers, API_KEY_SCOPE.DEPLOYMENT_READ)
+    } else {
+        await authService.requireRole(headers, RELEASE_READ_ROLES)
     }
-    if (code === 'AUTH_REQUIRED' || code === 'RECENT_AUTH_REQUIRED') {
-        return 401 as const
+}
+
+const authenticateWrite = async (
+    headers: Headers,
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>,
+    authService: Pick<AuthService, 'requireRecentRole'>,
+) => {
+    if (headers.has('authorization')) {
+        return apiKeyService.authenticate(headers, API_KEY_SCOPE.DEPLOYMENT_WRITE)
     }
-    if (code === 'FORBIDDEN') {
-        return 403 as const
-    }
-    if (code === 'DEPLOYMENT_MANIFEST_NOT_FOUND' || code === 'DEPLOYMENT_RELEASE_NOT_FOUND') {
-        return 404 as const
-    }
-    if (
-        code === 'DEPLOYMENT_CONFIGURATION_UNRESOLVED' ||
-        code === 'DEPLOYMENT_RELEASE_IN_PROGRESS' ||
-        code === 'DEPLOYMENT_ROLLBACK_TARGET_UNAVAILABLE' ||
-        code === 'DEPLOYMENT_ROLLBACK_UNAVAILABLE'
-    ) {
-        return 409 as const
-    }
-    return 400 as const
+    const session = await authService.requireRecentRole(headers, RELEASE_WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)
+    return { actorId: session.user.id, authMethod: 'session' as const }
 }
 
 export const createDeploymentReleaseRoute = ({
@@ -55,107 +60,103 @@ export const createDeploymentReleaseRoute = ({
     operationJobService,
 }: DeploymentReleaseRouteDependencies) =>
     new Hono()
-        .get('/deployment-releases', async (context) => {
-            try {
-                if (context.req.raw.headers.has('authorization')) {
-                    await apiKeyService.authenticate(context.req.raw.headers, API_KEY_SCOPE.DEPLOYMENT_READ)
-                } else {
-                    await authService.requireRole(context.req.raw.headers, RELEASE_READ_ROLES)
-                }
+        .get(
+            '/deployment-releases',
+            describeRoute({
+                responses: { 200: { description: '배포 release 목록' } },
+                summary: '배포 release 목록 조회',
+                tags: ['Deployment'],
+            }),
+            withErrorHandling(async (context) => {
+                await authenticateRead(context.req.raw.headers, apiKeyService, authService)
                 return context.json(successResponse(await deploymentReleaseService.list()), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'DEPLOYMENT_RELEASE_LIST_FAILED'
-                return context.json(errorResponse(code, '배포 release를 조회할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .get('/deployment-releases/:id', async (context) => {
-            try {
-                if (context.req.raw.headers.has('authorization')) {
-                    await apiKeyService.authenticate(context.req.raw.headers, API_KEY_SCOPE.DEPLOYMENT_READ)
-                } else {
-                    await authService.requireRole(context.req.raw.headers, RELEASE_READ_ROLES)
+            }),
+        )
+        .get(
+            '/deployment-releases/:id',
+            describeRoute({
+                responses: { 200: { description: '배포 release 상세' } },
+                summary: '배포 release 상세 조회',
+                tags: ['Deployment'],
+            }),
+            validator('param', releaseIdParamSchema),
+            withErrorHandling(async (context) => {
+                await authenticateRead(context.req.raw.headers, apiKeyService, authService)
+                const { id } = context.req.valid('param' as never) as z.infer<typeof releaseIdParamSchema>
+                return context.json(successResponse(await deploymentReleaseService.get(id)), 200)
+            }),
+        )
+        .post(
+            '/deployment-releases/:id/rollback',
+            describeRoute({
+                responses: { 202: { description: '배포 rollback job' } },
+                summary: '배포 release rollback',
+                tags: ['Deployment'],
+            }),
+            validator('param', releaseIdParamSchema),
+            withErrorHandling(async (context) => {
+                const releaseId = (context.req.valid('param' as never) as z.infer<typeof releaseIdParamSchema>).id
+                const audit = {
+                    operation: 'deployment.release.rollback',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId: releaseId,
+                    targetType: 'deployment-release' as const,
                 }
-                return context.json(successResponse(await deploymentReleaseService.get(context.req.param('id'))), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'DEPLOYMENT_RELEASE_GET_FAILED'
-                return context.json(errorResponse(code, '배포 release를 조회할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .post('/deployment-releases/:id/rollback', async (context) => {
-            const releaseId = context.req.param('id')
-            let actorId: string | undefined
-            let authMethod: 'api-key' | 'session' = 'session'
-            const audit = {
-                operation: 'deployment.release.rollback',
-                requestId: context.get('requestId'),
-                sourceIp: getSourceIp(context.req.raw.headers),
-                targetId: releaseId,
-                targetType: 'deployment-release' as const,
-            }
-            try {
-                if (context.req.raw.headers.has('authorization')) {
-                    const principal = await apiKeyService.authenticate(context.req.raw.headers, API_KEY_SCOPE.DEPLOYMENT_WRITE)
-                    actorId = principal.actorId
-                    authMethod = principal.authMethod
-                } else {
-                    const session = await authService.requireRecentRole(context.req.raw.headers, RELEASE_WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                    actorId = session.user.id
+                const principal = await authenticateWrite(context.req.raw.headers, apiKeyService, authService)
+                await auditService.record({ ...audit, ...principal, result: 'attempt' })
+                try {
+                    const release = await deploymentReleaseService.prepareRollback(releaseId)
+                    const job = await operationJobService.enqueue({
+                        createdBy: principal.actorId,
+                        kind: OPERATION_JOB_KIND.DEPLOY_ROLLBACK,
+                        maxAttempts: 1,
+                        payload: { releaseId: release.id },
+                        uniqueResourceKey: release.id,
+                    })
+                    await auditService.record({ ...audit, ...principal, detail: { jobId: job.id }, result: 'success' })
+                    return context.json(successResponse({ job, release }), 202)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'DEPLOYMENT_ROLLBACK_FAILED'
+                    await auditService.record({ ...audit, ...principal, detail: { code }, result: 'failure' })
+                    throw error
                 }
-                await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
-                const release = await deploymentReleaseService.prepareRollback(releaseId)
-                const job = await operationJobService.enqueue({
-                    createdBy: actorId,
-                    kind: OPERATION_JOB_KIND.DEPLOY_ROLLBACK,
-                    maxAttempts: 1,
-                    payload: { releaseId: release.id },
-                    uniqueResourceKey: release.id,
-                })
-                await auditService.record({ ...audit, actorId, authMethod, detail: { jobId: job.id }, result: 'success' })
-                return context.json(successResponse({ job, release }), 202)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'DEPLOYMENT_ROLLBACK_FAILED'
-                if (actorId) {
-                    await auditService.record({ ...audit, actorId, authMethod, detail: { code }, result: 'failure' })
+            }),
+        )
+        .post(
+            '/deployment-manifests/:manifestId/releases',
+            describeRoute({
+                responses: { 202: { description: '배포 release 생성 job' } },
+                summary: '배포 release 생성',
+                tags: ['Deployment'],
+            }),
+            validator('param', manifestIdParamSchema),
+            withErrorHandling(async (context) => {
+                const manifestId = (context.req.valid('param' as never) as z.infer<typeof manifestIdParamSchema>).manifestId
+                const audit = {
+                    operation: 'deployment.release.create',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId: manifestId,
+                    targetType: 'deployment-release' as const,
                 }
-                return context.json(errorResponse(code, '배포 release를 rollback할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .post('/deployment-manifests/:manifestId/releases', async (context) => {
-            const manifestId = context.req.param('manifestId')
-            let actorId: string | undefined
-            let authMethod: 'api-key' | 'session' = 'session'
-            const audit = {
-                operation: 'deployment.release.create',
-                requestId: context.get('requestId'),
-                sourceIp: getSourceIp(context.req.raw.headers),
-                targetId: manifestId,
-                targetType: 'deployment-release' as const,
-            }
-            try {
-                if (context.req.raw.headers.has('authorization')) {
-                    const principal = await apiKeyService.authenticate(context.req.raw.headers, API_KEY_SCOPE.DEPLOYMENT_WRITE)
-                    actorId = principal.actorId
-                    authMethod = principal.authMethod
-                } else {
-                    const session = await authService.requireRecentRole(context.req.raw.headers, RELEASE_WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                    actorId = session.user.id
+                const principal = await authenticateWrite(context.req.raw.headers, apiKeyService, authService)
+                await auditService.record({ ...audit, ...principal, result: 'attempt' })
+                try {
+                    const release = await deploymentReleaseService.create(principal.actorId, manifestId)
+                    const job = await operationJobService.enqueue({
+                        createdBy: principal.actorId,
+                        kind: OPERATION_JOB_KIND.DEPLOY_RELEASE,
+                        maxAttempts: 1,
+                        payload: { releaseId: release.id },
+                        uniqueResourceKey: release.id,
+                    })
+                    await auditService.record({ ...audit, ...principal, detail: { jobId: job.id, releaseId: release.id }, result: 'success' })
+                    return context.json(successResponse({ job, release }), 202)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'DEPLOYMENT_RELEASE_CREATE_FAILED'
+                    await auditService.record({ ...audit, ...principal, detail: { code }, result: 'failure' })
+                    throw error
                 }
-                await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
-                const release = await deploymentReleaseService.create(actorId, manifestId)
-                const job = await operationJobService.enqueue({
-                    createdBy: actorId,
-                    kind: OPERATION_JOB_KIND.DEPLOY_RELEASE,
-                    maxAttempts: 1,
-                    payload: { releaseId: release.id },
-                    uniqueResourceKey: release.id,
-                })
-                await auditService.record({ ...audit, actorId, authMethod, detail: { jobId: job.id, releaseId: release.id }, result: 'success' })
-                return context.json(successResponse({ job, release }), 202)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'DEPLOYMENT_RELEASE_CREATE_FAILED'
-                if (actorId) {
-                    await auditService.record({ ...audit, actorId, authMethod, detail: { code }, result: 'failure' })
-                }
-                return context.json(errorResponse(code, '배포 release를 시작할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
+            }),
+        )

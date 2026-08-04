@@ -1,9 +1,33 @@
 import { Hono } from 'hono'
-import { ZodError } from 'zod'
+import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
+import { USER_ROLE } from '@containers/db-schema/schema'
+import { managedUserUpdateSchema } from '@containers/contracts/user-management'
 import { createAppError } from '../../lib/error'
-import { errorResponse, successResponse } from '../../lib/response'
+import { successResponse } from '../../lib/response'
+import { withErrorHandling } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
+
+const ownerBootstrapSchema = z.object({
+    email: z.email(),
+    name: z.string().trim().min(1).max(100),
+    password: z.string().min(12).max(128),
+})
+
+const invitationCreateSchema = z.object({
+    email: z.email(),
+    expiresInHours: z.number().int().min(1).max(168).default(24),
+    role: z.enum([USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]),
+})
+
+const invitationAcceptSchema = z.object({
+    name: z.string().trim().min(1).max(100),
+    password: z.string().min(12).max(128),
+    token: z.string().min(32).max(256),
+})
+
+const userIdParamSchema = z.object({ id: z.uuid() })
 
 type AuthRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
@@ -15,89 +39,94 @@ type AuthRouteDependencies = {
 
 const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-const getErrorCode = (error: unknown) => {
-    if (error instanceof ZodError) {
-        return 'VALIDATION_ERROR'
-    }
-
-    return error instanceof Error ? error.message : 'UNKNOWN_ERROR'
-}
-
 export const createAuthRoute = ({ auditService, authService }: AuthRouteDependencies) =>
     new Hono()
-        .get('/bootstrap/status', async (context) => context.json(successResponse(await authService.getBootstrapStatus()), 200))
-        .post('/bootstrap/owner', async (context) => {
-            try {
-                return context.json(successResponse(await authService.bootstrapOwner(await context.req.json())), 201)
-            } catch (error) {
-                const code = getErrorCode(error)
-
-                if (code === 'BOOTSTRAP_COMPLETE') {
-                    return context.json(errorResponse(code, '초기 owner 설정이 이미 완료되었습니다.', context.get('requestId')), 409)
+        .get(
+            '/bootstrap/status',
+            describeRoute({
+                responses: { 200: { description: 'bootstrap 상태' } },
+                summary: 'bootstrap 상태 조회',
+                tags: ['Auth'],
+            }),
+            withErrorHandling(async (context) => context.json(successResponse(await authService.getBootstrapStatus()), 200)),
+        )
+        .post(
+            '/bootstrap/owner',
+            describeRoute({
+                responses: { 201: { description: 'owner 계정 생성' } },
+                summary: '초기 owner 계정 생성',
+                tags: ['Auth'],
+            }),
+            validator('json', ownerBootstrapSchema),
+            withErrorHandling(async (context) => context.json(successResponse(await authService.bootstrapOwner(context.req.valid('json'))), 201)),
+        )
+        .get(
+            '/session',
+            describeRoute({
+                responses: { 200: { description: '세션 정보' } },
+                summary: '현재 세션 조회',
+                tags: ['Auth'],
+            }),
+            withErrorHandling(async (context) => {
+                const session = await authService.getSession(context.req.raw.headers)
+                if (!session) {
+                    throw createAppError('AUTH_REQUIRED')
                 }
-
-                if (code === 'BOOTSTRAP_BUSY') {
-                    return context.json(errorResponse(code, '초기 owner 설정이 진행 중입니다.', context.get('requestId')), 409)
-                }
-
-                return context.json(errorResponse(code, '초기 owner 요청이 올바르지 않습니다.', context.get('requestId')), 400)
-            }
-        })
-        .get('/session', async (context) => {
-            const session = await authService.getSession(context.req.raw.headers)
-
-            if (!session) {
-                return context.json(errorResponse('AUTH_REQUIRED', '로그인이 필요합니다.', context.get('requestId')), 401)
-            }
-
-            return context.json(successResponse(session), 200)
-        })
-        .post('/invitations', async (context) => {
-            let actorId: string | undefined
-            try {
-                actorId = (await authService.getSession(context.req.raw.headers))?.user.id
-                const result = await authService.createInvitation(context.req.raw.headers, await context.req.json())
-                await auditService.record({
-                    actorId: result.createdBy,
-                    detail: { email: result.email, expiresAt: result.expiresAt, role: result.role },
-                    operation: 'invitation.create',
-                    requestId: context.get('requestId'),
-                    result: 'success',
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: result.id,
-                    targetType: 'invitation',
-                })
-                return context.json(successResponse(result), 201)
-            } catch (error) {
-                const code = getErrorCode(error)
-
-                if (actorId) {
+                return context.json(successResponse(session), 200)
+            }),
+        )
+        .post(
+            '/invitations',
+            describeRoute({
+                responses: { 201: { description: '초대 생성' } },
+                summary: '사용자 초대 생성',
+                tags: ['Auth'],
+            }),
+            validator('json', invitationCreateSchema),
+            withErrorHandling(async (context) => {
+                const input = context.req.valid('json')
+                const actorId = (await authService.getSession(context.req.raw.headers))?.user.id
+                try {
+                    const result = await authService.createInvitation(context.req.raw.headers, input)
                     await auditService.record({
-                        actorId,
-                        detail: { code },
+                        actorId: result.createdBy,
+                        detail: { email: result.email, expiresAt: result.expiresAt, role: result.role },
                         operation: 'invitation.create',
                         requestId: context.get('requestId'),
-                        result: 'failure',
+                        result: 'success',
                         sourceIp: getSourceIp(context.req.raw.headers),
-                        targetId: 'new',
+                        targetId: result.id,
                         targetType: 'invitation',
                     })
+                    return context.json(successResponse(result), 201)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'UNKNOWN_ERROR'
+                    if (actorId) {
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'invitation.create',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: 'new',
+                            targetType: 'invitation',
+                        })
+                    }
+                    throw error
                 }
-
-                if (code === 'AUTH_REQUIRED') {
-                    return context.json(errorResponse(code, '로그인이 필요합니다.', context.get('requestId')), 401)
-                }
-
-                if (code === 'FORBIDDEN') {
-                    return context.json(errorResponse(code, '초대를 생성할 권한이 없습니다.', context.get('requestId')), 403)
-                }
-
-                return context.json(errorResponse(code, '초대 요청이 올바르지 않습니다.', context.get('requestId')), 400)
-            }
-        })
-        .post('/invitations/accept', async (context) => {
-            try {
-                const result = await authService.acceptInvitation(await context.req.json())
+            }),
+        )
+        .post(
+            '/invitations/accept',
+            describeRoute({
+                responses: { 201: { description: '초대 수락' } },
+                summary: '초대 수락',
+                tags: ['Auth'],
+            }),
+            validator('json', invitationAcceptSchema),
+            withErrorHandling(async (context) => {
+                const result = await authService.acceptInvitation(context.req.valid('json'))
                 await auditService.record({
                     actorId: result.user.id,
                     authMethod: 'invitation',
@@ -109,53 +138,47 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
                     targetType: 'user',
                 })
                 return context.json(successResponse(result), 201)
-            } catch (error) {
-                const code = getErrorCode(error)
-
-                if (code === 'INVITATION_BUSY') {
-                    return context.json(errorResponse(code, '다른 초대 수락이 처리 중입니다.', context.get('requestId')), 409)
-                }
-
-                if (code === 'INVITATION_INVALID') {
-                    return context.json(errorResponse(code, '초대가 만료되었거나 유효하지 않습니다.', context.get('requestId')), 410)
-                }
-
-                return context.json(errorResponse(code, '초대 수락 요청이 올바르지 않습니다.', context.get('requestId')), 400)
-            }
-        })
-        .get('/users', async (context) => {
-            try {
-                return context.json(successResponse(await authService.listUsers(context.req.raw.headers)), 200)
-            } catch (error) {
-                const code = getErrorCode(error)
-                if (code === 'AUTH_REQUIRED') {
-                    return context.json(errorResponse(code, '로그인이 필요합니다.', context.get('requestId')), 401)
-                }
-                return context.json(errorResponse(code, '사용자 목록을 조회할 권한이 없습니다.', context.get('requestId')), 403)
-            }
-        })
-        .patch('/users/:id', async (context) => {
-            const actor = await authService.getSession(context.req.raw.headers)
-            const targetId = context.req.param('id')
-            try {
+            }),
+        )
+        .get(
+            '/users',
+            describeRoute({
+                responses: { 200: { description: '사용자 목록' } },
+                summary: '사용자 목록 조회',
+                tags: ['Auth'],
+            }),
+            withErrorHandling(async (context) => context.json(successResponse(await authService.listUsers(context.req.raw.headers)), 200)),
+        )
+        .patch(
+            '/users/:id',
+            describeRoute({
+                responses: { 200: { description: '사용자 변경' } },
+                summary: '사용자 정보 변경',
+                tags: ['Auth'],
+            }),
+            validator('param', userIdParamSchema),
+            validator('json', managedUserUpdateSchema),
+            withErrorHandling(async (context) => {
+                const targetId = (context.req.valid('param' as never) as z.infer<typeof userIdParamSchema>).id
+                const actor = await authService.getSession(context.req.raw.headers)
                 if (!actor) {
                     throw createAppError('AUTH_REQUIRED')
                 }
-                const result = await authService.updateUser(context.req.raw.headers, targetId, await context.req.json())
-                await auditService.record({
-                    actorId: actor.user.id,
-                    detail: { disabled: Boolean(result.disabledAt), role: result.role },
-                    operation: 'user.update',
-                    requestId: context.get('requestId'),
-                    result: 'success',
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId,
-                    targetType: 'user',
-                })
-                return context.json(successResponse(result), 200)
-            } catch (error) {
-                const code = getErrorCode(error)
-                if (actor) {
+                try {
+                    const result = await authService.updateUser(context.req.raw.headers, targetId, context.req.valid('json'))
+                    await auditService.record({
+                        actorId: actor.user.id,
+                        detail: { disabled: Boolean(result.disabledAt), role: result.role },
+                        operation: 'user.update',
+                        requestId: context.get('requestId'),
+                        result: 'success',
+                        sourceIp: getSourceIp(context.req.raw.headers),
+                        targetId,
+                        targetType: 'user',
+                    })
+                    return context.json(successResponse(result), 200)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'UNKNOWN_ERROR'
                     await auditService.record({
                         actorId: actor.user.id,
                         detail: { code },
@@ -166,19 +189,7 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
                         targetId,
                         targetType: 'user',
                     })
+                    throw error
                 }
-                if (code === 'AUTH_REQUIRED' || code === 'RECENT_AUTH_REQUIRED') {
-                    return context.json(errorResponse(code, '최근 로그인이 필요합니다.', context.get('requestId')), 401)
-                }
-                if (code === 'FORBIDDEN') {
-                    return context.json(errorResponse(code, '사용자를 변경할 권한이 없습니다.', context.get('requestId')), 403)
-                }
-                if (code === 'USER_NOT_FOUND') {
-                    return context.json(errorResponse(code, '사용자를 찾을 수 없습니다.', context.get('requestId')), 404)
-                }
-                if (code === 'OWNER_IMMUTABLE') {
-                    return context.json(errorResponse(code, 'owner 계정은 변경하거나 비활성화할 수 없습니다.', context.get('requestId')), 409)
-                }
-                return context.json(errorResponse(code, '사용자 변경 요청이 올바르지 않습니다.', context.get('requestId')), 400)
-            }
-        })
+            }),
+        )

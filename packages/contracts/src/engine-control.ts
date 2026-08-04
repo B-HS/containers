@@ -77,6 +77,10 @@ export const interactiveExecTicketSchema = z.object({
     ticket: z.string().min(32).max(256),
 })
 
+export const execTicketParamSchema = z.object({
+    ticket: z.string().min(32).max(256),
+})
+
 export const interactiveExecClientMessageSchema = z.discriminatedUnion('type', [
     z.object({ data: z.string().max(65_536), type: z.literal('input') }),
     z.object({ columns: z.number().int().min(20).max(500), rows: z.number().int().min(5).max(300), type: z.literal('resize') }),

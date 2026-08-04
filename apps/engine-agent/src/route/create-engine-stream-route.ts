@@ -1,6 +1,9 @@
 import { Hono } from 'hono'
+import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
 import { containerLogStreamQuerySchema } from '@containers/contracts/engine-stream'
 import type { EngineStreamService } from '../service/create-engine-stream-service'
+import { withErrorHandling } from '../lib/with-error-handling'
 
 type EngineStreamRouteDependencies = {
     engineStreamService: EngineStreamService
@@ -12,25 +15,45 @@ const SSE_HEADERS = {
     'x-accel-buffering': 'no',
 } as const
 
-const streamErrorStatus = (code: string) => (code === 'ENGINE_STREAM_LIMIT' ? (429 as const) : (400 as const))
+const containerIdParamSchema = z.object({ containerId: z.string().min(1).max(256) })
 
 export const createEngineStreamRoute = ({ engineStreamService }: EngineStreamRouteDependencies) => {
-    const respond = async (open: () => Promise<ReadableStream<Uint8Array>>) => {
-        try {
-            return new Response(await open(), { headers: SSE_HEADERS, status: 200 })
-        } catch (error) {
-            const code = error instanceof Error ? error.message : 'ENGINE_STREAM_FAILED'
-            return Response.json({ error: code }, { status: streamErrorStatus(code) })
-        }
-    }
+    const route = new Hono()
 
-    return new Hono()
-        .get('/streams/events', () => respond(() => engineStreamService.openEventStream()))
-        .get('/streams/containers/:containerId/logs', (context) => {
-            const query = containerLogStreamQuerySchema.parse(context.req.query())
-            return respond(() => engineStreamService.openContainerLogStream(context.req.param('containerId'), query.tail))
-        })
-        .get('/streams/containers/:containerId/stats', (context) =>
-            respond(() => engineStreamService.openContainerStatsStream(context.req.param('containerId'))),
-        )
+    const streamResponse = (open: () => Promise<ReadableStream<Uint8Array>>) =>
+        withErrorHandling(async () => new Response(await open(), { headers: SSE_HEADERS, status: 200 }))
+
+    route.get(
+        '/streams/events',
+        describeRoute({ tags: ['engine-stream'], summary: 'Docker 이벤트 실시간 stream', responses: { 200: { description: 'SSE stream' } } }),
+        streamResponse(() => engineStreamService.openEventStream()),
+    )
+    route.get(
+        '/streams/containers/:containerId/logs',
+        describeRoute({ tags: ['engine-stream'], summary: '컨테이너 로그 실시간 stream', responses: { 200: { description: 'SSE stream' } } }),
+        validator('param', containerIdParamSchema),
+        validator('query', containerLogStreamQuerySchema),
+        withErrorHandling(async (context) => {
+            const param = context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>
+            const query = context.req.valid('query' as never) as z.infer<typeof containerLogStreamQuerySchema>
+            return new Response(await engineStreamService.openContainerLogStream(param.containerId, query.tail), {
+                headers: SSE_HEADERS,
+                status: 200,
+            })
+        }),
+    )
+    route.get(
+        '/streams/containers/:containerId/stats',
+        describeRoute({ tags: ['engine-stream'], summary: '컨테이너 stats 실시간 stream', responses: { 200: { description: 'SSE stream' } } }),
+        validator('param', containerIdParamSchema),
+        withErrorHandling(async (context) => {
+            const param = context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>
+            return new Response(await engineStreamService.openContainerStatsStream(param.containerId), {
+                headers: SSE_HEADERS,
+                status: 200,
+            })
+        }),
+    )
+
+    return route
 }

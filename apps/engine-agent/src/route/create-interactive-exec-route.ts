@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
+import { describeRoute, validator } from 'hono-openapi'
 import { createBunWebSocket } from 'hono/bun'
 import type { WSContext } from 'hono/ws'
-import { z } from 'zod'
-import { interactiveExecClientMessageSchema } from '@containers/contracts/engine-control'
+import { execTicketParamSchema, interactiveExecClientMessageSchema, interactiveExecTicketRequestSchema } from '@containers/contracts/engine-control'
 import { createInteractiveExecSessionGuard } from '../service/create-interactive-exec-session-guard'
 import type { InteractiveExecService } from '../service/create-interactive-exec-service'
+import { withErrorHandling } from '../lib/with-error-handling'
 
 const { upgradeWebSocket } = createBunWebSocket()
 const INTERACTIVE_EXEC_IDLE_TIMEOUT_MS = 5 * 60 * 1_000
@@ -39,13 +40,28 @@ export const createInteractiveExecRoute = ({ interactiveExecService, limits = {}
     const maxPendingInputBytes = limits.maxPendingInputBytes ?? INTERACTIVE_EXEC_MAX_PENDING_INPUT_BYTES
 
     return new Hono()
-        .post('/v1/containers/:containerId/exec-tickets', async (context) =>
-            context.json(interactiveExecService.createTicket(context.req.param('containerId'), await context.req.json()), 201),
+        .post(
+            '/v1/containers/:containerId/exec-tickets',
+            describeRoute({
+                tags: ['interactive-exec'],
+                summary: 'interactive exec ticket 생성',
+                responses: { 201: { description: 'ticket 생성' } },
+            }),
+            validator('json', interactiveExecTicketRequestSchema),
+            withErrorHandling(async (context) =>
+                context.json(interactiveExecService.createTicket(context.req.param('containerId'), context.req.valid('json' as never)), 201),
+            ),
         )
         .get(
             '/ws/exec/:ticket',
+            describeRoute({
+                tags: ['interactive-exec'],
+                summary: 'interactive exec 웹소켓 연결',
+                responses: { 101: { description: '웹소켓 연결' } },
+            }),
+            validator('param', execTicketParamSchema),
             upgradeWebSocket((context) => {
-                const record = interactiveExecService.consumeTicket(z.string().min(32).max(256).parse(context.req.param('ticket')))
+                const record = interactiveExecService.consumeTicket((context.req.valid('param' as never) as { ticket: string }).ticket)
                 let attachedSocket: Awaited<ReturnType<InteractiveExecService['attach']>>['socket'] | undefined
                 let execId: string | undefined
                 let sessionGuard: ReturnType<typeof createInteractiveExecSessionGuard> | undefined

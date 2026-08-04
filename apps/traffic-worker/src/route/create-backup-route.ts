@@ -1,5 +1,9 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
+import { describeRoute, validator } from 'hono-openapi'
+import { trafficBackupParamSchema } from '@containers/contracts/backup'
 import type { TrafficBackupService } from '../service/create-traffic-backup-service'
+import { withErrorHandling } from '../lib/with-error-handling'
 
 type BackupRouteDependencies = {
     backupService: TrafficBackupService
@@ -7,19 +11,21 @@ type BackupRouteDependencies = {
 
 export const createBackupRoute = ({ backupService }: BackupRouteDependencies) =>
     new Hono()
-        .post('/:id', async (context) => {
-            try {
-                return context.json(await backupService.create(context.req.param('id')), 201)
-            } catch (error) {
-                const code = error instanceof Error ? error.message.split(':')[0] : 'BACKUP_TRAFFIC_CREATE_FAILED'
-                return context.json({ error: { code } }, 422)
-            }
-        })
-        .post('/:id/restore', async (context) => {
-            try {
-                return context.json(await backupService.restore(context.req.param('id')), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message.split(':')[0] : 'BACKUP_TRAFFIC_RESTORE_FAILED'
-                return context.json({ error: { code } }, 422)
-            }
-        })
+        .post(
+            '/:id',
+            describeRoute({ summary: '트래픽 백업 생성', tags: ['backup'], responses: { 201: { description: '백업 결과' } } }),
+            validator('param', trafficBackupParamSchema),
+            withErrorHandling(async (context) => {
+                const { id } = context.req.valid('param' as never) as z.infer<typeof trafficBackupParamSchema>
+                return context.json(await backupService.create(id), 201)
+            }),
+        )
+        .post(
+            '/:id/restore',
+            describeRoute({ summary: '트래픽 백업 복원', tags: ['backup'], responses: { 200: { description: '복원 결과' } } }),
+            validator('param', trafficBackupParamSchema),
+            withErrorHandling(async (context) => {
+                const { id } = context.req.valid('param' as never) as z.infer<typeof trafficBackupParamSchema>
+                return context.json(await backupService.restore(id), 200)
+            }),
+        )

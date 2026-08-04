@@ -1,11 +1,17 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { trafficAnalyticsQuerySchema, trafficLiveQuerySchema } from '@containers/contracts/traffic'
+import { describeRoute, validator } from 'hono-openapi'
+import {
+    trafficAnalyticsQuerySchema,
+    trafficExportJobParamSchema,
+    trafficLiveQuerySchema,
+    trafficSummaryQuerySchema,
+} from '@containers/contracts/traffic'
+import { trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import type { TrafficIngestionService } from '../service/create-traffic-ingestion-service'
 import type { TrafficQueryService } from '../service/create-traffic-query-service'
 import type { TrafficExportService } from '../service/create-traffic-export-service'
-
-const summaryQuerySchema = z.object({ windowMinutes: z.coerce.number().int().min(1).max(1_440).default(1) })
+import { withErrorHandling } from '../lib/with-error-handling'
 
 type TrafficRouteDependencies = {
     exportService: TrafficExportService
@@ -15,13 +21,24 @@ type TrafficRouteDependencies = {
 
 export const createTrafficRoute = ({ exportService, ingestionService, queryService }: TrafficRouteDependencies) =>
     new Hono()
-        .get('/analytics', (context) => context.json(queryService.getAnalytics(trafficAnalyticsQuerySchema.parse(context.req.query())), 200))
-        .get('/live', (context) => {
-            const query = trafficLiveQuerySchema.parse(context.req.query())
-            const encoder = new TextEncoder()
-            let unsubscribe: (() => boolean) | undefined
-            let heartbeat: ReturnType<typeof setInterval> | undefined
-            try {
+        .get(
+            '/analytics',
+            describeRoute({ summary: '트래픽 분석 조회', tags: ['traffic'], responses: { 200: { description: '분석 결과' } } }),
+            validator('query', trafficAnalyticsQuerySchema),
+            withErrorHandling((context) => {
+                const query = context.req.valid('query' as never) as z.infer<typeof trafficAnalyticsQuerySchema>
+                return context.json(queryService.getAnalytics(query), 200)
+            }),
+        )
+        .get(
+            '/live',
+            describeRoute({ summary: '실시간 트래픽 스트림', tags: ['traffic'], responses: { 200: { description: 'SSE 스트림' } } }),
+            validator('query', trafficLiveQuerySchema),
+            withErrorHandling((context) => {
+                const query = context.req.valid('query' as never) as z.infer<typeof trafficLiveQuerySchema>
+                const encoder = new TextEncoder()
+                let unsubscribe: (() => boolean) | undefined
+                let heartbeat: ReturnType<typeof setInterval> | undefined
                 const body = new ReadableStream<Uint8Array>({
                     cancel: () => {
                         clearInterval(heartbeat)
@@ -43,18 +60,30 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
                 return new Response(body, {
                     headers: { 'cache-control': 'no-store', 'content-type': 'text/event-stream', 'x-accel-buffering': 'no' },
                 })
-            } catch (error) {
-                if (error instanceof Error && error.message === 'TRAFFIC_STREAM_LIMIT') {
-                    return context.json({ error: 'TRAFFIC_STREAM_LIMIT' }, 429)
-                }
-                throw error
-            }
-        })
-        .get('/summary', (context) => {
-            const query = summaryQuerySchema.parse(context.req.query())
-            return context.json(queryService.getSummary(query.windowMinutes), 200)
-        })
-        .get('/ingestion', (context) => context.json(ingestionService.getState(), 200))
-        .post('/exports/:jobId', async (context) =>
-            context.json(await exportService.create(context.req.param('jobId'), await context.req.json()), 201),
+            }),
+        )
+        .get(
+            '/summary',
+            describeRoute({ summary: '트래픽 요약 조회', tags: ['traffic'], responses: { 200: { description: '요약 결과' } } }),
+            validator('query', trafficSummaryQuerySchema),
+            withErrorHandling((context) => {
+                const { windowMinutes } = context.req.valid('query' as never) as z.infer<typeof trafficSummaryQuerySchema>
+                return context.json(queryService.getSummary(windowMinutes), 200)
+            }),
+        )
+        .get(
+            '/ingestion',
+            describeRoute({ summary: '트래픽 수집 상태 조회', tags: ['traffic'], responses: { 200: { description: '수집 상태' } } }),
+            withErrorHandling((context) => context.json(ingestionService.getState(), 200)),
+        )
+        .post(
+            '/exports/:jobId',
+            describeRoute({ summary: '트래픽 내보내기 실행', tags: ['traffic'], responses: { 201: { description: '내보내기 결과' } } }),
+            validator('param', trafficExportJobParamSchema),
+            validator('json', trafficExportJobPayloadSchema),
+            withErrorHandling(async (context) => {
+                const { jobId } = context.req.valid('param' as never) as z.infer<typeof trafficExportJobParamSchema>
+                const payload = context.req.valid('json' as never) as z.infer<typeof trafficExportJobPayloadSchema>
+                return context.json(await exportService.create(jobId, payload), 201)
+            }),
         )

@@ -1,25 +1,26 @@
 import type { AppType } from '@containers/api/app'
+import { containerSummaryListSchema, engineOverviewSchema } from '@containers/contracts/engine'
 import { hc } from 'hono/client'
+import { z } from 'zod'
+
+const successResponseSchema = z.object({ data: z.unknown(), success: z.literal(true) })
 
 export const getEngineDashboard = async (baseUrl: string, cookie: string) => {
     const client = hc<AppType>(baseUrl)
-    const [overviewResponse, containersResponse] = await Promise.all([
-        client.api.system.engine.$get({}, { headers: { cookie } }),
-        client.api.containers.$get({}, { headers: { cookie } }),
-    ])
+    const overviewResponse = await client.api.system.engine.$get({}, { headers: { cookie } })
+    const containersResponse = await client.api.containers.$get({}, { headers: { cookie } })
 
-    if (!overviewResponse.ok) {
-        throw new Error(`Engine 상태 조회 실패: ${overviewResponse.status}`)
+    if (!overviewResponse.ok || !containersResponse.ok) {
+        throw new Error('Engine 상태 조회 실패')
     }
 
-    if (!containersResponse.ok) {
-        throw new Error(`컨테이너 목록 조회 실패: ${containersResponse.status}`)
-    }
+    const [overviewBody, containersBody] = await Promise.all([overviewResponse.json(), containersResponse.json()])
 
-    const [overview, containers] = await Promise.all([overviewResponse.json(), containersResponse.json()])
+    const overview = successResponseSchema.parse(overviewBody).data
+    const containers = successResponseSchema.parse(containersBody).data
 
     return {
-        containers: containers.data,
-        overview: overview.data,
+        containers: containerSummaryListSchema.parse(containers),
+        overview: engineOverviewSchema.parse(overview),
     }
 }

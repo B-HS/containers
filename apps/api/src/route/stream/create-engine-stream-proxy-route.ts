@@ -1,12 +1,15 @@
-import { Hono, type Context } from 'hono'
+import { Hono } from 'hono'
+import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
 import { containerLogStreamQuerySchema } from '@containers/contracts/engine-stream'
 import { USER_ROLE } from '@containers/db-schema/schema'
-import { errorResponse } from '../../lib/response'
+import { withErrorHandling } from '../../lib/with-error-handling'
 import type { EngineAgentClient } from '../../agent/create-engine-agent-client'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const SESSION_RECHECK_INTERVAL_MS = 15_000
+const containerIdParamSchema = z.object({ containerId: z.string().min(1) })
 
 const SSE_HEADERS = {
     'cache-control': 'no-store',
@@ -19,62 +22,77 @@ type EngineStreamProxyRouteDependencies = {
     engineAgentClient: Pick<EngineAgentClient, 'openContainerLogStream' | 'openContainerStatsStream' | 'openEventStream'>
 }
 
-const errorStatus = (code: string) => {
-    if (code === 'AUTH_REQUIRED') return 401 as const
-    if (code === 'FORBIDDEN') return 403 as const
-    if (code === 'ENGINE_STREAM_LIMIT') return 429 as const
-    return 503 as const
-}
-
 export const createEngineStreamProxyRoute = ({ authService, engineAgentClient }: EngineStreamProxyRouteDependencies) => {
-    const proxy = async (context: Context, open: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array>>) => {
-        const headers = context.req.raw.headers
+    const proxy = async (headers: Headers, open: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array>>) => {
         const upstreamController = new AbortController()
-        try {
-            await authService.requireRole(headers, ALL_ROLES)
-            const upstream = await open(upstreamController.signal)
-            const reader = upstream.getReader()
-            let recheck: ReturnType<typeof setInterval> | undefined
-            const body = new ReadableStream<Uint8Array>({
-                start: () => {
-                    recheck = setInterval(() => {
-                        authService.requireRole(headers, ALL_ROLES).catch(() => upstreamController.abort())
-                    }, SESSION_RECHECK_INTERVAL_MS)
-                },
-                pull: async (controller) => {
-                    try {
-                        const { done, value } = await reader.read()
-                        if (done) {
-                            clearInterval(recheck)
-                            controller.close()
-                            return
-                        }
-                        controller.enqueue(value)
-                    } catch {
+        await authService.requireRole(headers, ALL_ROLES)
+        const upstream = await open(upstreamController.signal)
+        const reader = upstream.getReader()
+        let recheck: ReturnType<typeof setInterval> | undefined
+        const body = new ReadableStream<Uint8Array>({
+            start: () => {
+                recheck = setInterval(() => {
+                    authService.requireRole(headers, ALL_ROLES).catch(() => upstreamController.abort())
+                }, SESSION_RECHECK_INTERVAL_MS)
+            },
+            pull: async (controller) => {
+                try {
+                    const { done, value } = await reader.read()
+                    if (done) {
                         clearInterval(recheck)
                         controller.close()
+                        return
                     }
-                },
-                cancel: () => {
+                    controller.enqueue(value)
+                } catch {
                     clearInterval(recheck)
-                    upstreamController.abort()
-                },
-            })
-            return new Response(body, { headers: SSE_HEADERS, status: 200 })
-        } catch (error) {
-            upstreamController.abort()
-            const code = error instanceof Error ? error.message : 'ENGINE_STREAM_FAILED'
-            return context.json(errorResponse(code, '실시간 stream 을 열 수 없습니다.', context.get('requestId')), errorStatus(code))
-        }
+                    controller.close()
+                }
+            },
+            cancel: () => {
+                clearInterval(recheck)
+                upstreamController.abort()
+            },
+        })
+        return new Response(body, { headers: SSE_HEADERS, status: 200 })
     }
 
     return new Hono()
-        .get('/stream/events', (context) => proxy(context, (signal) => engineAgentClient.openEventStream(signal)))
-        .get('/stream/containers/:containerId/logs', (context) => {
-            const query = containerLogStreamQuerySchema.parse(context.req.query())
-            return proxy(context, (signal) => engineAgentClient.openContainerLogStream(context.req.param('containerId'), query.tail, signal))
-        })
-        .get('/stream/containers/:containerId/stats', (context) =>
-            proxy(context, (signal) => engineAgentClient.openContainerStatsStream(context.req.param('containerId'), signal)),
+        .get(
+            '/stream/events',
+            describeRoute({
+                responses: { 200: { description: '실시간 이벤트 SSE' } },
+                summary: '실시간 이벤트 스트림',
+                tags: ['Stream'],
+            }),
+            withErrorHandling((context) => proxy(context.req.raw.headers, (signal) => engineAgentClient.openEventStream(signal))),
+        )
+        .get(
+            '/stream/containers/:containerId/logs',
+            describeRoute({
+                responses: { 200: { description: '실시간 컨테이너 로그 SSE' } },
+                summary: '실시간 컨테이너 로그 스트림',
+                tags: ['Stream'],
+            }),
+            validator('param', containerIdParamSchema),
+            validator('query', containerLogStreamQuerySchema),
+            withErrorHandling((context) => {
+                const containerId = (context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>).containerId
+                const { tail } = context.req.valid('query' as never) as z.infer<typeof containerLogStreamQuerySchema>
+                return proxy(context.req.raw.headers, (signal) => engineAgentClient.openContainerLogStream(containerId, tail, signal))
+            }),
+        )
+        .get(
+            '/stream/containers/:containerId/stats',
+            describeRoute({
+                responses: { 200: { description: '실시간 컨테이너 stats SSE' } },
+                summary: '실시간 컨테이너 stats 스트림',
+                tags: ['Stream'],
+            }),
+            validator('param', containerIdParamSchema),
+            withErrorHandling((context) => {
+                const containerId = (context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>).containerId
+                return proxy(context.req.raw.headers, (signal) => engineAgentClient.openContainerStatsStream(containerId, signal))
+            }),
         )
 }

@@ -49,6 +49,14 @@ export const trafficLiveQuerySchema = z.object({
     statusClass: trafficStatusClassSchema.default('all'),
 })
 
+export const trafficSummaryQuerySchema = z.object({
+    windowMinutes: z.coerce.number().int().min(1).max(1_440).default(1),
+})
+
+export const trafficExportJobParamSchema = z.object({
+    jobId: z.uuid(),
+})
+
 export const trafficLiveEventSchema = z.object({
     bytesSent: z.number().int().nonnegative(),
     clientIpMasked: z.string().min(1),
@@ -99,5 +107,7 @@ export const trafficAnalyticsSchema = z.object({
 export type NginxAccessEvent = z.infer<typeof nginxAccessEventSchema>
 export type TrafficAnalytics = z.infer<typeof trafficAnalyticsSchema>
 export type TrafficAnalyticsQuery = z.infer<typeof trafficAnalyticsQuerySchema>
+export type TrafficExportJobParam = z.infer<typeof trafficExportJobParamSchema>
 export type TrafficLiveEvent = z.infer<typeof trafficLiveEventSchema>
 export type TrafficLiveQuery = z.infer<typeof trafficLiveQuerySchema>
+export type TrafficSummaryQuery = z.infer<typeof trafficSummaryQuerySchema>

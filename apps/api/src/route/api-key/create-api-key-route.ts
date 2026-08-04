@@ -1,56 +1,61 @@
 import { Hono } from 'hono'
+import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
+import { apiKeyCreateSchema } from '@containers/contracts/api-key'
 import { USER_ROLE } from '@containers/db-schema/schema'
-import { errorResponse, successResponse } from '../../lib/response'
+import { successResponse } from '../../lib/response'
+import { withErrorHandling } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
 const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const ADMIN_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 
+const apiKeyIdSchema = z.object({ id: z.uuid() })
+
 type ApiKeyRouteDependencies = {
     apiKeyService: ApiKeyService
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
 }
 
-const errorStatus = (code: string) => {
-    if (code === 'AUTH_REQUIRED' || code === 'RECENT_AUTH_REQUIRED') {
-        return 401 as const
-    }
-    if (code === 'FORBIDDEN') {
-        return 403 as const
-    }
-    if (code === 'API_KEY_NOT_FOUND') {
-        return 404 as const
-    }
-    return 400 as const
-}
-
 export const createApiKeyRoute = ({ apiKeyService, authService }: ApiKeyRouteDependencies) =>
     new Hono()
-        .get('/api-keys', async (context) => {
-            try {
+        .get(
+            '/api-keys',
+            describeRoute({
+                responses: { 200: { description: 'API 키 목록' } },
+                summary: 'API 키 목록 조회',
+                tags: ['ApiKey'],
+            }),
+            withErrorHandling(async (context) => {
                 await authService.requireRole(context.req.raw.headers, ADMIN_ROLES)
                 return context.json(successResponse(await apiKeyService.list()), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'API_KEY_LIST_FAILED'
-                return context.json(errorResponse(code, 'API 키를 조회할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .post('/api-keys', async (context) => {
-            try {
+            }),
+        )
+        .post(
+            '/api-keys',
+            describeRoute({
+                responses: { 201: { description: 'API 키 생성' } },
+                summary: 'API 키 생성',
+                tags: ['ApiKey'],
+            }),
+            validator('json', apiKeyCreateSchema),
+            withErrorHandling(async (context) => {
                 const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                return context.json(successResponse(await apiKeyService.create(session.user.id, await context.req.json())), 201)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'API_KEY_CREATE_FAILED'
-                return context.json(errorResponse(code, 'API 키를 생성할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .delete('/api-keys/:id', async (context) => {
-            try {
+                return context.json(successResponse(await apiKeyService.create(session.user.id, context.req.valid('json'))), 201)
+            }),
+        )
+        .delete(
+            '/api-keys/:id',
+            describeRoute({
+                responses: { 200: { description: 'API 키 폐기' } },
+                summary: 'API 키 폐기',
+                tags: ['ApiKey'],
+            }),
+            validator('param', apiKeyIdSchema),
+            withErrorHandling(async (context) => {
                 await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                return context.json(successResponse(await apiKeyService.revoke(context.req.param('id'))), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'API_KEY_REVOKE_FAILED'
-                return context.json(errorResponse(code, 'API 키를 폐기할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
+                const { id } = context.req.valid('param' as never) as z.infer<typeof apiKeyIdSchema>
+                return context.json(successResponse(await apiKeyService.revoke(id)), 200)
+            }),
+        )

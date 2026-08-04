@@ -2,6 +2,10 @@ import { z } from 'zod'
 
 export const backupIdSchema = z.uuid()
 
+export const trafficBackupParamSchema = z.object({
+    id: backupIdSchema,
+})
+
 export const backupCreateSchema = z.object({
     label: z.string().trim().min(1).max(100).nullable().default(null),
 })
@@ -27,3 +31,4 @@ export const backupSnapshotResultSchema = z.object({
 })
 
 export type BackupManifest = z.infer<typeof backupManifestSchema>
+export type TrafficBackupParam = z.infer<typeof trafficBackupParamSchema>

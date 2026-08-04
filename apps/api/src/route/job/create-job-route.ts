@@ -1,6 +1,10 @@
-import { Hono, type Context } from 'hono'
+import { Hono } from 'hono'
+import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
+import { operationJobListQuerySchema } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
-import { errorResponse, successResponse } from '../../lib/response'
+import { successResponse } from '../../lib/response'
+import { withErrorHandling } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { BackupScheduleService } from '../../service/domain/job/create-backup-schedule-service'
@@ -8,6 +12,7 @@ import type { OperationJobService } from '../../service/domain/job/create-operat
 
 const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const JOB_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
+const jobIdSchema = z.object({ id: z.uuid() })
 
 type JobRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
@@ -18,53 +23,90 @@ type JobRouteDependencies = {
 
 const sourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-const errorStatus = (code: string) => {
-    if (code === 'AUTH_REQUIRED' || code === 'RECENT_AUTH_REQUIRED') return 401 as const
-    if (code === 'FORBIDDEN') return 403 as const
-    if (code === 'JOB_NOT_FOUND') return 404 as const
-    if (code === 'JOB_ALREADY_FINISHED') return 409 as const
-    return 400 as const
-}
-
-export const createJobRoute = ({ auditService, authService, backupScheduleService, operationJobService }: JobRouteDependencies) => {
-    const read = async (context: Context, action: () => Promise<unknown>) => {
-        try {
-            await authService.requireRole(context.req.raw.headers, JOB_ROLES)
-            return context.json(successResponse(await action()), 200)
-        } catch (error) {
-            const code = error instanceof Error ? error.message : 'JOB_READ_FAILED'
-            return context.json(errorResponse(code, '작업 정보를 조회할 수 없습니다.', context.get('requestId')), errorStatus(code))
-        }
-    }
-
-    return new Hono()
-        .get('/jobs', (context) => read(context, () => operationJobService.list(context.req.query())))
-        .get('/jobs/backup-schedule', (context) => read(context, () => backupScheduleService.getSchedule()))
-        .get('/jobs/:id', (context) => read(context, () => operationJobService.get(context.req.param('id'))))
-        .get('/jobs/:id/events', (context) => read(context, () => operationJobService.listEvents(context.req.param('id'))))
-        .post('/jobs/:id/cancel', async (context) => {
-            const targetId = context.req.param('id')
-            const audit = {
-                operation: 'job.cancel',
-                requestId: context.get('requestId'),
-                sourceIp: sourceIp(context.req.raw.headers),
-                targetId,
-                targetType: 'job' as const,
-            }
-            let principal: { actorId: string; authMethod: 'session' } | undefined
-            try {
-                const session = await authService.requireRecentRole(context.req.raw.headers, JOB_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                principal = { actorId: session.user.id, authMethod: 'session' }
-                await auditService.record({ ...audit, ...principal, result: 'attempt' })
-                const job = await operationJobService.requestCancel(targetId)
-                await auditService.record({ ...audit, ...principal, result: 'success' })
-                return context.json(successResponse(job), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'JOB_CANCEL_FAILED'
-                if (principal) {
-                    await auditService.record({ ...audit, ...principal, detail: { code }, result: 'failure' })
+export const createJobRoute = ({ auditService, authService, backupScheduleService, operationJobService }: JobRouteDependencies) =>
+    new Hono()
+        .get(
+            '/jobs',
+            describeRoute({
+                responses: { 200: { description: '작업 목록' } },
+                summary: '작업 목록 조회',
+                tags: ['Job'],
+            }),
+            validator('query', operationJobListQuerySchema),
+            withErrorHandling(async (context) => {
+                await authService.requireRole(context.req.raw.headers, JOB_ROLES)
+                const query = context.req.valid('query' as never) as z.infer<typeof operationJobListQuerySchema>
+                return context.json(successResponse(await operationJobService.list(query)), 200)
+            }),
+        )
+        .get(
+            '/jobs/backup-schedule',
+            describeRoute({
+                responses: { 200: { description: '백업 스케줄' } },
+                summary: '백업 스케줄 조회',
+                tags: ['Job'],
+            }),
+            withErrorHandling(async (context) => {
+                await authService.requireRole(context.req.raw.headers, JOB_ROLES)
+                return context.json(successResponse(await backupScheduleService.getSchedule()), 200)
+            }),
+        )
+        .get(
+            '/jobs/:id',
+            describeRoute({
+                responses: { 200: { description: '작업 상세' } },
+                summary: '작업 상세 조회',
+                tags: ['Job'],
+            }),
+            validator('param', jobIdSchema),
+            withErrorHandling(async (context) => {
+                await authService.requireRole(context.req.raw.headers, JOB_ROLES)
+                const { id } = context.req.valid('param' as never) as z.infer<typeof jobIdSchema>
+                return context.json(successResponse(await operationJobService.get(id)), 200)
+            }),
+        )
+        .get(
+            '/jobs/:id/events',
+            describeRoute({
+                responses: { 200: { description: '작업 이벤트' } },
+                summary: '작업 이벤트 조회',
+                tags: ['Job'],
+            }),
+            validator('param', jobIdSchema),
+            withErrorHandling(async (context) => {
+                await authService.requireRole(context.req.raw.headers, JOB_ROLES)
+                const { id } = context.req.valid('param' as never) as z.infer<typeof jobIdSchema>
+                return context.json(successResponse(await operationJobService.listEvents(id)), 200)
+            }),
+        )
+        .post(
+            '/jobs/:id/cancel',
+            describeRoute({
+                responses: { 200: { description: '작업 취소' } },
+                summary: '작업 취소',
+                tags: ['Job'],
+            }),
+            validator('param', jobIdSchema),
+            withErrorHandling(async (context) => {
+                const targetId = (context.req.valid('param' as never) as z.infer<typeof jobIdSchema>).id
+                const audit = {
+                    operation: 'job.cancel',
+                    requestId: context.get('requestId'),
+                    sourceIp: sourceIp(context.req.raw.headers),
+                    targetId,
+                    targetType: 'job' as const,
                 }
-                return context.json(errorResponse(code, '작업을 취소할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-}
+                const session = await authService.requireRecentRole(context.req.raw.headers, JOB_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                const principal = { actorId: session.user.id, authMethod: 'session' as const }
+                try {
+                    await auditService.record({ ...audit, ...principal, result: 'attempt' })
+                    const job = await operationJobService.requestCancel(targetId)
+                    await auditService.record({ ...audit, ...principal, result: 'success' })
+                    return context.json(successResponse(job), 200)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'JOB_CANCEL_FAILED'
+                    await auditService.record({ ...audit, ...principal, detail: { code }, result: 'failure' })
+                    throw error
+                }
+            }),
+        )

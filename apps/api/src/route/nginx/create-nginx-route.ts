@@ -1,6 +1,10 @@
 import { Hono } from 'hono'
+import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
+import { nginxConfigApplySchema, nginxProxyRouteInputSchema } from '@containers/contracts/nginx'
 import { USER_ROLE } from '@containers/db-schema/schema'
-import { errorResponse, successResponse } from '../../lib/response'
+import { successResponse } from '../../lib/response'
+import { withErrorHandling } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { NginxService } from '../../service/domain/nginx/create-nginx-service'
@@ -9,6 +13,8 @@ import type { NginxProxyRouteService } from '../../service/domain/nginx/create-n
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const ADMIN_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
+const nginxRouteIdParamSchema = z.object({ id: z.uuid() })
+const nginxRouteRemoveSchema = z.object({ confirmation: z.string().min(1).max(256) })
 
 type NginxRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
@@ -19,57 +25,56 @@ type NginxRouteDependencies = {
 
 const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-const errorStatus = (code: string) => {
-    if (code === 'AUTH_REQUIRED' || code === 'RECENT_AUTH_REQUIRED') {
-        return 401 as const
-    }
-    if (code === 'FORBIDDEN') {
-        return 403 as const
-    }
-    if (code === 'NGINX_CONFIG_CONFLICT') {
-        return 409 as const
-    }
-    return 400 as const
-}
-
 export const createNginxRoute = ({ auditService, authService, nginxProxyRouteService, nginxService }: NginxRouteDependencies) =>
     new Hono()
-        .get('/nginx/status', async (context) => {
-            try {
+        .get(
+            '/nginx/status',
+            describeRoute({
+                responses: { 200: { description: 'Nginx 상태' } },
+                summary: 'Nginx 상태 조회',
+                tags: ['Nginx'],
+            }),
+            withErrorHandling(async (context) => {
                 await authService.requireRole(context.req.raw.headers, ALL_ROLES)
                 return context.json(successResponse(await nginxService.getStatus()), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NGINX_UNAVAILABLE'
-                if (code === 'AUTH_REQUIRED') {
-                    return context.json(errorResponse(code, '로그인이 필요합니다.', context.get('requestId')), 401)
-                }
-                return context.json(errorResponse('NGINX_UNAVAILABLE', 'Nginx 상태를 조회할 수 없습니다.', context.get('requestId')), 503)
-            }
-        })
-        .get('/nginx/config', async (context) => {
-            try {
+            }),
+        )
+        .get(
+            '/nginx/config',
+            describeRoute({
+                responses: { 200: { description: 'Nginx 설정' } },
+                summary: 'Nginx 설정 조회',
+                tags: ['Nginx'],
+            }),
+            withErrorHandling(async (context) => {
                 await authService.requireRole(context.req.raw.headers, ALL_ROLES)
                 return context.json(successResponse(await nginxService.getConfig()), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NGINX_CONFIG_READ_FAILED'
-                return context.json(errorResponse(code, 'Nginx 설정을 조회할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .get('/nginx/routes', async (context) => {
-            try {
+            }),
+        )
+        .get(
+            '/nginx/routes',
+            describeRoute({
+                responses: { 200: { description: 'Nginx 프록시 라우트 목록' } },
+                summary: 'Nginx 프록시 라우트 목록 조회',
+                tags: ['Nginx'],
+            }),
+            withErrorHandling(async (context) => {
                 await authService.requireRole(context.req.raw.headers, ALL_ROLES)
                 return context.json(successResponse(await nginxProxyRouteService.list()), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NGINX_ROUTE_READ_FAILED'
-                return context.json(errorResponse(code, 'Nginx 프록시 라우트를 조회할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .post('/nginx/routes', async (context) => {
-            let actorId: string | undefined
-            try {
+            }),
+        )
+        .post(
+            '/nginx/routes',
+            describeRoute({
+                responses: { 201: { description: 'Nginx 프록시 라우트 생성' } },
+                summary: 'Nginx 프록시 라우트 생성',
+                tags: ['Nginx'],
+            }),
+            validator('json', nginxProxyRouteInputSchema),
+            withErrorHandling(async (context) => {
                 const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                actorId = session.user.id
-                const input: unknown = await context.req.json()
+                const actorId = session.user.id
+                const input = context.req.valid('json' as never)
                 await auditService.record({
                     actorId,
                     operation: 'nginx.route.create',
@@ -79,21 +84,21 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                     targetId: 'new',
                     targetType: 'nginx-route',
                 })
-                const result = await nginxProxyRouteService.create(input)
-                await auditService.record({
-                    actorId,
-                    detail: { configSha256: result.configSha256 },
-                    operation: 'nginx.route.create',
-                    requestId: context.get('requestId'),
-                    result: 'success',
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: result.route.id,
-                    targetType: 'nginx-route',
-                })
-                return context.json(successResponse(result), 201)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NGINX_ROUTE_CREATE_FAILED'
-                if (actorId) {
+                try {
+                    const result = await nginxProxyRouteService.create(input)
+                    await auditService.record({
+                        actorId,
+                        detail: { configSha256: result.configSha256 },
+                        operation: 'nginx.route.create',
+                        requestId: context.get('requestId'),
+                        result: 'success',
+                        sourceIp: getSourceIp(context.req.raw.headers),
+                        targetId: result.route.id,
+                        targetType: 'nginx-route',
+                    })
+                    return context.json(successResponse(result), 201)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'NGINX_ROUTE_CREATE_FAILED'
                     await auditService.record({
                         actorId,
                         detail: { code },
@@ -104,17 +109,24 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                         targetId: 'new',
                         targetType: 'nginx-route',
                     })
+                    throw error
                 }
-                return context.json(errorResponse(code, 'Nginx 프록시 라우트를 생성할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .delete('/nginx/routes/:id', async (context) => {
-            let actorId: string | undefined
-            const targetId = context.req.param('id')
-            try {
+            }),
+        )
+        .delete(
+            '/nginx/routes/:id',
+            describeRoute({
+                responses: { 200: { description: 'Nginx 프록시 라우트 삭제' } },
+                summary: 'Nginx 프록시 라우트 삭제',
+                tags: ['Nginx'],
+            }),
+            validator('param', nginxRouteIdParamSchema),
+            validator('json', nginxRouteRemoveSchema),
+            withErrorHandling(async (context) => {
+                const targetId = (context.req.valid('param' as never) as z.infer<typeof nginxRouteIdParamSchema>).id
+                const confirmation = (context.req.valid('json' as never) as z.infer<typeof nginxRouteRemoveSchema>).confirmation
                 const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                actorId = session.user.id
-                const input = (await context.req.json()) as { confirmation?: unknown }
+                const actorId = session.user.id
                 await auditService.record({
                     actorId,
                     operation: 'nginx.route.remove',
@@ -124,21 +136,21 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                     targetId,
                     targetType: 'nginx-route',
                 })
-                const result = await nginxProxyRouteService.remove(targetId, typeof input.confirmation === 'string' ? input.confirmation : '')
-                await auditService.record({
-                    actorId,
-                    detail: { configSha256: result.configSha256 },
-                    operation: 'nginx.route.remove',
-                    requestId: context.get('requestId'),
-                    result: 'success',
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId,
-                    targetType: 'nginx-route',
-                })
-                return context.json(successResponse(result), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NGINX_ROUTE_REMOVE_FAILED'
-                if (actorId) {
+                try {
+                    const result = await nginxProxyRouteService.remove(targetId, confirmation)
+                    await auditService.record({
+                        actorId,
+                        detail: { configSha256: result.configSha256 },
+                        operation: 'nginx.route.remove',
+                        requestId: context.get('requestId'),
+                        result: 'success',
+                        sourceIp: getSourceIp(context.req.raw.headers),
+                        targetId,
+                        targetType: 'nginx-route',
+                    })
+                    return context.json(successResponse(result), 200)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'NGINX_ROUTE_REMOVE_FAILED'
                     await auditService.record({
                         actorId,
                         detail: { code },
@@ -149,34 +161,37 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                         targetId,
                         targetType: 'nginx-route',
                     })
+                    throw error
                 }
-                return context.json(errorResponse(code, 'Nginx 프록시 라우트를 삭제할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .post('/nginx/config/apply', async (context) => {
-            let actorId: string | undefined
-            const audit = {
-                operation: 'nginx.config.apply',
-                requestId: context.get('requestId'),
-                sourceIp: getSourceIp(context.req.raw.headers),
-                targetId: 'current',
-                targetType: 'nginx-config' as const,
-            }
-            try {
+            }),
+        )
+        .post(
+            '/nginx/config/apply',
+            describeRoute({
+                responses: { 200: { description: 'Nginx 설정 적용' } },
+                summary: 'Nginx 설정 적용',
+                tags: ['Nginx'],
+            }),
+            validator('json', nginxConfigApplySchema),
+            withErrorHandling(async (context) => {
+                const audit = {
+                    operation: 'nginx.config.apply',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId: 'current',
+                    targetType: 'nginx-config' as const,
+                }
                 const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                actorId = session.user.id
+                const actorId = session.user.id
                 await auditService.record({ ...audit, actorId, result: 'attempt' })
-                const result = await nginxService.applyConfig(await context.req.json())
-                await auditService.record({ ...audit, actorId, detail: { sha256: result.sha256 }, result: 'success' })
-                return context.json(successResponse(result), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NGINX_CONFIG_APPLY_FAILED'
-                if (actorId) {
+                try {
+                    const result = await nginxService.applyConfig(context.req.valid('json' as never))
+                    await auditService.record({ ...audit, actorId, detail: { sha256: result.sha256 }, result: 'success' })
+                    return context.json(successResponse(result), 200)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'NGINX_CONFIG_APPLY_FAILED'
                     await auditService.record({ ...audit, actorId, detail: { code: code.slice(0, 512) }, result: 'failure' })
+                    throw error
                 }
-                return context.json(
-                    errorResponse(code.split(':')[0] ?? code, 'Nginx 설정을 적용할 수 없습니다.', context.get('requestId')),
-                    errorStatus(code),
-                )
-            }
-        })
+            }),
+        )

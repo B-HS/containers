@@ -1,6 +1,10 @@
 import { Hono } from 'hono'
+import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
+import { notificationDestinationDeleteSchema, notificationDestinationUpsertSchema } from '@containers/contracts/notification'
 import { USER_ROLE } from '@containers/db-schema/schema'
-import { errorResponse, successResponse } from '../../lib/response'
+import { successResponse } from '../../lib/response'
+import { withErrorHandling } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { NotificationDeliveryService } from '../../service/domain/notification/create-notification-delivery-service'
@@ -8,6 +12,8 @@ import type { NotificationDestinationService } from '../../service/domain/notifi
 
 const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const NOTIFICATION_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
+const destinationIdParamSchema = z.object({ id: z.uuid() })
+const setEnabledSchema = z.object({ enabled: z.boolean().optional().default(false) })
 
 type NotificationRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
@@ -18,16 +24,6 @@ type NotificationRouteDependencies = {
 
 const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-const errorStatus = (code: string) => {
-    if (code === 'API_KEY_RATE_LIMITED') return 429 as const
-    if (code === 'AUTH_REQUIRED' || code === 'RECENT_AUTH_REQUIRED') return 401 as const
-    if (code === 'FORBIDDEN') return 403 as const
-    if (code === 'NOTIFICATION_DESTINATION_NOT_FOUND') return 404 as const
-    if (code === 'CONFIRMATION_MISMATCH') return 409 as const
-    if (code === 'NOTIFICATION_DESTINATION_DECRYPTION_FAILED') return 500 as const
-    return 400 as const
-}
-
 export const createNotificationRoute = ({
     auditService,
     authService,
@@ -35,108 +31,137 @@ export const createNotificationRoute = ({
     notificationDestinationService,
 }: NotificationRouteDependencies) =>
     new Hono()
-        .get('/notification-destinations', async (context) => {
-            try {
+        .get(
+            '/notification-destinations',
+            describeRoute({
+                responses: { 200: { description: '알림 대상 목록' } },
+                summary: '알림 대상 목록 조회',
+                tags: ['Notification'],
+            }),
+            withErrorHandling(async (context) => {
                 await authService.requireRole(context.req.raw.headers, NOTIFICATION_ROLES)
                 return context.json(successResponse(await notificationDestinationService.list()), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_LIST_FAILED'
-                return context.json(errorResponse(code, '알림 대상을 조회할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .post('/notification-destinations', async (context) => {
-            let actorId: string | undefined
-            const audit = {
-                operation: 'notification.destination.upsert',
-                requestId: context.get('requestId'),
-                sourceIp: getSourceIp(context.req.raw.headers),
-                targetId: 'notification-destination',
-                targetType: 'notification-destination' as const,
-            }
-            try {
-                actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
-                const destination = await notificationDestinationService.upsert(actorId, await context.req.json())
-                await auditService.record({ ...audit, actorId, authMethod: 'session', targetId: destination.id, result: 'success' })
-                return context.json(successResponse(destination), 201)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_UPSERT_FAILED'
-                if (actorId) {
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+            }),
+        )
+        .post(
+            '/notification-destinations',
+            describeRoute({
+                responses: { 201: { description: '알림 대상 저장' } },
+                summary: '알림 대상 저장',
+                tags: ['Notification'],
+            }),
+            validator('json', notificationDestinationUpsertSchema),
+            withErrorHandling(async (context) => {
+                const audit = {
+                    operation: 'notification.destination.upsert',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId: 'notification-destination',
+                    targetType: 'notification-destination' as const,
                 }
-                return context.json(errorResponse(code, '알림 대상을 저장할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .patch('/notification-destinations/:id', async (context) => {
-            const targetId = context.req.param('id')
-            let actorId: string | undefined
-            const audit = {
-                operation: 'notification.destination.enabled',
-                requestId: context.get('requestId'),
-                sourceIp: getSourceIp(context.req.raw.headers),
-                targetId,
-                targetType: 'notification-destination' as const,
-            }
-            try {
-                actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
+                const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
                 await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
-                const body = await context.req.json().catch(() => null)
-                const destination = await notificationDestinationService.setEnabled(targetId, body?.enabled === true)
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
-                return context.json(successResponse(destination), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_ENABLED_FAILED'
-                if (actorId) {
+                try {
+                    const destination = await notificationDestinationService.upsert(actorId, context.req.valid('json' as never))
+                    await auditService.record({ ...audit, actorId, authMethod: 'session', targetId: destination.id, result: 'success' })
+                    return context.json(successResponse(destination), 201)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_UPSERT_FAILED'
                     await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                    throw error
                 }
-                return context.json(errorResponse(code, '알림 대상을 변경할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .post('/notification-destinations/:id/test', async (context) => {
-            const targetId = context.req.param('id')
-            let actorId: string | undefined
-            const audit = {
-                operation: 'notification.destination.test',
-                requestId: context.get('requestId'),
-                sourceIp: getSourceIp(context.req.raw.headers),
-                targetId,
-                targetType: 'notification-destination' as const,
-            }
-            try {
-                actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
+            }),
+        )
+        .patch(
+            '/notification-destinations/:id',
+            describeRoute({
+                responses: { 200: { description: '알림 대상 활성화 변경' } },
+                summary: '알림 대상 활성화 변경',
+                tags: ['Notification'],
+            }),
+            validator('param', destinationIdParamSchema),
+            validator('json', setEnabledSchema),
+            withErrorHandling(async (context) => {
+                const targetId = (context.req.valid('param' as never) as z.infer<typeof destinationIdParamSchema>).id
+                const { enabled } = context.req.valid('json' as never) as z.infer<typeof setEnabledSchema>
+                const audit = {
+                    operation: 'notification.destination.enabled',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId,
+                    targetType: 'notification-destination' as const,
+                }
+                const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
                 await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
-                const delivery = await notificationDeliveryService.deliverTest(targetId)
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
-                return context.json(successResponse(delivery), 202)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NOTIFICATION_TEST_FAILED'
-                if (actorId) {
+                try {
+                    const destination = await notificationDestinationService.setEnabled(targetId, enabled)
+                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                    return context.json(successResponse(destination), 200)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_ENABLED_FAILED'
                     await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                    throw error
                 }
-                return context.json(errorResponse(code, '테스트 알림을 전송할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
-        .delete('/notification-destinations/:id', async (context) => {
-            const targetId = context.req.param('id')
-            let actorId: string | undefined
-            const audit = {
-                operation: 'notification.destination.remove',
-                requestId: context.get('requestId'),
-                sourceIp: getSourceIp(context.req.raw.headers),
-                targetId,
-                targetType: 'notification-destination' as const,
-            }
-            try {
-                actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
+            }),
+        )
+        .post(
+            '/notification-destinations/:id/test',
+            describeRoute({
+                responses: { 202: { description: '테스트 알림 전송' } },
+                summary: '테스트 알림 전송',
+                tags: ['Notification'],
+            }),
+            validator('param', destinationIdParamSchema),
+            withErrorHandling(async (context) => {
+                const targetId = (context.req.valid('param' as never) as z.infer<typeof destinationIdParamSchema>).id
+                const audit = {
+                    operation: 'notification.destination.test',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId,
+                    targetType: 'notification-destination' as const,
+                }
+                const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
                 await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
-                const removed = await notificationDestinationService.remove(targetId, await context.req.json())
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
-                return context.json(successResponse(removed), 200)
-            } catch (error) {
-                const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_REMOVE_FAILED'
-                if (actorId) {
+                try {
+                    const delivery = await notificationDeliveryService.deliverTest(targetId)
+                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                    return context.json(successResponse(delivery), 202)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'NOTIFICATION_TEST_FAILED'
                     await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                    throw error
                 }
-                return context.json(errorResponse(code, '알림 대상을 삭제할 수 없습니다.', context.get('requestId')), errorStatus(code))
-            }
-        })
+            }),
+        )
+        .delete(
+            '/notification-destinations/:id',
+            describeRoute({
+                responses: { 200: { description: '알림 대상 삭제' } },
+                summary: '알림 대상 삭제',
+                tags: ['Notification'],
+            }),
+            validator('param', destinationIdParamSchema),
+            validator('json', notificationDestinationDeleteSchema),
+            withErrorHandling(async (context) => {
+                const targetId = (context.req.valid('param' as never) as z.infer<typeof destinationIdParamSchema>).id
+                const audit = {
+                    operation: 'notification.destination.remove',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId,
+                    targetType: 'notification-destination' as const,
+                }
+                const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
+                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
+                try {
+                    const removed = await notificationDestinationService.remove(targetId, context.req.valid('json' as never))
+                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                    return context.json(successResponse(removed), 200)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_REMOVE_FAILED'
+                    await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                    throw error
+                }
+            }),
+        )

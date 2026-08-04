@@ -23,9 +23,13 @@ export const STATUS_MAP: Record<ErrorCode, number> = {
 export const getStatusCode = (code: ErrorCode): number => STATUS_MAP[code]
 
 /**
- * Creates a domain error whose message is the stable error code consumed by route status mappers.
+ * Creates a domain error whose status is derived from the central code-to-status mapping.
  */
-export const createAppError = (code: string, cause?: unknown) => new Error(code, cause === undefined ? undefined : { cause })
+export const createAppError = (code: string): AppError => ({
+    code: code as ErrorCode,
+    message: ERROR_MESSAGE[code as ErrorCode],
+    statusCode: getStatusCode(code as ErrorCode),
+})
 
 export const isAppError = (error: unknown): error is AppError =>
     typeof error === 'object' &&

@@ -1,21 +1,27 @@
 import type { AppType } from '@containers/api/app'
-import { prunePreviewSchema } from '@containers/contracts/engine-control'
+import { networkSummaryListSchema, prunePreviewSchema, volumeSummaryListSchema } from '@containers/contracts/engine-control'
 import { registryCredentialListSchema } from '@containers/contracts/registry-credential'
 import { hc } from 'hono/client'
+import { z } from 'zod'
+
+const successResponseSchema = z.object({ data: z.unknown(), success: z.literal(true) })
 
 export const getInfrastructure = async (baseUrl: string, cookie: string) => {
     const client = hc<AppType>(baseUrl)
-    const [networkResponse, volumeResponse] = await Promise.all([
-        client.api.networks.$get({}, { headers: { cookie } }),
-        client.api.volumes.$get({}, { headers: { cookie } }),
-    ])
+    const networkResponse = await client.api.networks.$get({}, { headers: { cookie } })
+    const volumeResponse = await client.api.volumes.$get({}, { headers: { cookie } })
 
     if (!networkResponse.ok || !volumeResponse.ok) {
         throw new Error('Docker 인프라 조회 실패')
     }
 
-    const [networks, volumes] = await Promise.all([networkResponse.json(), volumeResponse.json()])
-    return { networks: networks.data, volumes: volumes.data }
+    const networkBody = await networkResponse.json()
+    const volumeBody = await volumeResponse.json()
+
+    return {
+        networks: networkSummaryListSchema.parse(successResponseSchema.parse(networkBody).data),
+        volumes: volumeSummaryListSchema.parse(successResponseSchema.parse(volumeBody).data),
+    }
 }
 
 export const getPrunePreview = async (baseUrl: string, cookie: string) => {

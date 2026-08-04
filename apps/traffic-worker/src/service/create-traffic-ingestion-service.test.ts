@@ -137,7 +137,7 @@ describe('트래픽 수집', () => {
             },
         })
 
-        await expect(ingestion.poll()).rejects.toThrow('DB_WRITE_FAILED')
+        await expect(ingestion.poll()).rejects.toMatchObject({ code: 'DB_WRITE_FAILED' })
         await expect(readFile(fixture.checkpointPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
         shouldFail = false
         await ingestion.poll()
