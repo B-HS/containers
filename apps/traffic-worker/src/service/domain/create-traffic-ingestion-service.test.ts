@@ -109,6 +109,43 @@ describe('트래픽 수집', () => {
         fixture.database.close()
     })
 
+    test('유효 이벤트가 하나도 없는 청크에서도 예외 없이 체크포인트를 전진시킵니다', async () => {
+        const fixture = await createFixture()
+        await writeFile(fixture.accessLogPath, 'invalid-json\n')
+        const ingestion = fixture.createIngestion()
+
+        await ingestion.poll()
+
+        expect(ingestion.getState().ingestedEventCount).toBe(0)
+        expect(ingestion.getState().invalidLineCount).toBe(1)
+        expect(ingestion.getState().offset).toBe('invalid-json\n'.length)
+
+        await appendFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-after-invalid'))}\n`)
+        await ingestion.poll()
+        expect(fixture.database.getSummary(0)?.requestCount).toBe(1)
+        fixture.database.close()
+    })
+
+    test('완결 라인이 없는 부분 청크를 건너뛰고 다음 poll에서 완결 라인을 수집합니다', async () => {
+        const fixture = await createFixture()
+        const line = `${JSON.stringify(createAccessEvent('request-partial'))}\n`
+        const split = Math.floor(line.length / 2)
+        await writeFile(fixture.accessLogPath, line.slice(0, split))
+        const ingestion = fixture.createIngestion()
+
+        await ingestion.poll()
+        expect(ingestion.getState().ingestedEventCount).toBe(0)
+        expect(ingestion.getState().offset).toBe(0)
+
+        await appendFile(fixture.accessLogPath, line.slice(split))
+        await ingestion.poll()
+
+        expect(ingestion.getState().ingestedEventCount).toBe(1)
+        expect(fixture.database.getSummary(0)?.requestCount).toBe(1)
+        expect(ingestion.getState().duplicateLineCount).toBe(0)
+        fixture.database.close()
+    })
+
     test('rename 회전 뒤 이전 inode를 끝까지 비운 다음 새 로그를 수집합니다', async () => {
         const fixture = await createFixture()
         await writeFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-1'))}\n`)

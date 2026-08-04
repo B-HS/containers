@@ -206,7 +206,7 @@ export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, d
                     .then((result) => result.bytesRead)
                     .finally(() => file.close())
                 const parsed = parseCompleteLines(buffer.subarray(0, bytesRead), truncated ? false : current.discardingOversizedLine)
-                const insertedRequestIds = database.insertEvents(parsed.events)
+                const insertedRequestIds = parsed.events.length > 0 ? database.insertEvents(parsed.events) : []
                 const dropRotatedPartial = !sameIdentity(current, active) && offset + bytesRead >= source.size && parsed.committedBytes < bytesRead
                 const next: Checkpoint = {
                     ...current,

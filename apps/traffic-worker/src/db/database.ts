@@ -53,8 +53,9 @@ export const createTrafficDatabase = ({ filePath, migrationsFolder }: TrafficDat
     const db = drizzle({ client: sqlite, schema })
     migrate(db, { migrationsFolder })
 
-    const insertEvents = (events: NginxAccessEvent[]) =>
-        db.transaction((tx) =>
+    const insertEvents = (events: NginxAccessEvent[]) => {
+        if (events.length === 0) return []
+        return db.transaction((tx) =>
             tx
                 .insert(accessEvent)
                 .values(
@@ -78,6 +79,7 @@ export const createTrafficDatabase = ({ filePath, migrationsFolder }: TrafficDat
                 .all()
                 .map((row) => row.requestId),
         )
+    }
 
     return {
         close: () => sqlite.close(),
