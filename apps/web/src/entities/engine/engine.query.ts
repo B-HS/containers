@@ -12,6 +12,7 @@ export const engineOverviewQueryOptions = () =>
     queryOptions({
         queryKey: QUERY_KEY.ENGINE.OVERVIEW,
         queryFn: () => clientFetchData<z.infer<typeof engineOverviewSchema>>('/api/system/engine'),
+        refetchInterval: 30_000,
     })
 
 export const useGetEngineOverview = () => useQuery(engineOverviewQueryOptions())

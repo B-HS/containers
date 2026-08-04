@@ -1,15 +1,11 @@
 'use client'
 
 import type { FC } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { z } from 'zod'
-import { engineOverviewSchema } from '@containers/contracts/engine'
+import { useGetEngineOverview } from '@entities/engine/engine.query'
 
-const POLL_INTERVAL_MS = 30_000
 const MIB = 1_048_576
-
-const engineResponseSchema = z.object({ data: engineOverviewSchema, success: z.literal(true) })
 
 const formatBytes = (bytes: number) => `${(bytes / MIB).toFixed(0)} MiB`
 
@@ -24,42 +20,17 @@ type EngineInfoProps = {
 }
 
 export const EngineInfo: FC<EngineInfoProps> = ({ labels }) => {
-    const [cpus, setCpus] = useState<number>()
-    const [memoryBytes, setMemoryBytes] = useState<number>()
-    const [storage, setStorage] = useState<string>()
+    const { data, refetch } = useGetEngineOverview()
     const [refreshing, setRefreshing] = useState(false)
     const refreshingRef = useRef(false)
 
-    const applyOverview = (overview: z.infer<typeof engineOverviewSchema>) => {
-        setCpus(overview.cpus)
-        setMemoryBytes(overview.memoryBytes)
-        setStorage(`${formatBytes(overview.disk.usedBytes)} / ${formatBytes(overview.disk.capacityBytes)}`)
-    }
-
-    const fetchOverview = async () => {
-        try {
-            const response = await fetch('/api/system/engine')
-            if (!response.ok) {
-                return
-            }
-            applyOverview(engineResponseSchema.parse(await response.json()).data)
-        } catch {
-            return
-        }
-    }
-
-    useEffect(() => {
-        void fetchOverview()
-        const pollTimer = setInterval(() => void fetchOverview(), POLL_INTERVAL_MS)
-        return () => clearInterval(pollTimer)
-    }, [])
     const handleRefresh = async () => {
         if (refreshingRef.current) {
             return
         }
         refreshingRef.current = true
         setRefreshing(true)
-        await fetchOverview()
+        await refetch()
         refreshingRef.current = false
         setRefreshing(false)
     }
@@ -77,7 +48,7 @@ export const EngineInfo: FC<EngineInfoProps> = ({ labels }) => {
                     <RefreshCw className={`size-3 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
                 </button>
             </div>
-            {cpus === undefined || memoryBytes === undefined || storage === undefined ? (
+            {data === undefined ? (
                 <div className="grid gap-1" aria-hidden="true">
                     <div className="h-4 animate-pulse rounded-sm bg-muted" />
                     <div className="h-4 animate-pulse rounded-sm bg-muted" />
@@ -87,15 +58,17 @@ export const EngineInfo: FC<EngineInfoProps> = ({ labels }) => {
                 <dl className="grid gap-1 text-xs">
                     <div className="flex items-center justify-between gap-2">
                         <dt className="text-muted-foreground">{labels.cpu}</dt>
-                        <dd className="font-mono">{cpus}</dd>
+                        <dd className="font-mono">{data.cpus}</dd>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                         <dt className="text-muted-foreground">{labels.memory}</dt>
-                        <dd className="font-mono">{formatBytes(memoryBytes)}</dd>
+                        <dd className="font-mono">{formatBytes(data.memoryBytes)}</dd>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                         <dt className="text-muted-foreground">{labels.storage}</dt>
-                        <dd className="truncate font-mono">{storage}</dd>
+                        <dd className="truncate font-mono">
+                            {formatBytes(data.disk.usedBytes)} / {formatBytes(data.disk.capacityBytes)}
+                        </dd>
                     </div>
                 </dl>
             )}
