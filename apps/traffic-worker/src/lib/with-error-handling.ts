@@ -4,7 +4,7 @@ import { errorResponse } from './response'
 
 /**
  * Wraps a route handler so AppError instances become their mapped status code
- * response and any other error becomes an INTERNAL_ERROR (500) response.
+ * response and an unexpected error becomes an INTERNAL_ERROR (500) response.
  */
 export const withErrorHandling =
     (handler: Handler): Handler =>

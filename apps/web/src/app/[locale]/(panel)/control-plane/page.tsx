@@ -1,10 +1,9 @@
 import { getTranslations } from 'next-intl/server'
 import { getControlPlaneStatus } from '@entities/control-plane/control-plane.api'
+import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { ControlPlaneWidget } from '@widgets/control-plane/control-plane-widget'
-
-const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001'
 
 const ControlPlanePage = async () => {
     const [translations, navTranslations, session] = await Promise.all([getTranslations('Dashboard'), getTranslations('Nav'), getSession()])

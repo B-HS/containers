@@ -1,11 +1,10 @@
 import { getTranslations } from 'next-intl/server'
 import { getBackupSchedule, getJobs } from '@entities/job/job.api'
 import { getMaintenanceStatus } from '@entities/maintenance/maintenance.api'
+import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { JobWidget } from '@widgets/job/job-widget'
-
-const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001'
 
 const JobsPage = async () => {
     const [translations, navTranslations, session] = await Promise.all([getTranslations('Dashboard'), getTranslations('Nav'), getSession()])

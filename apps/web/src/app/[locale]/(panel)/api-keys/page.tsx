@@ -1,10 +1,9 @@
 import { getTranslations } from 'next-intl/server'
 import { getApiKeys } from '@entities/api-key/api-key.api'
+import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { ApiKeyWidget } from '@widgets/api-key/api-key-widget'
-
-const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001'
 
 const ApiKeysPage = async () => {
     const [translations, navTranslations, session] = await Promise.all([getTranslations('Dashboard'), getTranslations('Nav'), getSession()])

@@ -3,11 +3,7 @@ import { createAppError } from './error'
 import type { ApiContext, ApiEnv } from './with-error-handling'
 
 export const withAuth =
-    <TSession extends { user: Record<string, unknown> }>({
-        getSession,
-    }: {
-        getSession: (headers: Headers) => Promise<TSession | undefined>
-    }) =>
+    <TSession extends { user: Record<string, unknown> }>({ getSession }: { getSession: (headers: Headers) => Promise<TSession | undefined> }) =>
     (handler: (context: ApiContext, user: TSession['user']) => Response | Promise<Response>): Handler<ApiEnv> => {
         return async (context) => {
             const session = await getSession(context.req.raw.headers)
@@ -43,11 +39,7 @@ export const withAdmin =
     }
 
 export const withApiToken =
-    <TPrincipal>({
-        validateToken,
-    }: {
-        validateToken: (token: string) => Promise<TPrincipal>
-    }) =>
+    <TPrincipal>({ validateToken }: { validateToken: (token: string) => Promise<TPrincipal> }) =>
     (handler: (context: ApiContext, principal: TPrincipal) => Response | Promise<Response>): Handler<ApiEnv> => {
         return async (context) => {
             const authorization = context.req.header('authorization')

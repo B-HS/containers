@@ -8,13 +8,13 @@
 
 이 모노레포는 백엔드 Hono 3앱(api·engine-agent·traffic-worker), Next.js 웹(web), 3개 공유 패키지(contracts·db-schema·config)로 구성되어 있다. 코딩 컨벤션(backend.md·frontend.md·fsd.md·query.md·common.md)과 현재 구현 사이에 아래 불일치가 있다.
 
-| 불일치 | 컨벤션 문서 전제 | 현재 구현 |
-| --- | --- | --- |
-| 공유 패키지 | 앱별 `dto/`·`db/` 폴더 구조 | `packages/contracts`·`packages/db-schema`·`packages/config` 공유 계층 |
-| traffic-worker DB | `db/` + Drizzle | `database/create-traffic-database.ts`의 bun:sqlite raw SQL |
-| 웹 서버 상태 | TanStack Query v5 | raw `fetch`·polling·SSE 인라인 |
-| DB 벤더 | MySQL | SQLite(bun:sqlite) |
-| env 접근 | `getEnv()` 싱글턴으로만 | `parseEnv()` 재사용 파서 (앱별 스키마·싱글턴 부재) |
+| 불일치            | 컨벤션 문서 전제            | 현재 구현                                                             |
+| ----------------- | --------------------------- | --------------------------------------------------------------------- |
+| 공유 패키지       | 앱별 `dto/`·`db/` 폴더 구조 | `packages/contracts`·`packages/db-schema`·`packages/config` 공유 계층 |
+| traffic-worker DB | `db/` + Drizzle             | `database/create-traffic-database.ts`의 bun:sqlite raw SQL            |
+| 웹 서버 상태      | TanStack Query v5           | raw `fetch`·polling·SSE 인라인                                        |
+| DB 벤더           | MySQL                       | SQLite(bun:sqlite)                                                    |
+| env 접근          | `getEnv()` 싱글턴으로만     | `parseEnv()` 재사용 파서 (앱별 스키마·싱글턴 부재)                    |
 
 이 중 DB 벤더 전환(MySQL 재도입)은 스키마·인프라 재구축이 수반되어 이 계획의 범위 밖이며, 그 외 항목은 본 ADR의 결정에 따라 정합한다.
 

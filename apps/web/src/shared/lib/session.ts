@@ -1,8 +1,7 @@
 import { cache } from 'react'
+import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { headers } from 'next/headers'
 import { getAuthGate } from '@entities/auth/auth.api'
-
-const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001'
 
 type AuthGate = Awaited<ReturnType<typeof getAuthGate>>
 type AuthenticatedGate = Extract<AuthGate, { mode: 'authenticated' }>

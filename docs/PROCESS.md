@@ -430,3 +430,27 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] c. statfs 이관 — `create-agent-app.ts:44-54` 인라인 `getFilesystemUsage`(statfs)를 `create-engine-query-service.ts` 내부로 이동, deps는 `getFilesystemUsage: () => Promise<...>` 대신 `artifactRoot: string` 수신해 내부 계산(동작·반환 형태 보존: availableBytes/capacityBytes/usedBytes). compose에서 `import { statfs }` 제거
 - [x] d. 테스트 갱신 — engine-query-service 테스트가 `getFilesystemUsage` 주입 대신 임시 디렉터리 + 실제 `statfs` 계산으로 동작 등가 검증(기대값을 실 statfs 결과로 도출, afterEach 정리)
 - [x] e. 검증 — 루트 `bun run typecheck`(7 workspace)·`bun run lint`·`bun test` 160 pass, format:check는 이번 변경분 3개 route 포맷 수정. `src/docker/` 없음, `src/service/`에 domain/shared만, `grep statfs src/compose` 0건
+
+## 작업: convention-audit-refactor Wave 10-18 — TanStack Query·전체 gate 검증 (2026-08-04)
+
+기준: `.omo/plans/convention-audit-refactor.md` todo 10~~18 — FSD 배치·Query 도입(10~~13), traffic-worker Drizzle(11)·계층(12), engine-agent 계층(9 완료), web 쿼리·엔티티 정리(14~17), **전체 기계 검증 gate(18)**.
+
+- [x] 10. web 공통 조회 인프라 — TanStack Query Provider 도입, `QUERY_KEY` 중앙 관리(`shared/lib/query-key.ts`), `entities/*.query.ts` `useXxx` 훅(useSuspenseQuery), `queryOptions` 팩토리로 조회·프리페치·무효화 공유
+- [x] 11. traffic-worker raw SQL store를 앱 로컬 Drizzle로 전환 — `db/schema.ts`·`db/database.ts` + 자체 migrations, `INSERT OR IGNORE` dedup→`onConflictDoNothing()`, STRICT 테이블·index(occurred_at·status)·`PRAGMA journal_mode=WAL`/`busy_timeout` 동작 등가 보존
+- [x] 12. traffic-worker 계층 분리 — SSE·heartbeat 로직을 서비스로, `service/` flat→`service/domain/`+`service/shared/`
+- [x] 13. api 계층 완성 — `*ServiceDb`·`composeXxx` 계층, raw SQL 전부 compose 격리, 횡단 클라이언트 `service/shared/`
+- [x] 14. web SSR 프리페치 — 서버 컴포넌트 `new QueryClient()`→`prefetchQuery`→`HydrationBoundary`, `params`/`searchParams` await, `useSuspenseQuery`
+- [x] 15. 위젯·features fetch를 entities 쿼리로 이관 — 위젯은 props만, features는 props-only로 정리, engine-info를 widgets로 이동
+- [x] 16. 커밋·기록 — Wave 9~17 커밋 12건(`refactor(backend)`, `refactor(traffic-worker)`, `refactor(engine-agent)`, `refactor(api)`, `feat(web)`, `refactor(web)`)
+
+### Wave 18 — 전체 기계 검증 gate (2026-08-04)
+
+- [x] a. `bun run typecheck` — 7 workspace 전부 `Exited with code 0` (config·contracts·db-schema·web·engine-agent·traffic-worker·api)
+- [x] b. `bun run lint` — ESLint exit 0, 0 에러
+- [x] c. `bun run format:check` — 1차 실패 4건(api `with-auth.ts`·traffic-worker drizzle meta 2건·docs 0028) → `bun run format`(prettier --write) 정합 → 재확인 통과(포맷 전용 변경, 로직 diff 없음)
+- [x] d. `bun run test` — **166 pass / 0 fail** (544 expect calls, 35 files) — 베이스라인 160 대비 +6(신규 테스트 포함)
+- [x] e. `bun run build` — 7 workspace 전부 `Exited with code 0` (Next.js web build 포함)
+- [x] f. process.env 직접 접근 단일화 — web 21곳(`apps/web/src` 페이지 20 + `shared/lib/session.ts`) 중복 `API_INTERNAL_URL` 상수를 `shared/lib/api-internal-url.ts` 단일 모듈로 이관, import 21곳 갱신 → 앱 스코프 `process.env` 직접 접근 0건 (api·engine-agent·traffic-worker는 원래 0건)
+- [x] g. 금지 패턴 grep 확정 — useCallback/useMemo 0, raw SQL(프로덕션 service) 0, barrel(`apps/web/src` index.ts) 0, 역방향 import(`@widgets/`·`@features/` from entities/shared/features) 0, process.env(앱 src, 단일 상수 모듈 제외) 0
+- [x] h. 잔존 예외 판정 — ① `api/with-error-handling.ts` Hono `Handler` 공식 제네릭 기본값(`Env = any` 등, eslint-disable+사유 주석) — Hono 타입 시그니처 준수 위해 유지 ② `nginx-directives.ts` `'any'`는 Nginx `satisfy` 지시어 공식 옵션 문자열 리터럴(false positive) ③ raw SQL 4건은 `.test.ts` 픽스처(PRAGMA FK 제어·`__drizzle_migrations` 시딩)만
+- [x] i. 검증 후 재확인 — 상수 이관·JSDoc 문구 수정(`traffic-worker with-error-handling.ts` "any other error"→"an unexpected error") 후 typecheck·lint·format:check·test(166 pass)·build 재통과

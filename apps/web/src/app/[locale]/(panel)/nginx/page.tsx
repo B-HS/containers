@@ -1,10 +1,9 @@
 import { getTranslations } from 'next-intl/server'
 import { getNginxConfig } from '@entities/nginx/nginx.api'
+import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { NginxConfigWidget } from '@widgets/nginx/nginx-config-widget'
-
-const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001'
 
 const NginxPage = async () => {
     const [translations, navTranslations, session] = await Promise.all([getTranslations('Dashboard'), getTranslations('Nav'), getSession()])

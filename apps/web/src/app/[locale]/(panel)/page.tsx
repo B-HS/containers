@@ -7,12 +7,12 @@ import { getNginxStatus } from '@entities/nginx/nginx.api'
 import { nginxStatusQueryOptions } from '@entities/nginx/nginx.query'
 import { getTrafficSummary, getTrafficAnalytics } from '@entities/traffic/traffic.api'
 import { trafficAnalyticsQueryOptions, trafficSummaryQueryOptions } from '@entities/traffic/traffic.query'
+import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { OverviewWidget } from '@widgets/overview/overview-widget'
 import { TrafficWidget } from '@widgets/traffic/traffic-widget'
 
-const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001'
 const BYTE_GIB = 1_073_741_824
 
 const formatGib = (bytes: number) => `${(bytes / BYTE_GIB).toFixed(1)} GiB`
