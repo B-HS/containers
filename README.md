@@ -53,6 +53,9 @@ Customization goes in `compose.override.yaml`. The defaults below come from `com
 | Automatic backup interval | `api`            | `BACKUP_INTERVAL_HOURS`                                     | `24`             |
 | Backups kept              | `api`            | `BACKUP_RETENTION_COUNT`                                    | `7`              |
 | Raw traffic log retention | `traffic-worker` | `TRAFFIC_RAW_RETENTION_DAYS`                                | `14`             |
+| Traffic row cap           | `traffic-worker` | `TRAFFIC_MAX_EVENT_ROWS`                                    | `2000000`        |
+| Traffic DB size cap       | `traffic-worker` | `TRAFFIC_MAX_DB_BYTES`                                      | `1073741824`     |
+| Traffic cleanup interval  | `traffic-worker` | `TRAFFIC_RETENTION_INTERVAL_SECONDS`                        | `60`             |
 
 If you change the panel port, host, or scheme, change the public origin **and** the trusted origin list together — otherwise the stack comes up healthy and every sign-in fails with `403 INVALID_ORIGIN`. Serving the panel over HTTPS automatically switches session cookies to `Secure`, so an HTTPS public origin behind an HTTP-only edge will not keep a session.
 

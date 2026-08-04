@@ -7,6 +7,7 @@ import type { TrafficBackupService } from '../service/domain/create-traffic-back
 import type { TrafficIngestionService } from '../service/domain/create-traffic-ingestion-service'
 import type { TrafficQueryService } from '../service/domain/create-traffic-query-service'
 import type { TrafficExportService } from '../service/domain/create-traffic-export-service'
+import type { TrafficRetentionService } from '../service/domain/create-traffic-retention-service'
 import { createTrafficSseStream } from '../service/shared/create-traffic-sse-stream'
 
 type TrafficAppDependencies = {
@@ -15,13 +16,22 @@ type TrafficAppDependencies = {
     ingestionService: Pick<TrafficIngestionService, 'getState' | 'subscribe'>
     now: () => Date
     queryService: TrafficQueryService
+    retentionService: Pick<TrafficRetentionService, 'getState'>
     sharedSecret: string
 }
 
-export const createTrafficApp = ({ backupService, exportService, ingestionService, now, queryService, sharedSecret }: TrafficAppDependencies) => {
+export const createTrafficApp = ({
+    backupService,
+    exportService,
+    ingestionService,
+    now,
+    queryService,
+    retentionService,
+    sharedSecret,
+}: TrafficAppDependencies) => {
     const backupRoute = createBackupRoute({ backupService })
     const sseStream = createTrafficSseStream({ subscribe: ingestionService.subscribe })
-    const trafficRoute = createTrafficRoute({ exportService, ingestionService, queryService, sseStream })
+    const trafficRoute = createTrafficRoute({ exportService, ingestionService, queryService, retentionService, sseStream })
 
     return new Hono()
         .get('/health', (context) =>

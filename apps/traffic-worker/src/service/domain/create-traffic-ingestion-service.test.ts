@@ -49,13 +49,12 @@ const createFixture = async () => {
         migrationsFolder: resolve(import.meta.dir, '../../../drizzle'),
     })
     const now = new Date('2026-07-31T00:00:30.000Z').getTime()
-    const createIngestion = (databaseOverride: Pick<TrafficDatabase, 'deleteBefore' | 'insertEvents'> = database) =>
+    const createIngestion = (databaseOverride: Pick<TrafficDatabase, 'insertEvents'> = database) =>
         createTrafficIngestionService({
             accessLogPath,
             checkpointPath,
             database: databaseOverride,
             now: () => now,
-            retentionMs: 14 * 24 * 60 * 60 * 1_000,
         })
     return { accessLogPath, checkpointPath, createIngestion, database, directory, now }
 }
@@ -230,7 +229,6 @@ describe('트래픽 수집', () => {
         await writeFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-1'))}\n`)
         let shouldFail = true
         const ingestion = fixture.createIngestion({
-            deleteBefore: fixture.database.deleteBefore,
             insertEvents: (events) => {
                 if (shouldFail) throw createAppError('DB_WRITE_FAILED')
                 return fixture.database.insertEvents(events)

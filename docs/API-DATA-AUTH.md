@@ -169,7 +169,7 @@ snapshot은 짧게 보존하고 현재 판단에 사용하지 않는다.
 ### 6.1 현재 구현
 
 - traffic DB에는 `access_event` 한 테이블이 있다.
-- 열은 `request_id`, `occurred_at`, `client_ip`, `host`, `method`, `uri_path`, `status`, `request_time_ms`, `bytes_sent`, `country`, `user_agent`, `raw_json`이다.
+- 열은 `request_id`, `occurred_at`, `client_ip`, `host`, `method`, `uri_path`, `status`, `request_time_ms`, `bytes_sent`, `country`, `user_agent`이다. `raw_json`은 migration `0001`로 제거했다(읽는 곳 없이 저장량의 약 67% 차지).
 - `request_id`가 primary key이며 `INSERT OR IGNORE`로 재수집 중복을 제거한다. `occurred_at`, `status` index를 사용한다.
 - 수집 checkpoint는 DB table이 아니라 Worker 전용 `/data/ingest-checkpoint.json`에 version, device, inode, offset, oversized-line 폐기 상태, updatedAt을 원자 저장한다. 파일 mode는 `0600`이다.
 - export는 traffic DB table을 별도로 만들지 않는다. control DB의 `operation_job` 중 `traffic.export`가 작업 상태를 소유하고 결과 파일은 `/backups/traffic-exports`에 14일 보존한다.

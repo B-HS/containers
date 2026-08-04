@@ -256,6 +256,9 @@ services:
             TRAFFIC_EXPORT_ROOT: /backups/traffic-exports
             TRAFFIC_MIGRATIONS_PATH: /app/drizzle
             TRAFFIC_RAW_RETENTION_DAYS: 14
+            TRAFFIC_MAX_EVENT_ROWS: ${TRAFFIC_MAX_EVENT_ROWS:-2000000}
+            TRAFFIC_MAX_DB_BYTES: ${TRAFFIC_MAX_DB_BYTES:-1073741824}
+            TRAFFIC_RETENTION_INTERVAL_SECONDS: ${TRAFFIC_RETENTION_INTERVAL_SECONDS:-60}
             TRAFFIC_WORKER_PORT: 3003
         healthcheck:
             test:

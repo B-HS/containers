@@ -83,6 +83,20 @@ export const trafficIngestionStateSchema = z.object({
     offset: z.number().int().nonnegative(),
 })
 
+export const trafficRetentionStateSchema = z.object({
+    byteSize: z.number().int().nonnegative(),
+    lastRunAt: z.iso.datetime().nullable(),
+    lastVacuumAt: z.iso.datetime().nullable(),
+    maxByteSize: z.number().int().nonnegative(),
+    maxRowCount: z.number().int().nonnegative(),
+    reclaimableByteSize: z.number().int().nonnegative(),
+    removedByAgeCount: z.number().int().nonnegative(),
+    removedByByteLimitCount: z.number().int().nonnegative(),
+    removedByRowLimitCount: z.number().int().nonnegative(),
+    rowCount: z.number().int().nonnegative(),
+    vacuumCount: z.number().int().nonnegative(),
+})
+
 export const trafficExportResultSchema = z.object({
     bytes: z.number().int().nonnegative(),
     fileName: z.string().regex(/^traffic-[0-9a-f-]{36}\.(csv|ndjson)$/),
@@ -122,6 +136,7 @@ export type TrafficAnalytics = z.infer<typeof trafficAnalyticsSchema>
 export type TrafficAnalyticsQuery = z.infer<typeof trafficAnalyticsQuerySchema>
 export type TrafficExportJobParam = z.infer<typeof trafficExportJobParamSchema>
 export type TrafficIngestionState = z.infer<typeof trafficIngestionStateSchema>
+export type TrafficRetentionState = z.infer<typeof trafficRetentionStateSchema>
 export type TrafficLiveEvent = z.infer<typeof trafficLiveEventSchema>
 export type TrafficLiveQuery = z.infer<typeof trafficLiveQuerySchema>
 export type TrafficSummaryQuery = z.infer<typeof trafficSummaryQuerySchema>

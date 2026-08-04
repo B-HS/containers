@@ -14,7 +14,6 @@ export const accessEvent = sqliteTable(
         bytesSent: integer('bytes_sent').notNull(),
         country: text('country').notNull(),
         userAgent: text('user_agent').notNull(),
-        rawJson: text('raw_json').notNull(),
     },
     (table) => [index('access_event_occurred_at_idx').on(table.occurredAt), index('access_event_status_idx').on(table.status)],
 )

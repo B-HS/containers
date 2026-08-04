@@ -1,0 +1,1 @@
+ALTER TABLE `access_event` DROP COLUMN `raw_json`;

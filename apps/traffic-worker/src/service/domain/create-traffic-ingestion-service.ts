@@ -28,9 +28,8 @@ type Checkpoint = z.infer<typeof checkpointSchema>
 type TrafficIngestionServiceDependencies = {
     accessLogPath: string
     checkpointPath: string
-    database: Pick<TrafficDatabase, 'deleteBefore' | 'insertEvents'>
+    database: Pick<TrafficDatabase, 'insertEvents'>
     now: () => number
-    retentionMs: number
 }
 
 const getIdentity = async (filePath: string) => {
@@ -50,7 +49,7 @@ const getIdentityIfPresent = async (filePath: string) => {
 const sameIdentity = (left: Pick<Checkpoint, 'device' | 'inode'>, right: Pick<Checkpoint, 'device' | 'inode'>) =>
     left.device === right.device && left.inode === right.inode
 
-export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, database, now, retentionMs }: TrafficIngestionServiceDependencies) => {
+export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, database, now }: TrafficIngestionServiceDependencies) => {
     let checkpoint: Checkpoint | undefined
     let checkpointInodeMissing = false
     let checkpointInodeMissingAt: string | null = null
@@ -227,7 +226,6 @@ export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, d
                 ingestedEventCount += insertedRequestIds.length
                 invalidLineCount += parsed.invalidLines + (dropRotatedPartial ? 1 : 0)
                 publish(parsed.events, insertedRequestIds)
-                database.deleteBefore(now() - retentionMs)
                 return
             }
 
@@ -244,7 +242,6 @@ export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, d
                 await persistCheckpoint(next)
                 checkpoint = next
             }
-            database.deleteBefore(now() - retentionMs)
         } finally {
             polling = false
         }

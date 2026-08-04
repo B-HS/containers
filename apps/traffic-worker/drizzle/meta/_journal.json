@@ -8,6 +8,13 @@
             "when": 1785809890033,
             "tag": "0000_robust_machine_man",
             "breakpoints": true
+        },
+        {
+            "idx": 1,
+            "version": "6",
+            "when": 1785881593935,
+            "tag": "0001_drop_access_event_raw_json",
+            "breakpoints": true
         }
     ]
 }

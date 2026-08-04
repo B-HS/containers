@@ -166,7 +166,9 @@ checkpoint가 가리키는 inode를 로그 디렉터리 어디에서도 찾지 �
 
 ### 7.1 raw event
 
-현재 `access_event`는 request ID, 시간, 원본 client IP, host, method, URI path, status, latency, bytes, country, user agent와 `raw_json`을 저장한다. 일반 live·export 응답은 IP를 mask하고 user agent와 raw JSON을 제외한다. `raw_json` 제거는 raw file 복구와 rollup 재생성 검증이 먼저 끝난 뒤 별도 migration으로 판단한다.
+현재 `access_event`는 request ID, 시간, 원본 client IP, host, method, URI path, status, latency, bytes, country, user agent를 저장한다. 일반 live·export 응답은 IP를 mask하고 user agent를 제외한다.
+
+`raw_json` 은 2026-08-05 migration `0001` 로 제거했다. 쓰기만 하고 읽는 곳이 없으면서 실측 저장량의 약 67%(19.9 MB 중 13.4 MB)를 차지했다. 제거 후 재기동 시 1회 `VACUUM` 으로 19.9 MB → 4.7 MB 로 줄었다(`PRAGMA user_version` 으로 1회만 수행). 이전 스키마로 만든 백업은 복원 시 legacy 열 구성으로도 허용하며 현재 열만 복사한다.
 
 권장 index:
 

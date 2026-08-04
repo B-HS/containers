@@ -6,11 +6,13 @@ import {
     trafficExportJobParamSchema,
     trafficIngestionStateSchema,
     trafficLiveQuerySchema,
+    trafficRetentionStateSchema,
     trafficSummaryQuerySchema,
 } from '@containers/contracts/traffic'
 import { trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import type { TrafficIngestionService } from '../service/domain/create-traffic-ingestion-service'
 import type { TrafficQueryService } from '../service/domain/create-traffic-query-service'
+import type { TrafficRetentionService } from '../service/domain/create-traffic-retention-service'
 import type { TrafficExportService } from '../service/domain/create-traffic-export-service'
 import type { TrafficSseStream } from '../service/shared/create-traffic-sse-stream'
 import { withErrorHandling } from '../lib/with-error-handling'
@@ -19,10 +21,11 @@ type TrafficRouteDependencies = {
     exportService: TrafficExportService
     ingestionService: Pick<TrafficIngestionService, 'getState'>
     queryService: TrafficQueryService
+    retentionService: Pick<TrafficRetentionService, 'getState'>
     sseStream: TrafficSseStream
 }
 
-export const createTrafficRoute = ({ exportService, ingestionService, queryService, sseStream }: TrafficRouteDependencies) =>
+export const createTrafficRoute = ({ exportService, ingestionService, queryService, retentionService, sseStream }: TrafficRouteDependencies) =>
     new Hono()
         .get(
             '/analytics',
@@ -55,6 +58,11 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
             '/ingestion',
             describeRoute({ summary: '트래픽 수집 상태 조회', tags: ['traffic'], responses: { 200: { description: '수집 상태' } } }),
             withErrorHandling((context) => context.json(trafficIngestionStateSchema.parse(ingestionService.getState()), 200)),
+        )
+        .get(
+            '/retention',
+            describeRoute({ summary: '트래픽 보존 정리 상태 조회', tags: ['traffic'], responses: { 200: { description: '보존 상태' } } }),
+            withErrorHandling((context) => context.json(trafficRetentionStateSchema.parse(retentionService.getState()), 200)),
         )
         .post(
             '/exports/:jobId',
