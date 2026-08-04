@@ -4,7 +4,7 @@ import type { FC } from 'react'
 import { useState } from 'react'
 import type { z } from 'zod'
 import { API_KEY_SCOPE, apiKeyListSchema } from '@containers/contracts/api-key'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { useCreateApiKey, useRevokeApiKey } from '@entities/api-key/api-key.query'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
@@ -50,6 +50,8 @@ export const ApiKeyWidget: FC<ApiKeyWidgetProps> = ({ apiKeys: initialApiKeys, l
     const [createdToken, setCreatedToken] = useState<string>()
     const [error, setError] = useState<string>()
     const [scopes, setScopes] = useState<Set<string>>(() => new Set(API_KEY_SCOPES))
+    const createApiKey = useCreateApiKey()
+    const revokeApiKey = useRevokeApiKey()
 
     const create = async (form: HTMLFormElement) => {
         setBusy(true)
@@ -58,18 +60,14 @@ export const ApiKeyWidget: FC<ApiKeyWidgetProps> = ({ apiKeys: initialApiKeys, l
         const formData = new FormData(form)
         const selectedScopes = API_KEY_SCOPES.filter((scope) => scopes.has(scope))
         try {
-            const response = await fetch('/api/api-keys', {
-                body: JSON.stringify({ expiresInDays: Number(formData.get('expiresInDays')), name: formData.get('name'), scopes: selectedScopes }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
+            const record = await createApiKey.mutateAsync({
+                expiresInDays: Number(formData.get('expiresInDays')),
+                name: String(formData.get('name')),
+                scopes: selectedScopes,
             })
-            const body = await response.json()
-            if (!response.ok) {
-                throw new Error(parseApiError(body, labels.failed))
-            }
-            const { token, ...record } = body.data as ApiKey & { token: string }
+            const { token, ...rest } = record
             setCreatedToken(token)
-            setApiKeys((current) => [record, ...current])
+            setApiKeys((current) => [rest, ...current])
             form.reset()
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : labels.failed)
@@ -82,10 +80,7 @@ export const ApiKeyWidget: FC<ApiKeyWidgetProps> = ({ apiKeys: initialApiKeys, l
         setBusy(true)
         setError(undefined)
         try {
-            const response = await fetch(`/api/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' })
-            if (!response.ok) {
-                throw new Error(parseApiError(await response.json(), labels.failed))
-            }
+            await revokeApiKey.mutateAsync(id)
             const revokedAt = new Date().toISOString()
             setApiKeys((current) => current.map((key) => (key.id === id ? { ...key, revokedAt } : key)))
         } catch (revokeError) {

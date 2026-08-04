@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { ARTIFACT_MEDIA_TYPE, artifactListSchema, uploadSessionSchema } from '@containers/contracts/upload'
 import { artifactLoadResponseSchema, uploadFinalizeResponseSchema } from '@entities/artifact/artifact.api'
 import { useOperationJobPolling } from '@entities/job/job.query'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { clientFetch, clientFetchData } from '@shared/lib/client-fetch'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
@@ -17,8 +17,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { WidgetSection } from '@shared/common/widget-section'
 
 type Artifact = z.infer<typeof artifactListSchema>[number]
-const artifactListResponseSchema = z.object({ data: artifactListSchema, success: z.literal(true) })
-const uploadSessionResponseSchema = z.object({ data: uploadSessionSchema, success: z.literal(true) })
 
 type ArtifactWidgetProps = {
     artifacts: Artifact[]
@@ -65,10 +63,8 @@ export const ArtifactWidget: FC<ArtifactWidgetProps> = ({ artifacts: initialArti
     const canLoad = ['owner', 'admin'].includes(role)
 
     const refreshArtifacts = async () => {
-        const listResponse = await fetch('/api/artifacts')
-        if (listResponse.ok) {
-            setArtifacts(artifactListResponseSchema.parse(await listResponse.json()).data)
-        }
+        const artifacts = await clientFetchData<z.infer<typeof artifactListSchema>>('/api/artifacts')
+        setArtifacts(artifacts)
     }
 
     const upload = async (file: File) => {
@@ -78,37 +74,28 @@ export const ArtifactWidget: FC<ArtifactWidgetProps> = ({ artifacts: initialArti
         setProgress(0)
         try {
             const expectedSha256 = await hashFile(file, setProgress)
-            const sessionResponse = await fetch('/api/uploads/sessions', {
+            const sessionBody = await clientFetch('/api/uploads/sessions', {
                 body: JSON.stringify({ expectedSha256, expectedSizeBytes: file.size, fileName: file.name, mediaType }),
                 headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
                 method: 'POST',
             })
-            const sessionBody: unknown = await sessionResponse.json()
-            if (!sessionResponse.ok) {
-                throw new Error(parseApiError(sessionBody, labels.failed))
-            }
-            const session = uploadSessionResponseSchema.parse(sessionBody).data
+            const session = uploadSessionSchema.parse(
+                sessionBody && typeof sessionBody === 'object' && 'data' in sessionBody ? sessionBody.data : undefined,
+            )
             if (session.warnings.includes('DISK_SOFT_WATERMARK')) {
                 setWarning(labels.storageWarning)
             }
             for (let offset = 0; offset < file.size; offset += session.maxChunkBytes) {
                 const chunk = new Uint8Array(await file.slice(offset, Math.min(offset + session.maxChunkBytes, file.size)).arrayBuffer())
                 const chunkSha256 = toHex(await crypto.subtle.digest('SHA-256', chunk))
-                const response = await fetch(`/api/uploads/sessions/${encodeURIComponent(session.id)}/chunks?offset=${offset}`, {
+                await clientFetchData<unknown>(`/api/uploads/sessions/${encodeURIComponent(session.id)}/chunks?offset=${offset}`, {
                     body: chunk,
                     headers: { 'content-type': 'application/octet-stream', 'x-chunk-sha256': chunkSha256 },
                     method: 'PUT',
                 })
-                if (!response.ok) {
-                    throw new Error(parseApiError(await response.json(), labels.failed))
-                }
                 setProgress(25 + Math.round((Math.min(offset + session.maxChunkBytes, file.size) / file.size) * 70))
             }
-            const finalizeResponse = await fetch(`/api/uploads/sessions/${encodeURIComponent(session.id)}/finalize`, { method: 'POST' })
-            const finalizeBody: unknown = await finalizeResponse.json()
-            if (!finalizeResponse.ok) {
-                throw new Error(parseApiError(finalizeBody, labels.failed))
-            }
+            const finalizeBody = await clientFetch(`/api/uploads/sessions/${encodeURIComponent(session.id)}/finalize`, { method: 'POST' })
             const finalized = uploadFinalizeResponseSchema.parse(finalizeBody).data
             trackJob(finalized.job)
             setProgress(100)
@@ -123,11 +110,7 @@ export const ArtifactWidget: FC<ArtifactWidgetProps> = ({ artifacts: initialArti
         setBusy(true)
         setError(undefined)
         try {
-            const response = await fetch(`/api/artifacts/${encodeURIComponent(artifactId)}/load`, { method: 'POST' })
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                throw new Error(parseApiError(body, labels.failed))
-            }
+            const body = await clientFetch(`/api/artifacts/${encodeURIComponent(artifactId)}/load`, { method: 'POST' })
             const loaded = artifactLoadResponseSchema.parse(body).data
             if ('job' in loaded) {
                 trackJob(loaded.job)

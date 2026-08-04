@@ -2,8 +2,8 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import { registryCredentialSchema, type RegistryCredential } from '@containers/contracts/registry-credential'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import type { RegistryCredential } from '@containers/contracts/registry-credential'
+import { clientFetchData } from '@shared/lib/client-fetch'
 import { Button } from '@shared/ui/button'
 import { InlineAlert } from '@shared/ui/inline-alert'
 import { Input } from '@shared/ui/input'
@@ -38,8 +38,6 @@ type RegistryWidgetProps = {
     role: string
 }
 
-const parseCredential = (body: unknown) => registryCredentialSchema.parse(body && typeof body === 'object' && 'data' in body ? body.data : undefined)
-
 export const RegistryWidget: FC<RegistryWidgetProps> = ({ credentials: initialCredentials, labels, role }) => {
     const [busy, setBusy] = useState<string>()
     const [credentialId, setCredentialId] = useState('__public__')
@@ -54,14 +52,14 @@ export const RegistryWidget: FC<RegistryWidgetProps> = ({ credentials: initialCr
         setBusy(key)
         setError(undefined)
         try {
-            const response = await fetch(credentialId === undefined ? '/api/registry-credentials' : `/api/registry-credentials/${credentialId}`, {
-                body: JSON.stringify(input),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
-            })
-            const body: unknown = await response.json()
-            if (!response.ok) throw new Error(parseApiError(body, labels.failed))
-            const credential = parseCredential(body)
+            const credential = await clientFetchData<RegistryCredential>(
+                credentialId === undefined ? '/api/registry-credentials' : `/api/registry-credentials/${credentialId}`,
+                {
+                    body: JSON.stringify(input),
+                    headers: { 'content-type': 'application/json' },
+                    method: 'POST',
+                },
+            )
             setCredentials((current) => [...current.filter((candidate) => candidate.id !== credential.id), credential])
             return true
         } catch (upsertError) {
@@ -76,12 +74,11 @@ export const RegistryWidget: FC<RegistryWidgetProps> = ({ credentials: initialCr
         setBusy(credential.id)
         setError(undefined)
         try {
-            const response = await fetch(`/api/registry-credentials/${credential.id}`, {
+            await clientFetchData<unknown>(`/api/registry-credentials/${credential.id}`, {
                 body: JSON.stringify({ confirmation }),
                 headers: { 'content-type': 'application/json' },
                 method: 'DELETE',
             })
-            if (!response.ok) throw new Error(parseApiError(await response.json(), labels.failed))
             setCredentials((current) => current.filter((candidate) => candidate.id !== credential.id))
         } catch (removeError) {
             setError(removeError instanceof Error ? removeError.message : labels.failed)
@@ -95,12 +92,11 @@ export const RegistryWidget: FC<RegistryWidgetProps> = ({ credentials: initialCr
         setError(undefined)
         setStarted(false)
         try {
-            const response = await fetch('/api/images/pull', {
+            await clientFetchData<unknown>('/api/images/pull', {
                 body: JSON.stringify({ ...(credentialId ? { credentialId } : {}), reference }),
                 headers: { 'content-type': 'application/json' },
                 method: 'POST',
             })
-            if (!response.ok) throw new Error(parseApiError(await response.json(), labels.failed))
             setStarted(true)
         } catch (pullError) {
             setError(pullError instanceof Error ? pullError.message : labels.failed)

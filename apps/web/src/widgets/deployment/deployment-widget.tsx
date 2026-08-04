@@ -2,15 +2,10 @@
 
 import type { FC } from 'react'
 import { useEffect, useState } from 'react'
-import {
-    deploymentManifestSchema,
-    deploymentReleaseListSchema,
-    type DeploymentManifest,
-    type DeploymentRelease,
-} from '@containers/contracts/deployment'
+import { deploymentReleaseListSchema, type DeploymentManifest, type DeploymentRelease } from '@containers/contracts/deployment'
 import type { NetworkSummary } from '@containers/contracts/engine-control'
-import { deploymentReleaseJobResponseSchema } from '@entities/deployment/deployment.api'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { useCreateDeploymentManifest, useCreateDeploymentRelease, useRollbackDeploymentRelease } from '@entities/deployment/deployment.query'
+import { clientFetchData } from '@shared/lib/client-fetch'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { InlineAlert } from '@shared/ui/inline-alert'
@@ -24,7 +19,6 @@ import { WidgetSection } from '@shared/common/widget-section'
 import { z } from 'zod'
 
 const ACTIVE_RELEASE_STATUSES = ['creating', 'observing', 'probing', 'rolling-back', 'switching']
-const manifestResponseSchema = z.object({ data: deploymentManifestSchema, success: z.literal(true) })
 
 type DeploymentWidgetProps = {
     images: Array<{ id: string; repoTags: string[] }>
@@ -96,18 +90,18 @@ export const DeploymentWidget: FC<DeploymentWidgetProps> = ({ images, labels, ma
     const canManage = ['owner', 'admin'].includes(role)
     const hasActiveRelease = releaseItems.some((release) => ACTIVE_RELEASE_STATUSES.includes(release.status))
     const { onSelect, selectedId, selectedItem: selectedManifest } = useMasterDetailSelection(manifestItems)
+    const createManifestMutation = useCreateDeploymentManifest()
+    const createRelease = useCreateDeploymentRelease()
+    const rollbackRelease = useRollbackDeploymentRelease()
 
     useEffect(() => {
         if (!hasActiveRelease) {
             return
         }
         const timer = window.setInterval(() => {
-            void fetch('/api/deployment-releases')
-                .then(async (response) => {
-                    if (response.ok) {
-                        const parsed = deploymentReleaseListSchema.parse((await response.json()).data)
-                        setReleaseItems(parsed)
-                    }
+            void clientFetchData<z.infer<typeof deploymentReleaseListSchema>>('/api/deployment-releases')
+                .then((parsed) => {
+                    setReleaseItems(parsed)
                 })
                 .catch(() => undefined)
         }, 2_000)
@@ -118,49 +112,40 @@ export const DeploymentWidget: FC<DeploymentWidgetProps> = ({ images, labels, ma
         setBusy('manifest')
         setError(undefined)
         try {
-            const response = await fetch('/api/deployment-manifests', {
-                body: JSON.stringify({
-                    command: splitLines(form.get('command')),
-                    entrypoint: [],
-                    environmentKeys: [],
-                    healthcheck: {
-                        intervalSeconds: 5,
-                        path: String(form.get('healthPath') ?? '/'),
-                        retries: 6,
-                        startPeriodSeconds: 5,
-                        timeoutSeconds: 3,
-                    },
-                    imageDigest,
-                    internalPort: Number(form.get('internalPort')),
-                    memoryBytes: Number(form.get('memoryMiB')) * 1_048_576,
-                    name: String(form.get('name') ?? ''),
-                    nanoCpus: Number(form.get('cpu')) * 1_000_000_000,
-                    network,
-                    pidsLimit: 256,
-                    protocol: 'http',
-                    restartPolicy: 'unless-stopped',
-                    rollout: {
-                        observationSeconds: Number(form.get('observationSeconds')),
-                        rollbackRetentionSeconds: 86_400,
-                    },
-                    route: {
-                        hostname: String(form.get('hostname') ?? ''),
-                        path: String(form.get('routePath') ?? '/'),
-                        stripPrefix: false,
-                    },
-                    secrets: splitSecretBindings(form.get('secretBindings')),
-                    version: String(form.get('version') ?? ''),
-                    volumes: [],
-                }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
+            const created = await createManifestMutation.mutateAsync({
+                command: splitLines(form.get('command')),
+                entrypoint: [],
+                environmentKeys: [],
+                healthcheck: {
+                    intervalSeconds: 5,
+                    path: String(form.get('healthPath') ?? '/'),
+                    retries: 6,
+                    startPeriodSeconds: 5,
+                    timeoutSeconds: 3,
+                },
+                imageDigest,
+                internalPort: Number(form.get('internalPort')),
+                memoryBytes: Number(form.get('memoryMiB')) * 1_048_576,
+                name: String(form.get('name') ?? ''),
+                nanoCpus: Number(form.get('cpu')) * 1_000_000_000,
+                network,
+                pidsLimit: 256,
+                protocol: 'http',
+                restartPolicy: 'unless-stopped',
+                rollout: {
+                    observationSeconds: Number(form.get('observationSeconds')),
+                    rollbackRetentionSeconds: 86_400,
+                },
+                route: {
+                    hostname: String(form.get('hostname') ?? ''),
+                    path: String(form.get('routePath') ?? '/'),
+                    stripPrefix: false,
+                },
+                secrets: splitSecretBindings(form.get('secretBindings')),
+                version: String(form.get('version') ?? ''),
+                volumes: [],
             })
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                throw new Error(parseApiError(body, labels.failed))
-            }
-            const created = manifestResponseSchema.parse(body).data
-            setManifestItems((current) => [created, ...current])
+            setManifestItems((current) => [created as DeploymentManifest, ...current])
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : labels.failed)
         } finally {
@@ -172,13 +157,8 @@ export const DeploymentWidget: FC<DeploymentWidgetProps> = ({ images, labels, ma
         setBusy(manifestId)
         setError(undefined)
         try {
-            const response = await fetch(`/api/deployment-manifests/${manifestId}/releases`, { method: 'POST' })
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                throw new Error(parseApiError(body, labels.failed))
-            }
-            const created = deploymentReleaseJobResponseSchema.parse(body).data.release
-            setReleaseItems((current) => [created, ...current])
+            const created = await createRelease.mutateAsync(manifestId)
+            setReleaseItems((current) => [created.release, ...current])
         } catch (deployError) {
             setError(deployError instanceof Error ? deployError.message : labels.failed)
         } finally {
@@ -190,13 +170,8 @@ export const DeploymentWidget: FC<DeploymentWidgetProps> = ({ images, labels, ma
         setBusy(`rollback:${releaseId}`)
         setError(undefined)
         try {
-            const response = await fetch(`/api/deployment-releases/${releaseId}/rollback`, { method: 'POST' })
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                throw new Error(parseApiError(body, labels.failed))
-            }
-            const prepared = deploymentReleaseJobResponseSchema.parse(body).data.release
-            setReleaseItems((current) => current.map((item) => (item.id === prepared.id ? prepared : item)))
+            const prepared = await rollbackRelease.mutateAsync(releaseId)
+            setReleaseItems((current) => current.map((item) => (item.id === prepared.release.id ? prepared.release : item)))
         } catch (rollbackError) {
             setError(rollbackError instanceof Error ? rollbackError.message : labels.failed)
         } finally {

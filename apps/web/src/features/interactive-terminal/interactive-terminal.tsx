@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { interactiveExecServerMessageSchema } from '@containers/contracts/engine-control'
-import { parseApiError } from '@shared/lib/parse-api-error'
 import { Button } from '@shared/ui/button'
 import { Label } from '@shared/ui/label'
 import { Textarea } from '@shared/ui/textarea'
@@ -13,6 +12,9 @@ import { Textarea } from '@shared/ui/textarea'
 type InteractiveTerminalProps = {
     containerId: string
     containerName: string
+    createExecTicket: (input: { columns: number; command: string[]; containerId: string; environment: string[]; rows: number }) => Promise<{
+        websocketPath: string
+    }>
     labels: {
         close: string
         command: string
@@ -23,7 +25,7 @@ type InteractiveTerminalProps = {
     }
 }
 
-export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId, containerName, labels }) => {
+export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId, containerName, createExecTicket, labels }) => {
     const hostRef = useRef<HTMLDivElement>(null)
     const socketRef = useRef<WebSocket | null>(null)
     const [command, setCommand] = useState<string[]>()
@@ -53,22 +55,13 @@ export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId,
 
         const connect = async () => {
             try {
-                const response = await fetch(`/api/containers/${encodeURIComponent(containerId)}/exec-tickets`, {
-                    body: JSON.stringify({ columns: terminal.cols, command, environment: [], rows: terminal.rows }),
-                    headers: { 'content-type': 'application/json' },
-                    method: 'POST',
+                const { websocketPath } = await createExecTicket({
+                    columns: terminal.cols,
+                    command,
+                    containerId,
+                    environment: [],
+                    rows: terminal.rows,
                 })
-                const body: unknown = await response.json()
-                if (!response.ok) {
-                    throw new Error(parseApiError(body, labels.failed))
-                }
-                const websocketPath =
-                    body && typeof body === 'object' && 'data' in body && body.data && typeof body.data === 'object' && 'websocketPath' in body.data
-                        ? String(body.data.websocketPath)
-                        : ''
-                if (!websocketPath) {
-                    throw new Error(labels.failed)
-                }
                 const websocket = new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${websocketPath}`)
                 socketRef.current = websocket
                 websocket.addEventListener('open', () => {
@@ -135,7 +128,7 @@ export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId,
             socketRef.current = null
             terminal.dispose()
         }
-    }, [command, containerId, labels.disconnected, labels.failed, open])
+    }, [command, containerId, createExecTicket, labels.disconnected, labels.failed, open])
 
     return (
         <>

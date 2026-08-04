@@ -2,9 +2,10 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import { prunePreviewSchema, type PrunePreview } from '@containers/contracts/engine-control'
+import type { PrunePreview } from '@containers/contracts/engine-control'
+import { usePrune } from '@entities/infrastructure/infrastructure.query'
+import { clientFetchData } from '@shared/lib/client-fetch'
 import { formatBytes } from '@shared/lib/format-bytes'
-import { parseApiError } from '@shared/lib/parse-api-error'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
@@ -47,19 +48,14 @@ export const PruneWidget: FC<PruneWidgetProps> = ({ initialPreview, labels, role
     const candidateCount = preview
         ? preview.buildCache.length + preview.containers.length + preview.images.length + preview.networks.length + preview.volumes.length
         : 0
+    const pruneMutation = usePrune()
 
     const refreshPreview = async () => {
         setBusy('preview')
         setError(undefined)
         setStarted(false)
         try {
-            const response = await fetch(`/api/system/prune-preview?includeVolumes=${includeVolumes}`)
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                setError(parseApiError(body, labels.failed))
-                return
-            }
-            const data = prunePreviewSchema.parse(body && typeof body === 'object' && 'data' in body ? body.data : undefined)
+            const data = await clientFetchData<PrunePreview>(`/api/system/prune-preview?includeVolumes=${includeVolumes}`)
             setPreview(data)
             setPreviewIncludesVolumes(includeVolumes)
             setConfirmation('')
@@ -77,16 +73,7 @@ export const PruneWidget: FC<PruneWidgetProps> = ({ initialPreview, labels, role
         setBusy('execute')
         setError(undefined)
         try {
-            const response = await fetch('/api/system/prune', {
-                body: JSON.stringify({ confirmation, includeVolumes, previewSha256: preview.sha256 }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
-            })
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                setError(parseApiError(body, labels.failed))
-                return
-            }
+            await pruneMutation.mutateAsync({ confirmation, includeVolumes, previewSha256: preview.sha256 })
             setStarted(true)
             setConfirmation('')
         } catch {

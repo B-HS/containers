@@ -2,7 +2,7 @@
 
 import type { FC, FormEvent } from 'react'
 import { useState } from 'react'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { useBootstrapOwner, useSignInEmail } from '@entities/auth/auth.query'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
@@ -28,32 +28,24 @@ type AuthPanelProps = {
 export const AuthPanel: FC<AuthPanelProps> = ({ labels, mode }) => {
     const [error, setError] = useState<string>()
     const [pending, setPending] = useState(false)
+    const isBootstrap = mode === 'bootstrap'
+    const signInEmail = useSignInEmail()
+    const bootstrapOwner = useBootstrapOwner()
 
     const submit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         setError(undefined)
         setPending(true)
         const formData = new FormData(event.currentTarget)
-        const body = {
-            email: String(formData.get('email') ?? ''),
-            password: String(formData.get('password') ?? ''),
-            ...(mode === 'bootstrap' ? { name: String(formData.get('name') ?? '') } : {}),
-        }
-        const endpoint = mode === 'bootstrap' ? '/api/bootstrap/owner' : '/api/auth/sign-in/email'
+        const email = String(formData.get('email') ?? '')
+        const password = String(formData.get('password') ?? '')
 
         try {
-            const response = await fetch(endpoint, {
-                body: JSON.stringify(body),
-                credentials: 'same-origin',
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
-            })
-
-            if (!response.ok) {
-                setError(parseApiError(await response.json(), labels.unknownError))
-                return
+            if (mode === 'bootstrap') {
+                await bootstrapOwner.mutateAsync({ email, name: String(formData.get('name') ?? ''), password })
+            } else {
+                await signInEmail.mutateAsync({ email, password })
             }
-
             window.location.reload()
         } catch {
             setError(labels.unknownError)
@@ -61,8 +53,6 @@ export const AuthPanel: FC<AuthPanelProps> = ({ labels, mode }) => {
             setPending(false)
         }
     }
-
-    const isBootstrap = mode === 'bootstrap'
 
     return (
         <main className="grid min-h-screen place-items-center bg-background p-3 text-foreground">

@@ -3,7 +3,7 @@
 import type { FC } from 'react'
 import { useState } from 'react'
 import type { NetworkSummary } from '@containers/contracts/engine-control'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { useCreateContainer } from '@entities/engine/engine.query'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
 import { Checkbox } from '@shared/ui/checkbox'
@@ -40,6 +40,7 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ images, 
     const [network, setNetwork] = useState('containers_edge')
     const [readOnly, setReadOnly] = useState(true)
     const canCreate = ['owner', 'admin'].includes(role)
+    const createContainer = useCreateContainer()
 
     if (!canCreate) {
         return null
@@ -72,26 +73,17 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ images, 
                             .filter((part) => part.length > 0)
 
                         try {
-                            const response = await fetch('/api/containers', {
-                                body: JSON.stringify({
-                                    autoStart,
-                                    command,
-                                    containerPort: port ? Number(port) : undefined,
-                                    image,
-                                    memoryBytes: Number(form.get('memoryMiB')) * 1_048_576,
-                                    name: String(form.get('name') ?? ''),
-                                    nanoCpus: Number(form.get('cpu')) * 1_000_000_000,
-                                    network,
-                                    readOnlyRootFilesystem: readOnly,
-                                }),
-                                headers: { 'content-type': 'application/json' },
-                                method: 'POST',
+                            await createContainer.mutateAsync({
+                                autoStart,
+                                command,
+                                containerPort: port ? Number(port) : undefined,
+                                image,
+                                memoryBytes: Number(form.get('memoryMiB')) * 1_048_576,
+                                name: String(form.get('name') ?? ''),
+                                nanoCpus: Number(form.get('cpu')) * 1_000_000_000,
+                                network,
+                                readOnlyRootFilesystem: readOnly,
                             })
-
-                            if (!response.ok) {
-                                setError(parseApiError(await response.json(), labels.failed))
-                                return
-                            }
 
                             window.location.reload()
                         } catch {

@@ -106,3 +106,23 @@ export const useCreateContainer = () => {
         },
     })
 }
+
+export const useCreateExecTicket = () => {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: (input: { columns: number; command: string[]; containerId: string; environment: string[]; rows: number }) =>
+            clientFetchData<{ websocketPath: string }>(`/api/containers/${encodeURIComponent(input.containerId)}/exec-tickets`, {
+                body: JSON.stringify({
+                    columns: input.columns,
+                    command: input.command,
+                    environment: input.environment,
+                    rows: input.rows,
+                }),
+                headers: { 'content-type': 'application/json' },
+                method: 'POST',
+            }),
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: CONTAINER_QUERY_KEY })
+        },
+    })
+}

@@ -4,8 +4,8 @@ import type { FC } from 'react'
 import { useState } from 'react'
 import type { z } from 'zod'
 import { imageSummaryListSchema } from '@containers/contracts/engine-control'
+import { useRemoveImage } from '@entities/image/image.query'
 import { formatBytes } from '@shared/lib/format-bytes'
-import { parseApiError } from '@shared/lib/parse-api-error'
 import { Button } from '@shared/ui/button'
 import { Checkbox } from '@shared/ui/checkbox'
 import { InlineAlert } from '@shared/ui/inline-alert'
@@ -86,19 +86,13 @@ export const ImageWidget: FC<ImageWidgetProps> = ({ images: initialImages, label
     const [error, setError] = useState<string>()
     const { onSelect, selectedId, selectedItem } = useMasterDetailSelection(images)
     const canRemove = ['owner', 'admin'].includes(role)
+    const removeImage = useRemoveImage()
 
     const remove = async (image: ImageSummary, confirmation: string, force: boolean) => {
         setBusyId(image.id)
         setError(undefined)
         try {
-            const response = await fetch(`/api/images/${encodeURIComponent(image.id)}`, {
-                body: JSON.stringify({ confirmation, force, pruneChildren: false }),
-                headers: { 'content-type': 'application/json' },
-                method: 'DELETE',
-            })
-            if (!response.ok) {
-                throw new Error(parseApiError(await response.json(), labels.failed))
-            }
+            await removeImage.mutateAsync({ id: image.id, confirmation, force })
             setImages((current) => current.filter((candidate) => candidate.id !== image.id))
         } catch (removeError) {
             setError(removeError instanceof Error ? removeError.message : labels.failed)

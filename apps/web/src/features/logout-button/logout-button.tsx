@@ -2,6 +2,7 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
+import { useSignOut } from '@entities/auth/auth.query'
 import { Button } from '@shared/ui/button'
 
 type LogoutButtonProps = {
@@ -10,12 +11,13 @@ type LogoutButtonProps = {
 
 export const LogoutButton: FC<LogoutButtonProps> = ({ label }) => {
     const [pending, setPending] = useState(false)
+    const signOut = useSignOut()
 
     const logout = async () => {
         setPending(true)
 
         try {
-            await fetch('/api/auth/sign-out', { method: 'POST' })
+            await signOut.mutateAsync()
             window.location.reload()
         } finally {
             setPending(false)

@@ -5,8 +5,8 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import type { z } from 'zod'
 import { nginxConfigStateSchema } from '@containers/contracts/nginx'
+import { useApplyNginxConfig } from '@entities/nginx/nginx.query'
 import { formatDateTime } from '@shared/lib/format-date-time'
-import { parseApiError } from '@shared/lib/parse-api-error'
 import type { NginxBlock, NginxConfig, NginxDirective } from '@shared/lib/nginx-config/parse-nginx-config'
 import { parseNginxConfig } from '@shared/lib/nginx-config/parse-nginx-config'
 import { serializeNginxConfig } from '@shared/lib/nginx-config/serialize-nginx-config'
@@ -67,6 +67,7 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
     const [upstreamBlocks, setUpstreamBlocks] = useState<NginxBlock[]>([])
     const [parseError, setParseError] = useState(false)
     const canApply = ['owner', 'admin'].includes(role)
+    const applyNginxConfig = useApplyNginxConfig()
 
     const apply = async (config: string) => {
         if (!state) {
@@ -76,14 +77,7 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
         setError(undefined)
         setSuccess(false)
         try {
-            const response = await fetch('/api/nginx/config/apply', {
-                body: JSON.stringify({ config, expectedSha256: state.sha256 }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
-            })
-            if (!response.ok) {
-                throw new Error(parseApiError(await response.json(), labels.failed))
-            }
+            await applyNginxConfig.mutateAsync({ config, expectedSha256: state.sha256 })
             setSuccess(true)
             window.location.reload()
         } catch (applyError) {

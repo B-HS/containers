@@ -4,9 +4,9 @@ import type { FC } from 'react'
 import { useState } from 'react'
 import type { MaintenanceStatus } from '@containers/contracts/maintenance'
 import type { BackupSchedule, OperationJob } from '@containers/contracts/operation-job'
-import { ACTIVE_JOB_STATUSES, jobResponseSchema } from '@entities/job/job.api'
+import { ACTIVE_JOB_STATUSES } from '@entities/job/job.api'
+import { useCancelJob } from '@entities/job/job.query'
 import { formatDateTime } from '@shared/lib/format-date-time'
-import { parseApiError } from '@shared/lib/parse-api-error'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
@@ -38,15 +38,13 @@ export const JobWidget: FC<JobWidgetProps> = ({ jobs: initialJobs, labels, maint
     const [jobs, setJobs] = useState(initialJobs)
     const [busy, setBusy] = useState<string>()
     const [error, setError] = useState<string>()
+    const cancelJob = useCancelJob()
 
     const cancel = async (jobId: string) => {
         setBusy(jobId)
         setError(undefined)
         try {
-            const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' })
-            const body: unknown = await response.json()
-            if (!response.ok) throw new Error(parseApiError(body, labels.cancelFailed))
-            const cancelled = jobResponseSchema.parse(body).data
+            const cancelled = await cancelJob.mutateAsync(jobId)
             setJobs((current) => current.map((job) => (job.id === cancelled.id ? cancelled : job)))
         } catch (cancelError) {
             setError(cancelError instanceof Error ? cancelError.message : labels.cancelFailed)

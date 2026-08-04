@@ -2,7 +2,7 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { useCreateInvitation } from '@entities/invitation/invitation.query'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
 import { InlineAlert } from '@shared/ui/inline-alert'
@@ -31,6 +31,7 @@ export const InvitationWidget: FC<InvitationWidgetProps> = ({ labels, role }) =>
     const [error, setError] = useState<string>()
     const [invitationUrl, setInvitationUrl] = useState<string>()
     const [selectedRole, setSelectedRole] = useState('admin')
+    const createInvitation = useCreateInvitation()
 
     if (!['owner', 'admin'].includes(role)) {
         return null
@@ -49,32 +50,12 @@ export const InvitationWidget: FC<InvitationWidgetProps> = ({ labels, role }) =>
                         const form = new FormData(event.currentTarget)
 
                         try {
-                            const response = await fetch('/api/invitations', {
-                                body: JSON.stringify({
-                                    email: String(form.get('email') ?? ''),
-                                    expiresInHours: Number(form.get('expiresInHours')),
-                                    role: selectedRole,
-                                }),
-                                headers: { 'content-type': 'application/json' },
-                                method: 'POST',
+                            const data = await createInvitation.mutateAsync({
+                                email: String(form.get('email') ?? ''),
+                                expiresInHours: Number(form.get('expiresInHours')),
+                                role: selectedRole,
                             })
-                            const body = await response.json()
-
-                            if (!response.ok) {
-                                setError(parseApiError(body, labels.failed))
-                                return
-                            }
-
-                            if (
-                                body &&
-                                typeof body === 'object' &&
-                                'data' in body &&
-                                body.data &&
-                                typeof body.data === 'object' &&
-                                'invitationUrl' in body.data
-                            ) {
-                                setInvitationUrl(String(body.data.invitationUrl))
-                            }
+                            setInvitationUrl(data.invitationUrl)
                         } catch {
                             setError(labels.failed)
                         } finally {

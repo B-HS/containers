@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, type FC } from 'react'
-import { jobResponseSchema } from '@entities/job/job.api'
+import { useCreateTrafficExport } from '@entities/traffic/traffic.query'
 import { useOperationJobPolling } from '@entities/job/job.query'
-import { parseApiError } from '@shared/lib/parse-api-error'
 import { Button } from '@shared/ui/button'
 
 type TrafficExportProps = {
@@ -18,6 +17,7 @@ type TrafficExportProps = {
 export const TrafficExport: FC<TrafficExportProps> = ({ labels }) => {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string>()
+    const createExportMutation = useCreateTrafficExport()
 
     const createExport = async (format: 'csv' | 'ndjson') => {
         setBusy(true)
@@ -25,14 +25,8 @@ export const TrafficExport: FC<TrafficExportProps> = ({ labels }) => {
         try {
             const to = new Date()
             const from = new Date(to.getTime() - 60 * 60 * 1_000)
-            const response = await fetch('/api/traffic/exports', {
-                body: JSON.stringify({ format, from: from.toISOString(), to: to.toISOString() }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
-            })
-            const body: unknown = await response.json()
-            if (!response.ok) throw new Error(parseApiError(body, labels.exportFailed))
-            trackJob(jobResponseSchema.parse(body).data)
+            const job = await createExportMutation.mutateAsync({ format, from: from.toISOString(), to: to.toISOString() })
+            trackJob(job)
         } catch (exportError) {
             setError(exportError instanceof Error ? exportError.message : labels.exportFailed)
         } finally {

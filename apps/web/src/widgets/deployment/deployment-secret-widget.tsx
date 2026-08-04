@@ -3,7 +3,7 @@
 import type { FC } from 'react'
 import { useState } from 'react'
 import { deploymentSecretSchema } from '@containers/contracts/deployment-secret'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { useCreateDeploymentSecret, useRemoveDeploymentSecret } from '@entities/deployment/deployment-secret.query'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
@@ -31,28 +31,22 @@ type DeploymentSecretWidgetProps = {
     secrets: DeploymentSecret[]
 }
 
-const responseSchema = z.object({ data: deploymentSecretSchema, success: z.literal(true) })
-
 export const DeploymentSecretWidget: FC<DeploymentSecretWidgetProps> = ({ labels, secrets: initialSecrets }) => {
     const [busy, setBusy] = useState<string>()
     const [error, setError] = useState<string>()
     const [secrets, setSecrets] = useState(initialSecrets)
+    const createSecret = useCreateDeploymentSecret()
+    const removeSecret = useRemoveDeploymentSecret()
 
     const save = async (form: HTMLFormElement) => {
         setBusy('save')
         setError(undefined)
         const formData = new FormData(form)
         try {
-            const response = await fetch('/api/deployment-secrets', {
-                body: JSON.stringify({ reference: formData.get('reference'), value: formData.get('value') }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
+            const saved = await createSecret.mutateAsync({
+                reference: String(formData.get('reference')),
+                value: String(formData.get('value')),
             })
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                throw new Error(parseApiError(body, labels.failed))
-            }
-            const saved = responseSchema.parse(body).data
             setSecrets((current) => [saved, ...current.filter((item) => item.id !== saved.id)])
             form.reset()
         } catch (saveError) {
@@ -66,14 +60,7 @@ export const DeploymentSecretWidget: FC<DeploymentSecretWidgetProps> = ({ labels
         setBusy(secret.id)
         setError(undefined)
         try {
-            const response = await fetch(`/api/deployment-secrets/${secret.id}`, {
-                body: JSON.stringify({ confirmation }),
-                headers: { 'content-type': 'application/json' },
-                method: 'DELETE',
-            })
-            if (!response.ok) {
-                throw new Error(parseApiError(await response.json(), labels.failed))
-            }
+            await removeSecret.mutateAsync({ id: secret.id, confirmation })
             setSecrets((current) => current.filter((item) => item.id !== secret.id))
         } catch (removeError) {
             setError(removeError instanceof Error ? removeError.message : labels.failed)

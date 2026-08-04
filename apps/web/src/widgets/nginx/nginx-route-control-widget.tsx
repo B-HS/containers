@@ -3,7 +3,7 @@
 import type { FC } from 'react'
 import { useState } from 'react'
 import type { NginxProxyRoute } from '@containers/contracts/nginx'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { useCreateNginxRoute, useRemoveNginxRoute } from '@entities/nginx/nginx.query'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
@@ -42,30 +42,25 @@ export const NginxRouteControlWidget: FC<NginxRouteControlWidgetProps> = ({ cont
     const [protocol, setProtocol] = useState('http')
     const [stripPrefix, setStripPrefix] = useState(false)
     const canManage = ['owner', 'admin'].includes(role)
+    const createRoute = useCreateNginxRoute()
+    const removeRoute = useRemoveNginxRoute()
 
     const create = async (form: FormData) => {
         setBusy('create')
         setError(undefined)
         try {
-            const response = await fetch('/api/nginx/routes', {
-                body: JSON.stringify({
-                    bodySizeMegabytes: Number(form.get('bodySizeMegabytes')),
-                    enabled: true,
-                    hostname: String(form.get('hostname') ?? ''),
-                    path: String(form.get('path') ?? '/'),
-                    pathMode: 'prefix',
-                    protocol,
-                    stripPrefix,
-                    targetContainer: String(form.get('targetContainer') ?? ''),
-                    targetPort: Number(form.get('targetPort')),
-                    timeoutSeconds: Number(form.get('timeoutSeconds')),
-                }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
+            await createRoute.mutateAsync({
+                bodySizeMegabytes: Number(form.get('bodySizeMegabytes')),
+                enabled: true,
+                hostname: String(form.get('hostname') ?? ''),
+                path: String(form.get('path') ?? '/'),
+                pathMode: 'prefix',
+                protocol,
+                stripPrefix,
+                targetContainer: String(form.get('targetContainer') ?? ''),
+                targetPort: Number(form.get('targetPort')),
+                timeoutSeconds: Number(form.get('timeoutSeconds')),
             })
-            if (!response.ok) {
-                throw new Error(parseApiError(await response.json(), labels.failed))
-            }
             window.location.reload()
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : labels.failed)
@@ -78,14 +73,7 @@ export const NginxRouteControlWidget: FC<NginxRouteControlWidgetProps> = ({ cont
         setBusy(route.id)
         setError(undefined)
         try {
-            const response = await fetch(`/api/nginx/routes/${route.id}`, {
-                body: JSON.stringify({ confirmation }),
-                headers: { 'content-type': 'application/json' },
-                method: 'DELETE',
-            })
-            if (!response.ok) {
-                throw new Error(parseApiError(await response.json(), labels.failed))
-            }
+            await removeRoute.mutateAsync({ routeId: route.id, confirmation })
             window.location.reload()
         } catch (removeError) {
             setError(removeError instanceof Error ? removeError.message : labels.failed)

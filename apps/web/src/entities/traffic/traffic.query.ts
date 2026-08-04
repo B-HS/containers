@@ -1,8 +1,9 @@
 'use client'
 
-import { queryOptions, useQuery } from '@tanstack/react-query'
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { trafficAnalyticsSchema, trafficSummarySchema } from '@containers/contracts/traffic'
-import { clientFetchData } from '@shared/lib/client-fetch'
+import { jobResponseSchema } from '@entities/job/job.api'
+import { clientFetch, clientFetchData } from '@shared/lib/client-fetch'
 import { QUERY_KEY } from '@shared/lib/query-key'
 import { z } from 'zod'
 
@@ -21,3 +22,20 @@ export const trafficAnalyticsQueryOptions = () =>
 export const useGetTrafficSummary = () => useQuery(trafficSummaryQueryOptions())
 
 export const useGetTrafficAnalytics = () => useQuery(trafficAnalyticsQueryOptions())
+
+export const useCreateTrafficExport = () => {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async (input: { format: 'csv' | 'ndjson'; from: string; to: string }) =>
+            jobResponseSchema.parse(
+                await clientFetch('/api/traffic/exports', {
+                    body: JSON.stringify(input),
+                    headers: { 'content-type': 'application/json' },
+                    method: 'POST',
+                }),
+            ).data,
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.TRAFFIC.ALL })
+        },
+    })
+}

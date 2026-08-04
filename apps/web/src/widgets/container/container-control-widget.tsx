@@ -4,9 +4,10 @@ import type { FC } from 'react'
 import { useState } from 'react'
 import { z } from 'zod'
 import { containerDetailSchema, containerLogResultSchema, type ContainerSummary } from '@containers/contracts/engine'
+import { useCreateExecTicket, useExecuteContainerCommand, usePerformContainerAction, useRemoveContainer } from '@entities/engine/engine.query'
 import { InteractiveTerminal } from '@features/interactive-terminal/interactive-terminal'
 import { LiveLogStream } from '@features/live-log-stream/live-log-stream'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { clientFetchData } from '@shared/lib/client-fetch'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Checkbox } from '@shared/ui/checkbox'
@@ -61,6 +62,9 @@ type ContainerDetailCardProps = {
     canOperate: boolean
     canRemove: boolean
     container: ContainerSummary
+    createExecTicket: (input: { columns: number; command: string[]; containerId: string; environment: string[]; rows: number }) => Promise<{
+        websocketPath: string
+    }>
     error: string | undefined
     execOutput: Record<string, string>
     inspectionOutput: Record<string, string>
@@ -77,6 +81,7 @@ const ContainerDetailCard: FC<ContainerDetailCardProps> = ({
     canOperate,
     canRemove,
     container,
+    createExecTicket,
     error,
     execOutput,
     inspectionOutput,
@@ -178,6 +183,7 @@ const ContainerDetailCard: FC<ContainerDetailCardProps> = ({
                     <InteractiveTerminal
                         containerId={container.id}
                         containerName={name}
+                        createExecTicket={createExecTicket}
                         labels={{
                             close: labels.close,
                             command: labels.command,
@@ -226,40 +232,26 @@ export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ contai
     const canOperate = ['owner', 'admin', 'operator'].includes(role)
     const canRemove = ['owner', 'admin'].includes(role)
     const canExec = role === 'owner'
+    const performAction = usePerformContainerAction()
+    const executeCommand = useExecuteContainerCommand()
+    const removeContainer = useRemoveContainer()
+    const createExecTicket = useCreateExecTicket()
 
-    const request = async (containerId: string, path: string, body: unknown) => {
+    const performActionHandler = async (containerId: string, action: ActionName) => {
         setBusyTarget(containerId)
         setError(undefined)
 
         try {
-            const response = await fetch(path, {
-                body: JSON.stringify(body),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
+            await performAction.mutateAsync({
+                containerId,
+                action,
+                ...(['restart', 'stop'].includes(action) ? { timeoutSeconds: 10 } : {}),
             })
-
-            if (!response.ok) {
-                setError(parseApiError(await response.json(), labels.actionFailed))
-                return undefined
-            }
-
-            return response.json()
+            window.location.reload()
         } catch {
             setError(labels.actionFailed)
-            return undefined
         } finally {
             setBusyTarget(undefined)
-        }
-    }
-
-    const performAction = async (containerId: string, action: ActionName) => {
-        const result = await request(containerId, `/api/containers/${encodeURIComponent(containerId)}/actions`, {
-            action,
-            ...(['restart', 'stop'].includes(action) ? { timeoutSeconds: 10 } : {}),
-        })
-
-        if (result) {
-            window.location.reload()
         }
     }
 
@@ -268,26 +260,28 @@ export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ contai
             .split('\n')
             .map((part) => part.trim())
             .filter((part) => part.length > 0)
-        const result = await request(container.id, `/api/containers/${encodeURIComponent(container.id)}/exec`, { command })
-
-        if (result && typeof result === 'object' && 'data' in result) {
-            const data = result.data
-            if (data && typeof data === 'object' && 'stdout' in data && 'stderr' in data) {
-                setExecOutput((current) => ({ ...current, [container.id]: `${String(data.stdout)}${String(data.stderr)}` }))
-            }
+        setBusyTarget(container.id)
+        setError(undefined)
+        try {
+            const result = await executeCommand.mutateAsync({ containerId: container.id, command })
+            setExecOutput((current) => ({ ...current, [container.id]: `${String(result.stdout)}${String(result.stderr)}` }))
+        } catch {
+            setError(labels.actionFailed)
+        } finally {
+            setBusyTarget(undefined)
         }
     }
 
     const remove = async (container: ContainerSummary, confirmation: string, force: boolean) => {
-        const result = await request(container.id, `/api/containers/${encodeURIComponent(container.id)}/actions`, {
-            action: 'remove',
-            confirmation,
-            force,
-            removeVolumes: false,
-        })
-
-        if (result) {
+        setBusyTarget(container.id)
+        setError(undefined)
+        try {
+            await removeContainer.mutateAsync({ containerId: container.id, confirmation, force })
             window.location.reload()
+        } catch {
+            setError(labels.actionFailed)
+        } finally {
+            setBusyTarget(undefined)
         }
     }
 
@@ -295,16 +289,10 @@ export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ contai
         setBusyTarget(containerId)
         setError(undefined)
         try {
-            const [detailResponse, logsResponse] = await Promise.all([
-                fetch(`/api/containers/${encodeURIComponent(containerId)}`),
-                fetch(`/api/containers/${encodeURIComponent(containerId)}/logs?tail=200`),
+            const [detail, logs] = await Promise.all([
+                clientFetchData<z.infer<typeof containerDetailSchema>>(`/api/containers/${encodeURIComponent(containerId)}`),
+                clientFetchData<z.infer<typeof containerLogResultSchema>>(`/api/containers/${encodeURIComponent(containerId)}/logs?tail=200`),
             ])
-            const [detailBody, logsBody] = await Promise.all([detailResponse.json(), logsResponse.json()])
-            if (!detailResponse.ok || !logsResponse.ok) {
-                throw new Error(labels.inspectFailed)
-            }
-            const detail = z.object({ data: containerDetailSchema }).parse(detailBody).data
-            const logs = z.object({ data: containerLogResultSchema }).parse(logsBody).data
             setInspectionOutput((current) => ({
                 ...current,
                 [containerId]: `${JSON.stringify(detail, null, 2)}\n\n[stdout]\n${logs.stdout}\n[stderr]\n${logs.stderr}`,
@@ -346,13 +334,14 @@ export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ contai
                         canOperate={canOperate}
                         canRemove={canRemove}
                         container={selectedItem}
+                        createExecTicket={createExecTicket.mutateAsync}
                         error={error}
                         execOutput={execOutput}
                         inspectionOutput={inspectionOutput}
                         labels={labels}
                         onExecute={execute}
                         onInspect={inspect}
-                        onPerformAction={performAction}
+                        onPerformAction={performActionHandler}
                         onRemove={remove}
                     />
                 ) : null}

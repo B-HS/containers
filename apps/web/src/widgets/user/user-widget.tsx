@@ -3,7 +3,7 @@
 import type { FC } from 'react'
 import { useState } from 'react'
 import type { ManagedUser } from '@containers/contracts/user-management'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { useUpdateUser } from '@entities/user/user.query'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
@@ -90,19 +90,13 @@ const UserCard: FC<UserCardProps> = ({ busy, currentUserId, labels, onUpdate, us
 export const UserWidget: FC<UserWidgetProps> = ({ currentUserId, labels, users }) => {
     const [busy, setBusy] = useState<string>()
     const [error, setError] = useState<string>()
+    const updateUser = useUpdateUser()
 
     const update = async (userId: string, input: { disabled?: boolean; role?: string }) => {
         setBusy(userId)
         setError(undefined)
         try {
-            const response = await fetch(`/api/users/${userId}`, {
-                body: JSON.stringify(input),
-                headers: { 'content-type': 'application/json' },
-                method: 'PATCH',
-            })
-            if (!response.ok) {
-                throw new Error(parseApiError(await response.json(), labels.failed))
-            }
+            await updateUser.mutateAsync({ userId, ...input })
             window.location.reload()
         } catch (updateError) {
             setError(updateError instanceof Error ? updateError.message : labels.failed)

@@ -2,7 +2,7 @@
 
 import type { FC, FormEvent } from 'react'
 import { useState } from 'react'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { useAcceptInvitation } from '@entities/auth/auth.query'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
@@ -25,6 +25,7 @@ type AcceptInvitationPanelProps = {
 export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, locale, token }) => {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string>()
+    const acceptInvitation = useAcceptInvitation()
 
     const submit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
@@ -33,21 +34,11 @@ export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, 
         const form = new FormData(event.currentTarget)
 
         try {
-            const response = await fetch('/api/invitations/accept', {
-                body: JSON.stringify({
-                    name: String(form.get('name') ?? ''),
-                    password: String(form.get('password') ?? ''),
-                    token,
-                }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
+            await acceptInvitation.mutateAsync({
+                name: String(form.get('name') ?? ''),
+                password: String(form.get('password') ?? ''),
+                token,
             })
-
-            if (!response.ok) {
-                setError(parseApiError(await response.json(), labels.failed))
-                return
-            }
-
             window.location.assign(`/${locale}`)
         } catch {
             setError(labels.failed)

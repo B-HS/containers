@@ -2,11 +2,10 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import { z } from 'zod'
-import { backupManifestSchema } from '@containers/contracts/backup'
+import type { BackupManifest } from '@containers/contracts/backup'
+import { useCreateBackup, useRemoveBackup, useRestoreBackup } from '@entities/backup/backup.query'
 import { formatBytes } from '@shared/lib/format-bytes'
 import { formatDateTime } from '@shared/lib/format-date-time'
-import { parseApiError } from '@shared/lib/parse-api-error'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { InlineAlert } from '@shared/ui/inline-alert'
@@ -15,8 +14,6 @@ import { Label } from '@shared/ui/label'
 import { MasterDetail } from '@shared/common/master-detail/master-detail'
 import { useMasterDetailSelection } from '@shared/common/master-detail/use-master-detail-selection'
 import { WidgetSection } from '@shared/common/widget-section'
-
-type BackupManifest = z.infer<typeof backupManifestSchema>
 
 type BackupWidgetProps = {
     backups: BackupManifest[]
@@ -35,14 +32,15 @@ type BackupWidgetProps = {
     }
 }
 
-const createResponseSchema = z.object({ data: backupManifestSchema, success: z.literal(true) })
-
 export const BackupWidget: FC<BackupWidgetProps> = ({ backups: initialBackups, labels }) => {
     const [backups, setBackups] = useState(initialBackups)
     const [busy, setBusy] = useState<string>()
     const [error, setError] = useState<string>()
     const [status, setStatus] = useState<string>()
     const { onSelect, selectedId, selectedItem: selectedBackup } = useMasterDetailSelection(backups)
+    const createBackup = useCreateBackup()
+    const removeBackup = useRemoveBackup()
+    const restoreBackup = useRestoreBackup()
 
     const create = async (form: HTMLFormElement) => {
         setBusy('create')
@@ -51,14 +49,7 @@ export const BackupWidget: FC<BackupWidgetProps> = ({ backups: initialBackups, l
         try {
             const formData = new FormData(form)
             const label = String(formData.get('label') ?? '').trim()
-            const response = await fetch('/api/backups', {
-                body: JSON.stringify({ label: label || null }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
-            })
-            const body: unknown = await response.json()
-            if (!response.ok) throw new Error(parseApiError(body, labels.failed))
-            const backup = createResponseSchema.parse(body).data
+            const backup = await createBackup.mutateAsync(label || null)
             setBackups((current) => [backup, ...current])
             form.reset()
         } catch (createError) {
@@ -73,16 +64,11 @@ export const BackupWidget: FC<BackupWidgetProps> = ({ backups: initialBackups, l
         setError(undefined)
         setStatus(undefined)
         try {
-            const response = await fetch(`/api/backups/${backup.id}${operation === 'restore' ? '/restore' : ''}`, {
-                body: JSON.stringify({ confirmation }),
-                headers: { 'content-type': 'application/json' },
-                method: operation === 'restore' ? 'POST' : 'DELETE',
-            })
-            const body: unknown = await response.json()
-            if (!response.ok) throw new Error(parseApiError(body, labels.failed))
             if (operation === 'remove') {
+                await removeBackup.mutateAsync({ backupId: backup.id, confirmation })
                 setBackups((current) => current.filter((item) => item.id !== backup.id))
             } else {
+                await restoreBackup.mutateAsync({ backupId: backup.id, confirmation })
                 setStatus(labels.restored)
                 window.setTimeout(() => window.location.reload(), 800)
             }

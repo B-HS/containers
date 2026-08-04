@@ -3,8 +3,8 @@
 import type { FC } from 'react'
 import { useState } from 'react'
 import type { NetworkSummary, VolumeSummary } from '@containers/contracts/engine-control'
+import { useCreateNetwork, useCreateVolume, useRemoveNetwork, useRemoveVolume } from '@entities/infrastructure/infrastructure.query'
 import { formatBytes } from '@shared/lib/format-bytes'
-import { parseApiError } from '@shared/lib/parse-api-error'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Checkbox } from '@shared/ui/checkbox'
@@ -163,23 +163,15 @@ const NetworkTab: FC<NetworkTabProps> = ({ canRemove, labels, networks }) => {
     const [error, setError] = useState<string>()
     const [internal, setInternal] = useState(false)
     const { onSelect, selectedId, selectedItem } = useMasterDetailSelection(networks)
+    const createNetwork = useCreateNetwork()
+    const removeNetwork = useRemoveNetwork()
 
     const create = async (input: unknown) => {
         setBusy('create')
         setError(undefined)
 
         try {
-            const response = await fetch('/api/networks', {
-                body: JSON.stringify(input),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
-            })
-
-            if (!response.ok) {
-                setError(parseApiError(await response.json(), labels.failed))
-                return
-            }
-
+            await createNetwork.mutateAsync(input)
             window.location.reload()
         } catch {
             setError(labels.failed)
@@ -193,17 +185,7 @@ const NetworkTab: FC<NetworkTabProps> = ({ canRemove, labels, networks }) => {
         setError(undefined)
 
         try {
-            const response = await fetch(`/api/networks/${encodeURIComponent(networkId)}`, {
-                body: JSON.stringify({ confirmation, force: false }),
-                headers: { 'content-type': 'application/json' },
-                method: 'DELETE',
-            })
-
-            if (!response.ok) {
-                setError(parseApiError(await response.json(), labels.failed))
-                return
-            }
-
+            await removeNetwork.mutateAsync({ networkId, confirmation })
             window.location.reload()
         } catch {
             setError(labels.failed)
@@ -298,23 +280,15 @@ const VolumeTab: FC<VolumeTabProps> = ({ canRemove, labels, volumes }) => {
     const [error, setError] = useState<string>()
     const volumesWithId = volumes.map((volume) => ({ ...volume, id: volume.name }))
     const { onSelect, selectedId, selectedItem } = useMasterDetailSelection(volumesWithId)
+    const createVolume = useCreateVolume()
+    const removeVolume = useRemoveVolume()
 
     const create = async (name: string) => {
         setBusy('create')
         setError(undefined)
 
         try {
-            const response = await fetch('/api/volumes', {
-                body: JSON.stringify({ name }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
-            })
-
-            if (!response.ok) {
-                setError(parseApiError(await response.json(), labels.failed))
-                return
-            }
-
+            await createVolume.mutateAsync(name)
             window.location.reload()
         } catch {
             setError(labels.failed)
@@ -328,17 +302,7 @@ const VolumeTab: FC<VolumeTabProps> = ({ canRemove, labels, volumes }) => {
         setError(undefined)
 
         try {
-            const response = await fetch(`/api/volumes/${encodeURIComponent(volumeName)}`, {
-                body: JSON.stringify({ confirmation, force }),
-                headers: { 'content-type': 'application/json' },
-                method: 'DELETE',
-            })
-
-            if (!response.ok) {
-                setError(parseApiError(await response.json(), labels.failed))
-                return
-            }
-
+            await removeVolume.mutateAsync({ volumeName, confirmation, force })
             window.location.reload()
         } catch {
             setError(labels.failed)

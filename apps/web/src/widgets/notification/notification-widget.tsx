@@ -2,9 +2,14 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import { notificationDestinationSchema, type NotificationDestination } from '@containers/contracts/notification'
+import type { NotificationDestination } from '@containers/contracts/notification'
+import {
+    useRemoveNotificationDestination,
+    useSaveNotificationDestination,
+    useTestNotificationDestination,
+    useToggleNotificationDestination,
+} from '@entities/notification/notification.query'
 import { formatDateTime } from '@shared/lib/format-date-time'
-import { parseApiError } from '@shared/lib/parse-api-error'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Checkbox } from '@shared/ui/checkbox'
@@ -14,7 +19,6 @@ import { Label } from '@shared/ui/label'
 import { MasterDetail } from '@shared/common/master-detail/master-detail'
 import { useMasterDetailSelection } from '@shared/common/master-detail/use-master-detail-selection'
 import { WidgetSection } from '@shared/common/widget-section'
-import { z } from 'zod'
 
 type NotificationWidgetProps = {
     destinations: NotificationDestination[]
@@ -38,9 +42,6 @@ type NotificationWidgetProps = {
     }
 }
 
-const destinationResponseSchema = z.object({ data: notificationDestinationSchema, success: z.literal(true) })
-const testResponseSchema = z.object({ data: z.record(z.string(), z.unknown()), success: z.literal(true) })
-
 export const NotificationWidget: FC<NotificationWidgetProps> = ({ destinations: initialDestinations, labels }) => {
     const [busy, setBusy] = useState<string>()
     const [destinations, setDestinations] = useState(initialDestinations)
@@ -49,6 +50,10 @@ export const NotificationWidget: FC<NotificationWidgetProps> = ({ destinations: 
     const [eventBackupFailed, setEventBackupFailed] = useState(true)
     const [notice, setNotice] = useState<string>()
     const { onSelect, selectedId, selectedItem: selectedDestination } = useMasterDetailSelection(destinations)
+    const saveDestination = useSaveNotificationDestination()
+    const testDestination = useTestNotificationDestination()
+    const toggleDestination = useToggleNotificationDestination()
+    const removeDestination = useRemoveNotificationDestination()
 
     const save = async (form: HTMLFormElement) => {
         setBusy('save')
@@ -56,22 +61,12 @@ export const NotificationWidget: FC<NotificationWidgetProps> = ({ destinations: 
         setNotice(undefined)
         const formData = new FormData(form)
         try {
-            const response = await fetch('/api/notification-destinations', {
-                body: JSON.stringify({
-                    enabled,
-                    eventTypes: eventBackupFailed ? ['backup.failed'] : [],
-                    name: formData.get('name'),
-                    type: 'discord',
-                    webhookUrl: formData.get('webhookUrl'),
-                }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
+            const saved = await saveDestination.mutateAsync({
+                enabled,
+                eventTypes: eventBackupFailed ? ['backup.failed'] : [],
+                name: String(formData.get('name')),
+                webhookUrl: String(formData.get('webhookUrl')),
             })
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                throw new Error(parseApiError(body, labels.failed))
-            }
-            const saved = destinationResponseSchema.parse(body).data
             setDestinations((current) => [saved, ...current.filter((item) => item.id !== saved.id)])
             form.reset()
         } catch (saveError) {
@@ -86,12 +81,7 @@ export const NotificationWidget: FC<NotificationWidgetProps> = ({ destinations: 
         setError(undefined)
         setNotice(undefined)
         try {
-            const response = await fetch(`/api/notification-destinations/${encodeURIComponent(destination.id)}/test`, { method: 'POST' })
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                throw new Error(parseApiError(body, labels.failed))
-            }
-            testResponseSchema.parse(body)
+            await testDestination.mutateAsync(destination.id)
             setNotice(labels.testStarted)
         } catch (testError) {
             setError(testError instanceof Error ? testError.message : labels.failed)
@@ -105,16 +95,7 @@ export const NotificationWidget: FC<NotificationWidgetProps> = ({ destinations: 
         setError(undefined)
         setNotice(undefined)
         try {
-            const response = await fetch(`/api/notification-destinations/${encodeURIComponent(destination.id)}`, {
-                body: JSON.stringify({ enabled: !destination.enabled }),
-                headers: { 'content-type': 'application/json' },
-                method: 'PATCH',
-            })
-            const body: unknown = await response.json()
-            if (!response.ok) {
-                throw new Error(parseApiError(body, labels.failed))
-            }
-            const updated = destinationResponseSchema.parse(body).data
+            const updated = await toggleDestination.mutateAsync({ id: destination.id, enabled: !destination.enabled })
             setDestinations((current) => current.map((item) => (item.id === updated.id ? updated : item)))
         } catch (toggleError) {
             setError(toggleError instanceof Error ? toggleError.message : labels.failed)
@@ -128,14 +109,7 @@ export const NotificationWidget: FC<NotificationWidgetProps> = ({ destinations: 
         setError(undefined)
         setNotice(undefined)
         try {
-            const response = await fetch(`/api/notification-destinations/${encodeURIComponent(destination.id)}`, {
-                body: JSON.stringify({ confirmation }),
-                headers: { 'content-type': 'application/json' },
-                method: 'DELETE',
-            })
-            if (!response.ok) {
-                throw new Error(parseApiError(await response.json(), labels.failed))
-            }
+            await removeDestination.mutateAsync({ id: destination.id, confirmation })
             setDestinations((current) => current.filter((item) => item.id !== destination.id))
         } catch (removeError) {
             setError(removeError instanceof Error ? removeError.message : labels.failed)
