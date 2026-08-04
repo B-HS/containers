@@ -1,8 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, inArray } from 'drizzle-orm'
 import { deploymentReleaseListSchema, deploymentReleaseSchema, type DeploymentManifest } from '@containers/contracts/deployment'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { deploymentManifest, deploymentRelease } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 import type { NginxProxyRouteService } from '../nginx/create-nginx-proxy-route-service'
@@ -11,9 +8,67 @@ import type { DeploymentSecretService } from './create-deployment-secret-service
 
 const ACTIVE_RELEASE_STATUSES = ['creating', 'probing', 'switching', 'observing', 'rolling-back'] as const
 
+type ReleaseRow = {
+    activatedAt: Date | null
+    containerId: string | null
+    containerName: string
+    createdAt: Date
+    createdBy: string
+    failureCode: string | null
+    finishedAt: Date | null
+    id: string
+    manifestId: string
+    nginxConfigSha256: string | null
+    nginxRouteId: string | null
+    previousReleaseId: string | null
+    status: string
+    updatedAt: Date
+}
+
+type ReleaseUpdateValues = Partial<{
+    activatedAt: Date
+    containerId: string | null
+    failureCode: string | null
+    finishedAt: Date
+    nginxConfigSha256: string
+    nginxRouteId: string
+    previousReleaseId: string
+    status: string
+    updatedAt: Date
+}>
+
+type ReleaseIdRecord = {
+    id: string
+}
+
+type PreviousReleaseRecord = {
+    containerName: string
+    id: string
+    manifestId: string
+}
+
+type DeploymentReleaseServiceDb = {
+    findById: (id: string) => Promise<ReleaseRow | undefined>
+    insert: (record: {
+        containerName: string
+        createdAt: Date
+        createdBy: string
+        id: string
+        manifestId: string
+        previousReleaseId: string | null
+        status: string
+        updatedAt: Date
+    }) => Promise<void>
+    list: () => Promise<ReleaseRow[]>
+    listByStatuses: (statuses: string[]) => Promise<ReleaseRow[]>
+    findActiveByManifestName: (manifestName: string, statuses: string[]) => Promise<ReleaseIdRecord | undefined>
+    findPreviousHealthy: (manifestName: string) => Promise<PreviousReleaseRecord | undefined>
+    update: (id: string, values: ReleaseUpdateValues) => Promise<void>
+}
+
 type DeploymentReleaseServiceDependencies = {
     probeNetwork: string
-    db: ControlDatabase
+    db: DeploymentReleaseServiceDb
     deploymentManifestService: Pick<DeploymentManifestService, 'get'>
     deploymentSecretService: Pick<DeploymentSecretService, 'resolve'>
     engineAgentClient: Pick<
@@ -26,7 +81,9 @@ type DeploymentReleaseServiceDependencies = {
     sleep: (milliseconds: number) => Promise<void>
 }
 
-const toRelease = (record: typeof deploymentRelease.$inferSelect) =>
+export type { DeploymentReleaseServiceDb }
+
+const toRelease = (record: ReleaseRow) =>
     deploymentReleaseSchema.parse({
         ...record,
         activatedAt: record.activatedAt?.toISOString() ?? null,
@@ -65,17 +122,14 @@ export const createDeploymentReleaseService = ({
     sleep,
 }: DeploymentReleaseServiceDependencies) => {
     const get = async (id: string) => {
-        const [record] = await db.select().from(deploymentRelease).where(eq(deploymentRelease.id, id)).limit(1)
+        const record = await db.findById(id)
         if (!record) {
             throw createAppError('DEPLOYMENT_RELEASE_NOT_FOUND')
         }
         return toRelease(record)
     }
-    const update = async (id: string, values: Partial<typeof deploymentRelease.$inferInsert>) => {
-        await db
-            .update(deploymentRelease)
-            .set({ ...values, updatedAt: now() })
-            .where(eq(deploymentRelease.id, id))
+    const update = async (id: string, values: Omit<ReleaseUpdateValues, 'updatedAt'>) => {
+        await db.update(id, { ...values, updatedAt: now() })
         return get(id)
     }
     const prepareRollback = async (id: string) => {
@@ -87,12 +141,7 @@ export const createDeploymentReleaseService = ({
         if (target.status !== 'healthy' || !target.containerId) {
             throw createAppError('DEPLOYMENT_ROLLBACK_TARGET_UNAVAILABLE')
         }
-        const [active] = await db
-            .select({ id: deploymentRelease.id })
-            .from(deploymentRelease)
-            .innerJoin(deploymentManifest, eq(deploymentRelease.manifestId, deploymentManifest.id))
-            .where(and(eq(deploymentManifest.name, manifest.name), inArray(deploymentRelease.status, [...ACTIVE_RELEASE_STATUSES])))
-            .limit(1)
+        const active = await db.findActiveByManifestName(manifest.name, [...ACTIVE_RELEASE_STATUSES])
         if (active) {
             throw createAppError('DEPLOYMENT_RELEASE_IN_PROGRESS')
         }
@@ -174,14 +223,7 @@ export const createDeploymentReleaseService = ({
         }
     }
     const reconcileInterrupted = async () => {
-        const interrupted = deploymentReleaseListSchema.parse(
-            (
-                await db
-                    .select()
-                    .from(deploymentRelease)
-                    .where(inArray(deploymentRelease.status, [...ACTIVE_RELEASE_STATUSES]))
-            ).map(toRelease),
-        )
+        const interrupted = deploymentReleaseListSchema.parse((await db.listByStatuses([...ACTIVE_RELEASE_STATUSES])).map(toRelease))
         const reconciled = []
         for (const release of interrupted) {
             const manifest = await deploymentManifestService.get(release.manifestId)
@@ -260,9 +302,7 @@ export const createDeploymentReleaseService = ({
         return deploymentReleaseListSchema.parse(reconciled)
     }
     const cleanupExpiredContainers = async () => {
-        const healthyReleases = deploymentReleaseListSchema.parse(
-            (await db.select().from(deploymentRelease).where(eq(deploymentRelease.status, 'healthy'))).map(toRelease),
-        )
+        const healthyReleases = deploymentReleaseListSchema.parse((await db.listByStatuses(['healthy'])).map(toRelease))
         let removed = 0
         for (const release of healthyReleases) {
             if (!release.previousReleaseId || !release.activatedAt) {
@@ -301,45 +341,29 @@ export const createDeploymentReleaseService = ({
                 throw createAppError('DEPLOYMENT_CONFIGURATION_UNRESOLVED')
             }
             await deploymentSecretService.resolve(manifest.secrets)
-            const [active] = await db
-                .select({ id: deploymentRelease.id })
-                .from(deploymentRelease)
-                .innerJoin(deploymentManifest, eq(deploymentRelease.manifestId, deploymentManifest.id))
-                .where(and(eq(deploymentManifest.name, manifest.name), inArray(deploymentRelease.status, [...ACTIVE_RELEASE_STATUSES])))
-                .limit(1)
+            const active = await db.findActiveByManifestName(manifest.name, [...ACTIVE_RELEASE_STATUSES])
             if (active) {
                 throw createAppError('DEPLOYMENT_RELEASE_IN_PROGRESS')
             }
-            const [previous] = await db
-                .select({
-                    containerName: deploymentRelease.containerName,
-                    id: deploymentRelease.id,
-                    manifestId: deploymentRelease.manifestId,
-                })
-                .from(deploymentRelease)
-                .innerJoin(deploymentManifest, eq(deploymentRelease.manifestId, deploymentManifest.id))
-                .where(and(eq(deploymentManifest.name, manifest.name), eq(deploymentRelease.status, 'healthy')))
-                .orderBy(desc(deploymentRelease.createdAt))
-                .limit(1)
+            const previous = await db.findPreviousHealthy(manifest.name)
             const id = randomUUID()
             const timestamp = now()
             const versionSlug = manifest.version.toLowerCase().replace(/[^a-z0-9_.-]/g, '-')
             const containerName = `${manifest.name}-${versionSlug}-${id.slice(0, 8)}`.slice(0, 128)
-            await db.insert(deploymentRelease).values({
+            await db.insert({
                 containerName,
                 createdAt: timestamp,
                 createdBy: actorId,
                 id,
                 manifestId,
-                previousReleaseId: previous?.id,
+                previousReleaseId: previous?.id ?? null,
                 status: 'creating',
                 updatedAt: timestamp,
             })
             return get(id)
         },
         get,
-        list: async () =>
-            deploymentReleaseListSchema.parse((await db.select().from(deploymentRelease).orderBy(desc(deploymentRelease.createdAt))).map(toRelease)),
+        list: async () => deploymentReleaseListSchema.parse((await db.list()).map(toRelease)),
         prepareRollback,
         reconcileInterrupted,
         run: async (id: string) => {

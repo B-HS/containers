@@ -1,5 +1,4 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto'
-import { asc, eq, inArray } from 'drizzle-orm'
 import {
     deploymentSecretBindingSchema,
     deploymentSecretDeleteSchema,
@@ -8,17 +7,58 @@ import {
     deploymentSecretUpsertSchema,
     type DeploymentSecretBinding,
 } from '@containers/contracts/deployment-secret'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { deploymentManifest, deploymentSecret } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/error'
 
+type SecretRow = {
+    authenticationTag: string
+    ciphertext: string
+    createdAt: Date
+    createdBy: string
+    id: string
+    initializationVector: string
+    reference: string
+    updatedAt: Date
+    version: number
+}
+
+type ManifestSecretReference = {
+    id: string
+    secretsJson: string
+}
+
+type DeploymentSecretServiceDb = {
+    list: () => Promise<SecretRow[]>
+    findByReference: (reference: string) => Promise<SecretRow | undefined>
+    findById: (id: string) => Promise<SecretRow | undefined>
+    listManifestSecretReferences: () => Promise<ManifestSecretReference[]>
+    findByReferences: (references: string[]) => Promise<SecretRow[]>
+    insert: (record: {
+        authenticationTag: string
+        ciphertext: string
+        createdAt: Date
+        createdBy: string
+        id: string
+        initializationVector: string
+        reference: string
+        updatedAt: Date
+        version: number
+    }) => Promise<void>
+    update: (
+        id: string,
+        values: { authenticationTag: string; ciphertext: string; initializationVector: string; updatedAt: Date; version: number },
+    ) => Promise<void>
+    delete: (id: string) => Promise<void>
+}
+
 type DeploymentSecretServiceDependencies = {
-    db: ControlDatabase
+    db: DeploymentSecretServiceDb
     masterSecret: string
     now: () => Date
 }
 
-const toSecret = (record: typeof deploymentSecret.$inferSelect) =>
+export type { DeploymentSecretServiceDb }
+
+const toSecret = (record: SecretRow) =>
     deploymentSecretSchema.parse({
         createdAt: record.createdAt.toISOString(),
         id: record.id,
@@ -39,25 +79,24 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
             initializationVector: initializationVector.toString('base64url'),
         }
     }
-    const decrypt = (record: typeof deploymentSecret.$inferSelect) => {
+    const decrypt = (record: SecretRow) => {
         const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(record.initializationVector, 'base64url'))
         decipher.setAuthTag(Buffer.from(record.authenticationTag, 'base64url'))
         return Buffer.concat([decipher.update(Buffer.from(record.ciphertext, 'base64url')), decipher.final()]).toString('utf8')
     }
 
     return {
-        list: async () =>
-            deploymentSecretListSchema.parse((await db.select().from(deploymentSecret).orderBy(asc(deploymentSecret.reference))).map(toSecret)),
+        list: async () => deploymentSecretListSchema.parse((await db.list()).map(toSecret)),
         remove: async (id: string, input: unknown) => {
             const request = deploymentSecretDeleteSchema.parse(input)
-            const [record] = await db.select().from(deploymentSecret).where(eq(deploymentSecret.id, id)).limit(1)
+            const record = await db.findById(id)
             if (!record) {
                 throw createAppError('DEPLOYMENT_SECRET_NOT_FOUND')
             }
             if (request.confirmation !== record.reference) {
                 throw createAppError('CONFIRMATION_MISMATCH')
             }
-            const manifests = await db.select({ id: deploymentManifest.id, secretsJson: deploymentManifest.secretsJson }).from(deploymentManifest)
+            const manifests = await db.listManifestSecretReferences()
             const used = manifests.some((manifest) => {
                 const bindings = deploymentSecretBindingSchema.array().parse(JSON.parse(manifest.secretsJson))
                 return bindings.some((binding) => binding.reference === record.reference)
@@ -65,7 +104,7 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
             if (used) {
                 throw createAppError('DEPLOYMENT_SECRET_IN_USE')
             }
-            await db.delete(deploymentSecret).where(eq(deploymentSecret.id, id))
+            await db.delete(id)
             return toSecret(record)
         },
         resolve: async (bindings: DeploymentSecretBinding[]) => {
@@ -74,7 +113,7 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
                 return []
             }
             const references = [...new Set(parsedBindings.map((binding) => binding.reference))]
-            const records = await db.select().from(deploymentSecret).where(inArray(deploymentSecret.reference, references))
+            const records = await db.findByReferences(references)
             const recordsByReference = new Map(records.map((record) => [record.reference, record]))
             return parsedBindings.map((binding) => {
                 const record = recordsByReference.get(binding.reference)
@@ -90,15 +129,12 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
         },
         upsert: async (actorId: string, input: unknown) => {
             const request = deploymentSecretUpsertSchema.parse(input)
-            const [existing] = await db.select().from(deploymentSecret).where(eq(deploymentSecret.reference, request.reference)).limit(1)
+            const existing = await db.findByReference(request.reference)
             const encrypted = encrypt(request.value)
             const timestamp = now()
             if (existing) {
-                await db
-                    .update(deploymentSecret)
-                    .set({ ...encrypted, updatedAt: timestamp, version: existing.version + 1 })
-                    .where(eq(deploymentSecret.id, existing.id))
-                const [updated] = await db.select().from(deploymentSecret).where(eq(deploymentSecret.id, existing.id)).limit(1)
+                await db.update(existing.id, { ...encrypted, updatedAt: timestamp, version: existing.version + 1 })
+                const updated = await db.findById(existing.id)
                 if (!updated) {
                     throw createAppError('DEPLOYMENT_SECRET_NOT_FOUND')
                 }
@@ -113,7 +149,7 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
                 updatedAt: timestamp,
                 version: 1,
             }
-            await db.insert(deploymentSecret).values(record)
+            await db.insert(record)
             return toSecret(record)
         },
     }

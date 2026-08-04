@@ -1,21 +1,54 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import { apiKeyCreateResultSchema, apiKeyCreateSchema, apiKeyListSchema, type ApiKeyScope } from '@containers/contracts/api-key'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { apiKey, userRole } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/error'
 
+type ApiKeyRow = {
+    createdAt: Date
+    createdBy: string
+    expiresAt: Date | null
+    id: string
+    lastUsedAt: Date | null
+    name: string
+    prefix: string
+    revokedAt: Date | null
+    scopes: string
+    tokenHash: string
+}
+
+type ApiKeyAuthRecord = {
+    api_key: ApiKeyRow
+}
+
+type ApiKeyServiceDb = {
+    findByTokenHash: (tokenHash: string, now: Date) => Promise<ApiKeyAuthRecord | undefined>
+    insert: (record: {
+        createdAt: Date
+        createdBy: string
+        expiresAt: Date | null
+        id: string
+        name: string
+        prefix: string
+        scopes: string
+        tokenHash: string
+    }) => Promise<void>
+    list: () => Promise<ApiKeyRow[]>
+    touchLastUsed: (id: string, lastUsedAt: Date) => Promise<void>
+    revoke: (id: string, revokedAt: Date) => Promise<{ id: string } | undefined>
+}
+
 type ApiKeyServiceDependencies = {
-    db: ControlDatabase
+    db: ApiKeyServiceDb
     now: () => Date
     rateLimitPerMinute?: number
 }
+
+export type { ApiKeyServiceDb }
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 
 const parseScopes = (value: string) => JSON.parse(value) as unknown
 
-const toApiKey = (record: typeof apiKey.$inferSelect) => ({
+const toApiKey = (record: ApiKeyRow) => ({
     createdAt: record.createdAt.toISOString(),
     expiresAt: record.expiresAt?.toISOString() ?? null,
     id: record.id,
@@ -38,19 +71,7 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
             }
 
             const currentTime = now()
-            const [joined] = await db
-                .select()
-                .from(apiKey)
-                .innerJoin(userRole, eq(userRole.userId, apiKey.createdBy))
-                .where(
-                    and(
-                        eq(apiKey.tokenHash, hashToken(token)),
-                        isNull(apiKey.revokedAt),
-                        or(isNull(apiKey.expiresAt), gt(apiKey.expiresAt, currentTime)),
-                        isNull(userRole.disabledAt),
-                    ),
-                )
-                .limit(1)
+            const joined = await db.findByTokenHash(hashToken(token), currentTime)
             const record = joined?.api_key
             if (!record) {
                 throw createAppError('AUTH_REQUIRED')
@@ -79,7 +100,7 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
                 }
             }
 
-            await db.update(apiKey).set({ lastUsedAt: currentTime }).where(eq(apiKey.id, record.id))
+            await db.touchLastUsed(record.id, currentTime)
             return { actorId: record.createdBy, apiKeyId: record.id, authMethod: 'api-key' as const }
         },
         create: async (actorId: string, input: unknown) => {
@@ -97,18 +118,14 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
                 scopes: JSON.stringify(payload.scopes),
                 tokenHash: hashToken(token),
             }
-            await db.insert(apiKey).values(record)
+            await db.insert(record)
 
             return apiKeyCreateResultSchema.parse({ ...toApiKey({ ...record, lastUsedAt: null, revokedAt: null }), token })
         },
-        list: async () => apiKeyListSchema.parse((await db.select().from(apiKey).orderBy(desc(apiKey.createdAt))).map(toApiKey)),
+        list: async () => apiKeyListSchema.parse((await db.list()).map(toApiKey)),
         revoke: async (id: string) => {
-            const result = await db
-                .update(apiKey)
-                .set({ revokedAt: now() })
-                .where(and(eq(apiKey.id, id), isNull(apiKey.revokedAt)))
-                .returning({ id: apiKey.id })
-            if (result.length === 0) {
+            const result = await db.revoke(id, now())
+            if (result === undefined) {
                 throw createAppError('API_KEY_NOT_FOUND')
             }
             rateWindows.delete(id)

@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, inArray, lt, lte, sql } from 'drizzle-orm'
 import {
     operationJobEventListSchema,
     operationJobListQuerySchema,
@@ -8,11 +7,8 @@ import {
     type OperationJob,
     type OperationJobKind,
 } from '@containers/contracts/operation-job'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { operationJob, operationJobEvent } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/error'
 
-const ACTIVE_JOB_STATUSES = ['queued', 'running', 'cancelling'] as const
 const FINISHED_JOB_STATUSES = ['succeeded', 'failed', 'cancelled'] as const
 const DEFAULT_MAX_ATTEMPTS = 3
 const POLL_INTERVAL_MS = 1_000
@@ -69,14 +65,76 @@ type OperationJobEnqueueInput = {
     uniqueResourceKey?: string
 }
 
+type OperationJobRow = {
+    attempt: number
+    cancelRequestedAt: Date | null
+    createdAt: Date
+    createdBy: string | null
+    failureCode: string | null
+    finishedAt: Date | null
+    heartbeatAt: Date | null
+    id: string
+    kind: string
+    maxAttempts: number
+    payload: string
+    progressStep: string | null
+    resourceKey: string | null
+    result: string | null
+    scheduledAt: Date
+    startedAt: Date | null
+    status: string
+    updatedAt: Date
+}
+
+type OperationJobEventRow = {
+    createdAt: Date
+    detail: string | null
+    event: string
+    id: string
+    jobId: string
+}
+
+type OperationJobInsertRecord = {
+    attempt: number
+    createdAt: Date
+    createdBy: string | null
+    id: string
+    kind: string
+    maxAttempts: number
+    payload: string
+    resourceKey: string | null
+    scheduledAt: Date
+    status: string
+    updatedAt: Date
+}
+
+type OperationJobServiceDb = {
+    findById: (id: string) => Promise<OperationJobRow | undefined>
+    insert: (record: OperationJobInsertRecord) => Promise<void>
+    insertEvent: (record: OperationJobEventRow) => Promise<void>
+    listByKindsAndStatuses: (input: { kind?: string; status?: string; limit: number }) => Promise<OperationJobRow[]>
+    listEventsByJob: (jobId: string) => Promise<OperationJobEventRow[]>
+    findActiveByKind: (input: { kind: string; resourceKey: string | undefined }) => Promise<OperationJobRow | undefined>
+    claimNext: (now: Date) => Promise<OperationJobRow | undefined>
+    claim: (
+        id: string,
+        values: { attempt: number; heartbeatAt: Date; startedAt: Date; status: string; updatedAt: Date },
+    ) => Promise<OperationJobRow | undefined>
+    update: (id: string, values: Partial<Omit<OperationJobRow, 'id'>> & { updatedAt: Date }) => Promise<void>
+    listInterrupted: () => Promise<OperationJobRow[]>
+    deleteFinishedBefore: (threshold: Date, statuses: string[]) => Promise<void>
+}
+
 type OperationJobServiceDependencies = {
-    db: ControlDatabase
+    db: OperationJobServiceDb
     handlers: Partial<Record<OperationJobKind, OperationJobHandler>>
     now: () => Date
     onFinished?: (job: OperationJob) => Promise<void>
 }
 
-const toJob = (record: typeof operationJob.$inferSelect) =>
+export type { OperationJobServiceDb }
+
+const toJob = (record: OperationJobRow) =>
     operationJobSchema.parse({
         ...record,
         cancelRequestedAt: record.cancelRequestedAt?.toISOString() ?? null,
@@ -93,7 +151,7 @@ const toJob = (record: typeof operationJob.$inferSelect) =>
 
 export const createOperationJobService = ({ db, handlers, now, onFinished }: OperationJobServiceDependencies) => {
     const recordEvent = async (jobId: string, event: string, detail?: Record<string, unknown>) => {
-        await db.insert(operationJobEvent).values({
+        await db.insertEvent({
             createdAt: now(),
             detail: detail === undefined ? null : JSON.stringify(detail),
             event,
@@ -110,40 +168,28 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
     }
 
     const get = async (id: string) => {
-        const [record] = await db.select().from(operationJob).where(eq(operationJob.id, id)).limit(1)
+        const record = await db.findById(id)
         if (!record) {
             throw createAppError('JOB_NOT_FOUND')
         }
         return toJob(record)
     }
 
-    const update = async (id: string, values: Partial<typeof operationJob.$inferInsert>) => {
-        await db
-            .update(operationJob)
-            .set({ ...values, updatedAt: now() })
-            .where(eq(operationJob.id, id))
+    const update = async (id: string, values: Partial<Omit<OperationJobRow, 'id'>>) => {
+        await db.update(id, { ...values, updatedAt: now() })
         return get(id)
     }
 
     const enqueue = async (input: OperationJobEnqueueInput) => {
         if (input.unique || input.uniqueResourceKey !== undefined) {
-            const conditions = [
-                eq(operationJob.kind, input.kind),
-                input.uniqueResourceKey === undefined ? undefined : eq(operationJob.resourceKey, input.uniqueResourceKey),
-                inArray(operationJob.status, [...ACTIVE_JOB_STATUSES]),
-            ].filter((condition) => condition !== undefined)
-            const [active] = await db
-                .select()
-                .from(operationJob)
-                .where(and(...conditions))
-                .limit(1)
+            const active = await db.findActiveByKind({ kind: input.kind, resourceKey: input.uniqueResourceKey })
             if (active) {
                 return toJob(active)
             }
         }
         const timestamp = now()
         const id = randomUUID()
-        await db.insert(operationJob).values({
+        await db.insert({
             attempt: 0,
             createdAt: timestamp,
             createdBy: input.createdBy ?? null,
@@ -161,27 +207,18 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
     }
 
     const claimNext = async () => {
-        const [candidate] = await db
-            .select()
-            .from(operationJob)
-            .where(and(eq(operationJob.status, 'queued'), lte(operationJob.scheduledAt, now())))
-            .orderBy(asc(operationJob.scheduledAt), asc(operationJob.createdAt))
-            .limit(1)
+        const candidate = await db.claimNext(now())
         if (!candidate) {
             return null
         }
-        const claimed = await db
-            .update(operationJob)
-            .set({
-                attempt: candidate.attempt + 1,
-                heartbeatAt: now(),
-                startedAt: now(),
-                status: 'running',
-                updatedAt: now(),
-            })
-            .where(and(eq(operationJob.id, candidate.id), eq(operationJob.status, 'queued')))
-            .returning()
-        if (claimed.length === 0) {
+        const claimed = await db.claim(candidate.id, {
+            attempt: candidate.attempt + 1,
+            heartbeatAt: now(),
+            startedAt: now(),
+            status: 'running',
+            updatedAt: now(),
+        })
+        if (claimed === undefined) {
             return null
         }
         await recordEvent(candidate.id, 'started', { attempt: candidate.attempt + 1 })
@@ -305,10 +342,7 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
     }
 
     const reconcileInterrupted = async () => {
-        const interrupted = await db
-            .select()
-            .from(operationJob)
-            .where(inArray(operationJob.status, ['running', 'cancelling']))
+        const interrupted = await db.listInterrupted()
         for (const record of interrupted) {
             const job = toJob(record)
             if (job.status === 'cancelling') {
@@ -329,31 +363,24 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
 
     const cleanupFinished = async () => {
         const threshold = new Date(now().getTime() - FINISHED_RETENTION_MS)
-        await db.delete(operationJob).where(and(inArray(operationJob.status, [...FINISHED_JOB_STATUSES]), lt(operationJob.finishedAt, threshold)))
+        await db.deleteFinishedBefore(threshold, [...FINISHED_JOB_STATUSES])
     }
 
     const list = async (input: unknown) => {
         const query = operationJobListQuerySchema.parse(input)
-        const conditions = [
-            query.kind === undefined ? undefined : eq(operationJob.kind, query.kind),
-            query.status === undefined ? undefined : eq(operationJob.status, query.status),
-        ].filter((condition) => condition !== undefined)
-        const records = await db
-            .select()
-            .from(operationJob)
-            .where(conditions.length > 0 ? and(...conditions) : undefined)
-            .orderBy(desc(operationJob.createdAt))
-            .limit(query.limit)
+        const kind = query.kind
+        const status = query.status
+        const records = await db.listByKindsAndStatuses({
+            limit: query.limit,
+            ...(kind === undefined ? {} : { kind }),
+            ...(status === undefined ? {} : { status }),
+        })
         return operationJobListSchema.parse(records.map(toJob))
     }
 
     const listEvents = async (jobId: string) => {
         await get(jobId)
-        const records = await db
-            .select()
-            .from(operationJobEvent)
-            .where(eq(operationJobEvent.jobId, jobId))
-            .orderBy(sql`rowid`)
+        const records = await db.listEventsByJob(jobId)
         return operationJobEventListSchema.parse(
             records.map((record) => ({
                 ...record,

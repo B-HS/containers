@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { USER_ROLE, user, userRole } from '@containers/db-schema/schema'
+import { buildApiKeyServiceDb } from '../../../compose/compose-api-key'
 import { createApiKeyService } from './create-api-key-service'
 
 const temporaryDirectories: string[] = []
@@ -37,7 +38,7 @@ const createTestService = async () => {
         userId: actorId,
     })
 
-    return { ...database, actorId, service: createApiKeyService({ db: database.db, now: () => now }) }
+    return { ...database, actorId, service: createApiKeyService({ db: buildApiKeyServiceDb(database.db), now: () => now }) }
 }
 
 describe('API 키 서비스', () => {
@@ -66,7 +67,7 @@ describe('API 키 서비스', () => {
 
     test('API key별 minute rate limit을 적용합니다', async () => {
         const { actorId, db, sqlite } = await createTestService()
-        const service = createApiKeyService({ db, now: () => new Date('2026-07-31T00:00:00.000Z'), rateLimitPerMinute: 2 })
+        const service = createApiKeyService({ db: buildApiKeyServiceDb(db), now: () => new Date('2026-07-31T00:00:00.000Z'), rateLimitPerMinute: 2 })
         const result = await service.create(actorId, {
             expiresInDays: 30,
             name: 'Rate limited automation',

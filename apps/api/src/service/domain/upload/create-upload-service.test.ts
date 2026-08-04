@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm'
 import { ARTIFACT_MEDIA_TYPE } from '@containers/contracts/upload'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { artifact, uploadSession, user } from '@containers/db-schema/schema'
+import { buildUploadServiceDb } from '../../../compose/compose-upload'
 import { createUploadService } from './create-upload-service'
 
 const temporaryDirectories: string[] = []
@@ -39,7 +40,7 @@ const createTestService = async ({
     const service = createUploadService({
         artifactInspectionService: { inspect: async () => ({ entryCount: 3, uncompressedBytes: 20 }) },
         artifactRoot: join(directory, 'artifacts'),
-        db: database.db,
+        db: buildUploadServiceDb(database.db),
         diskHardAvailableBytes: 10,
         diskSoftAvailableBytes: 20,
         engineAgentClient: {

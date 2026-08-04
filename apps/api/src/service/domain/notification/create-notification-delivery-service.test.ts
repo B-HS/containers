@@ -5,6 +5,9 @@ import { join, resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { notificationDelivery, user } from '@containers/db-schema/schema'
+import { buildNotificationDestinationServiceDb } from '../../../compose/compose-notification'
+import { buildNotificationDeliveryServiceDb } from '../../../compose/compose-notification-delivery'
+import { buildOperationJobServiceDb } from '../../../compose/compose-operation-job'
 import { createAppError } from '../../../lib/error'
 import { createOperationJobService } from '../job/create-operation-job-service'
 import { createNotificationDeliveryService } from './create-notification-delivery-service'
@@ -45,13 +48,13 @@ const createTestContext = async (fetchStatus: number | ((url: string) => Promise
         return typeof fetchStatus === 'function' ? fetchStatus(url) : new Response('ok', { status: fetchStatus })
     }) as typeof fetch
     const destinationService = createNotificationDestinationService({
-        db: database.db,
+        db: buildNotificationDestinationServiceDb(database.db),
         masterSecret: 'test-master-secret-that-is-longer-than-thirty-two-characters',
         now: () => new Date(clock.value),
     })
     let jobService: ReturnType<typeof createOperationJobService> | null = null
     const deliveryService = createNotificationDeliveryService({
-        db: database.db,
+        db: buildNotificationDeliveryServiceDb(database.db),
         destinationService,
         enqueue: (input) => {
             if (jobService === null) {
@@ -62,7 +65,7 @@ const createTestContext = async (fetchStatus: number | ((url: string) => Promise
         now: () => new Date(clock.value),
     })
     jobService = createOperationJobService({
-        db: database.db,
+        db: buildOperationJobServiceDb(database.db),
         handlers: {
             'backup.create': async ({ job }) => {
                 if (job.payload.fail === true) {

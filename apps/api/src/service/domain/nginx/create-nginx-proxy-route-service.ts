@@ -1,23 +1,50 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, eq } from 'drizzle-orm'
 import {
     nginxProxyRouteInputSchema,
     nginxProxyRouteListSchema,
     nginxProxyRouteMutationResultSchema,
     type NginxProxyRoute,
 } from '@containers/contracts/nginx'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { nginxRoute } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 
+type NginxRouteRow = {
+    bodySizeMegabytes: number
+    createdAt: Date
+    enabled: boolean
+    hostname: string
+    id: string
+    path: string
+    pathMode: string
+    protocol: string
+    stripPrefix: boolean
+    targetContainer: string
+    targetPort: number
+    timeoutSeconds: number
+    updatedAt: Date
+}
+
+type NginxRouteIdRecord = {
+    id: string
+}
+
+type NginxProxyRouteServiceDb = {
+    list: () => Promise<NginxRouteRow[]>
+    findCollision: (hostname: string, path: string, pathMode: string) => Promise<NginxRouteIdRecord | undefined>
+    insert: (record: NginxRouteRow) => Promise<void>
+    update: (id: string, record: Omit<NginxRouteRow, 'createdAt' | 'id' | 'updatedAt'> & { updatedAt: Date }) => Promise<void>
+    delete: (id: string) => Promise<void>
+}
+
 type NginxProxyRouteServiceDependencies = {
-    db: ControlDatabase
+    db: NginxProxyRouteServiceDb
     engineAgentClient: Pick<EngineAgentClient, 'applyNginxConfig' | 'getNginxConfig'>
     now: () => Date
     protectedContainers: string[]
     protectedHostnames: string[]
 }
+
+export type { NginxProxyRouteServiceDb }
 
 const ROUTE_BLOCK_START = '# containers-routes:start'
 const ROUTE_BLOCK_END = '# containers-routes:end'
@@ -82,7 +109,7 @@ export const createNginxProxyRouteService = ({
     }
     const list = async () =>
         nginxProxyRouteListSchema.parse(
-            (await db.select().from(nginxRoute).orderBy(asc(nginxRoute.hostname), asc(nginxRoute.path))).map((route) => ({
+            (await db.list()).map((route) => ({
                 ...route,
                 createdAt: route.createdAt.toISOString(),
                 updatedAt: route.updatedAt.toISOString(),
@@ -104,12 +131,8 @@ export const createNginxProxyRouteService = ({
                 throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
             }
             assertProtectedTarget(payload)
-            const collision = await db
-                .select({ id: nginxRoute.id })
-                .from(nginxRoute)
-                .where(and(eq(nginxRoute.hostname, payload.hostname), eq(nginxRoute.path, payload.path), eq(nginxRoute.pathMode, payload.pathMode)))
-                .limit(1)
-            if (collision.length > 0) {
+            const collision = await db.findCollision(payload.hostname, payload.path, payload.pathMode)
+            if (collision !== undefined) {
                 throw createAppError('NGINX_ROUTE_COLLISION')
             }
 
@@ -121,7 +144,7 @@ export const createNginxProxyRouteService = ({
                 updatedAt: timestamp.toISOString(),
             })
             const result = await applyRoutes([...(await list()), route])
-            await db.insert(nginxRoute).values({
+            await db.insert({
                 ...payload,
                 createdAt: timestamp,
                 id: route.id,
@@ -139,7 +162,7 @@ export const createNginxProxyRouteService = ({
                 throw createAppError('CONFIRMATION_MISMATCH')
             }
             const result = await applyRoutes((await list()).filter((candidate) => candidate.id !== id))
-            await db.delete(nginxRoute).where(eq(nginxRoute.id, id))
+            await db.delete(id)
             return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
         },
         upsert: async (input: unknown) => {
@@ -161,12 +184,9 @@ export const createNginxProxyRouteService = ({
             const routes = [...(await list()).filter((candidate) => candidate.id !== existing?.id), route]
             const result = await applyRoutes(routes)
             if (existing) {
-                await db
-                    .update(nginxRoute)
-                    .set({ ...payload, updatedAt: timestamp })
-                    .where(eq(nginxRoute.id, existing.id))
+                await db.update(existing.id, { ...payload, updatedAt: timestamp })
             } else {
-                await db.insert(nginxRoute).values({ ...payload, createdAt: timestamp, id: route.id, updatedAt: timestamp })
+                await db.insert({ ...payload, createdAt: timestamp, id: route.id, updatedAt: timestamp })
             }
             return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
         },

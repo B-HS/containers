@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { notificationDestination, user } from '@containers/db-schema/schema'
+import { buildNotificationDestinationServiceDb } from '../../../compose/compose-notification'
 import { createNotificationDestinationService } from './create-notification-destination-service'
 
 const temporaryDirectories: string[] = []
@@ -32,7 +33,7 @@ const createTestContext = async () => {
         updatedAt: timestamp,
     })
     const service = createNotificationDestinationService({
-        db: database.db,
+        db: buildNotificationDestinationServiceDb(database.db),
         masterSecret: 'test-master-secret-that-is-longer-than-thirty-two-characters',
         now: () => timestamp,
     })
@@ -86,7 +87,7 @@ describe('notification destination service', () => {
         const { actorId, db, service, sqlite } = await createTestContext()
         const created = await service.upsert(actorId, upsertInput())
         const brokenService = createNotificationDestinationService({
-            db,
+            db: buildNotificationDestinationServiceDb(db),
             masterSecret: 'another-master-secret-that-is-longer-than-thirty-two',
             now: () => new Date('2026-08-01T00:00:00.000Z'),
         })

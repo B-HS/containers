@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { USER_ROLE, userRole } from '@containers/db-schema/schema'
 import { createAuth } from '../../../auth/create-auth'
+import { buildAuthServiceDb } from '../../../compose/compose-auth'
 import { createAuthService } from './create-auth-service'
 
 const temporaryDirectories: string[] = []
@@ -29,7 +30,7 @@ const createTestService = async () => {
     })
     const service = createAuthService({
         auth,
-        db: database.db,
+        db: buildAuthServiceDb(database.db),
         invitationBaseUrl: 'http://localhost:8080',
         now: () => new Date('2026-07-31T00:00:00.000Z'),
     })

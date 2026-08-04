@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { operationJob } from '@containers/db-schema/schema'
+import { buildOperationJobServiceDb } from '../../../compose/compose-operation-job'
 import { createAppError } from '../../../lib/error'
 import { createJobError, createOperationJobService, type OperationJobHandler } from './create-operation-job-service'
 
@@ -23,7 +24,7 @@ const createTestContext = async (handler: OperationJobHandler) => {
     })
     const clock = { value: Date.parse('2026-08-01T00:00:00.000Z') }
     const service = createOperationJobService({
-        db: database.db,
+        db: buildOperationJobServiceDb(database.db),
         handlers: { 'backup.create': handler },
         now: () => new Date(clock.value),
     })
@@ -177,7 +178,7 @@ describe('operation job 서비스', () => {
         const clock = { value: Date.parse('2026-08-01T00:00:00.000Z') }
         const finishedKinds: string[] = []
         const service = createOperationJobService({
-            db: database.db,
+            db: buildOperationJobServiceDb(database.db),
             handlers: {
                 'backup.create': async ({ job }) => {
                     if (job.payload.fail === true) {

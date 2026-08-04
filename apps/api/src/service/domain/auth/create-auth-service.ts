@@ -1,11 +1,16 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { and, asc, count, eq, gt, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { managedUserListSchema, managedUserSchema, managedUserUpdateSchema } from '@containers/contracts/user-management'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { invitation, apiKey as apiKeyTable, session as sessionTable, USER_ROLE, user, userRole } from '@containers/db-schema/schema'
 import type { Auth } from '../../../auth/create-auth'
 import { createAppError } from '../../../lib/error'
+
+const USER_ROLE = {
+    ADMIN: 'admin',
+    AUDITOR: 'auditor',
+    OPERATOR: 'operator',
+    OWNER: 'owner',
+    VIEWER: 'viewer',
+} as const
 
 const ownerBootstrapSchema = z.object({
     email: z.email(),
@@ -25,12 +30,65 @@ const invitationAcceptSchema = z.object({
     token: z.string().min(32).max(256),
 })
 
+type RoleRecord = {
+    disabledAt: Date | null
+    role: string
+    updatedAt: Date
+    userId: string
+}
+
+type InvitationRecord = {
+    createdAt: Date
+    createdBy: string
+    email: string
+    expiresAt: Date
+    id: string
+    role: string
+    tokenHash: string
+}
+
+type UserRow = {
+    createdAt: Date
+    email: string
+    id: string
+    name: string
+}
+
+type UserWithRole = UserRow & { disabledAt: Date | null; role: string; updatedAt: Date }
+
+type AuthServiceDb = {
+    countUsers: () => Promise<number>
+    findRoleByUser: (userId: string) => Promise<RoleRecord | undefined>
+    findInvitationByTokenHash: (tokenHash: string, now: Date) => Promise<InvitationRecord | undefined>
+    findUserByEmail: (email: string) => Promise<{ disabledAt: Date | null } | undefined>
+    findUserWithRole: (userId: string) => Promise<UserWithRole | undefined>
+    listUsersWithRole: () => Promise<UserWithRole[]>
+    insertInvitation: (record: {
+        createdAt: Date
+        createdBy: string
+        email: string
+        expiresAt: Date
+        id: string
+        role: string
+        tokenHash: string
+    }) => Promise<void>
+    insertRole: (record: { createdAt: Date; role: string; updatedAt: Date; userId: string }) => Promise<void>
+    acceptInvitation: (record: { acceptedAt: Date; role: string; userId: string }, invitationId: string) => Promise<void>
+    updateUser: (
+        values: { disabledAt: Date | null; role: string; updatedAt: Date; userId: string },
+        deletedSessionUserId: string | null,
+        revokedApiKeyOwnerId: string | null,
+    ) => Promise<void>
+}
+
 type AuthServiceDependencies = {
     auth: Auth
-    db: ControlDatabase
+    db: AuthServiceDb
     invitationBaseUrl: string
     now: () => Date
 }
+
+export type { AuthServiceDb }
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 
@@ -45,7 +103,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             return undefined
         }
 
-        const [roleRecord] = await db.select().from(userRole).where(eq(userRole.userId, session.user.id)).limit(1)
+        const roleRecord = await db.findRoleByUser(session.user.id)
 
         if (!roleRecord || roleRecord.disabledAt) {
             return undefined
@@ -89,18 +147,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             try {
                 const payload = invitationAcceptSchema.parse(input)
                 const tokenHash = hashToken(payload.token)
-                const [record] = await db
-                    .select()
-                    .from(invitation)
-                    .where(
-                        and(
-                            eq(invitation.tokenHash, tokenHash),
-                            gt(invitation.expiresAt, now()),
-                            isNull(invitation.acceptedAt),
-                            isNull(invitation.revokedAt),
-                        ),
-                    )
-                    .limit(1)
+                const record = await db.findInvitationByTokenHash(tokenHash, now())
 
                 if (!record) {
                     throw createAppError('INVITATION_INVALID')
@@ -111,15 +158,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
                 })
                 const acceptedAt = now()
 
-                await db.transaction(async (transaction) => {
-                    await transaction.insert(userRole).values({
-                        createdAt: acceptedAt,
-                        role: record.role,
-                        updatedAt: acceptedAt,
-                        userId: result.user.id,
-                    })
-                    await transaction.update(invitation).set({ acceptedAt }).where(eq(invitation.id, record.id))
-                })
+                await db.acceptInvitation({ acceptedAt, role: record.role, userId: result.user.id }, record.id)
 
                 return result
             } finally {
@@ -135,16 +174,16 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
 
             try {
                 const payload = ownerBootstrapSchema.parse(input)
-                const [existing] = await db.select({ value: count() }).from(user)
+                const userCount = await db.countUsers()
 
-                if ((existing?.value ?? 0) > 0) {
+                if (userCount > 0) {
                     throw createAppError('BOOTSTRAP_COMPLETE')
                 }
 
                 const result = await auth.api.signUpEmail({ body: payload })
                 const createdAt = now()
 
-                await db.insert(userRole).values({
+                await db.insertRole({
                     createdAt,
                     role: USER_ROLE.OWNER,
                     updatedAt: createdAt,
@@ -164,7 +203,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             const expiresAt = new Date(createdAt.getTime() + payload.expiresInHours * 60 * 60 * 1_000)
 
             const id = randomUUID()
-            await db.insert(invitation).values({
+            await db.insertInvitation({
                 createdAt,
                 createdBy: session.user.id,
                 email: payload.email,
@@ -184,35 +223,18 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             }
         },
         getBootstrapStatus: async () => {
-            const [existing] = await db.select({ value: count() }).from(user)
-            return { required: (existing?.value ?? 0) === 0 }
+            const userCount = await db.countUsers()
+            return { required: userCount === 0 }
         },
         getSession,
         isEmailDisabled: async (emailInput: unknown) => {
             const email = z.email().parse(emailInput)
-            const [record] = await db
-                .select({ disabledAt: userRole.disabledAt })
-                .from(user)
-                .innerJoin(userRole, eq(user.id, userRole.userId))
-                .where(eq(user.email, email))
-                .limit(1)
+            const record = await db.findUserByEmail(email)
             return Boolean(record?.disabledAt)
         },
         listUsers: async (headers: Headers) => {
             await requireRole(headers, [USER_ROLE.OWNER])
-            const records = await db
-                .select({
-                    createdAt: user.createdAt,
-                    disabledAt: userRole.disabledAt,
-                    email: user.email,
-                    id: user.id,
-                    name: user.name,
-                    role: userRole.role,
-                    updatedAt: userRole.updatedAt,
-                })
-                .from(user)
-                .innerJoin(userRole, eq(user.id, userRole.userId))
-                .orderBy(asc(user.createdAt))
+            const records = await db.listUsersWithRole()
 
             return managedUserListSchema.parse(
                 records.map((record) => ({
@@ -228,19 +250,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
         updateUser: async (headers: Headers, targetUserId: string, input: unknown) => {
             const actor = await requireRecentRole(headers, [USER_ROLE.OWNER], 15 * 60 * 1_000)
             const payload = managedUserUpdateSchema.parse(input)
-            const [target] = await db
-                .select({
-                    createdAt: user.createdAt,
-                    disabledAt: userRole.disabledAt,
-                    email: user.email,
-                    id: user.id,
-                    name: user.name,
-                    role: userRole.role,
-                })
-                .from(user)
-                .innerJoin(userRole, eq(user.id, userRole.userId))
-                .where(eq(user.id, targetUserId))
-                .limit(1)
+            const target = await db.findUserWithRole(targetUserId)
 
             if (!target) {
                 throw createAppError('USER_NOT_FOUND')
@@ -253,15 +263,11 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             const disabledAt = payload.disabled === undefined ? target.disabledAt : payload.disabled ? updatedAt : null
             const role = payload.role ?? target.role
             const roleChanged = role !== target.role
-            await db.transaction(async (transaction) => {
-                await transaction.update(userRole).set({ disabledAt, role, updatedAt }).where(eq(userRole.userId, target.id))
-                if (payload.disabled) {
-                    await transaction.delete(sessionTable).where(eq(sessionTable.userId, target.id))
-                }
-                if (payload.disabled || roleChanged) {
-                    await transaction.update(apiKeyTable).set({ revokedAt: updatedAt }).where(eq(apiKeyTable.createdBy, target.id))
-                }
-            })
+            await db.updateUser(
+                { disabledAt, role, updatedAt, userId: target.id },
+                payload.disabled ? target.id : null,
+                payload.disabled || roleChanged ? target.id : null,
+            )
 
             return managedUserSchema.parse({
                 ...target,

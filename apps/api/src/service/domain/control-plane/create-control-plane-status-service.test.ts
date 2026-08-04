@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { operationJob, user } from '@containers/db-schema/schema'
+import { buildControlPlaneStatusServiceDb } from '../../../compose/compose-control-plane'
 import { createControlPlaneStatusService } from './create-control-plane-status-service'
 
 const temporaryDirectories: string[] = []
@@ -23,7 +24,7 @@ const createTestContext = async () => {
     const timestamp = new Date('2026-08-01T00:00:00.000Z')
     const service = createControlPlaneStatusService({
         backupService: { list: async () => [] },
-        db: database.db,
+        db: buildControlPlaneStatusServiceDb(database.db),
         maintenanceService: { getStatus: () => ({ enabled: false, reason: null, startedAt: null }) },
         migrationsFolder: resolve(process.cwd(), 'packages/db-schema/drizzle'),
         sqlite: database.sqlite,
@@ -85,7 +86,7 @@ describe('control plane status service', () => {
         sqlite.query('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)').run(firstHash, firstWhen)
         const statusService = createControlPlaneStatusService({
             backupService: { list: async () => [] },
-            db,
+            db: buildControlPlaneStatusServiceDb(db),
             maintenanceService: { getStatus: () => ({ enabled: false, reason: null, startedAt: null }) },
             migrationsFolder,
             sqlite,
@@ -134,7 +135,7 @@ describe('control plane status service', () => {
                     },
                 ],
             },
-            db,
+            db: buildControlPlaneStatusServiceDb(db),
             maintenanceService: { getStatus: () => ({ enabled: false, reason: null, startedAt: null }) },
             migrationsFolder: resolve(process.cwd(), 'packages/db-schema/drizzle'),
             sqlite,

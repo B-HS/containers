@@ -1,18 +1,39 @@
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq } from 'drizzle-orm'
 import { deploymentSchema } from '@containers/contracts/upload'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { artifact, deployment } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 
 const DEPLOYMENT_REUSE_STATUS_PRIORITY = ['loaded', 'loading', 'failed'] as const
 
+type ArtifactRecord = {
+    id: string
+    status: string
+    storagePath: string
+}
+
+type DeploymentRecord = {
+    artifactId: string
+    createdAt: Date
+    id: string
+    status: string
+    updatedAt: Date
+}
+
+type DeploymentServiceDb = {
+    findArtifact: (artifactId: string) => Promise<ArtifactRecord | undefined>
+    findLoadedDeployment: (artifactId: string) => Promise<DeploymentRecord | undefined>
+    listDeploymentsByArtifact: (artifactId: string) => Promise<DeploymentRecord[]>
+    insert: (record: { artifactId: string; createdAt: Date; createdBy: string; id: string; status: string; updatedAt: Date }) => Promise<void>
+    setStatus: (id: string, status: string, updatedAt: Date) => Promise<void>
+}
+
 type DeploymentServiceDependencies = {
-    db: ControlDatabase
+    db: DeploymentServiceDb
     engineAgentClient: Pick<EngineAgentClient, 'loadImage'>
     now: () => Date
 }
+
+export type { DeploymentServiceDb }
 
 const toDeployment = (record: { artifactId: string; createdAt: Date; id: string; status: string; updatedAt: Date }, messages: string[] = []) =>
     deploymentSchema.parse({
@@ -26,25 +47,20 @@ const toDeployment = (record: { artifactId: string; createdAt: Date; id: string;
 
 export const createDeploymentService = ({ db, engineAgentClient, now }: DeploymentServiceDependencies) => {
     const getLoaded = async (artifactId: string) => {
-        const [readyArtifact] = await db.select().from(artifact).where(eq(artifact.id, artifactId)).limit(1)
+        const readyArtifact = await db.findArtifact(artifactId)
         if (!readyArtifact || readyArtifact.status !== 'ready') {
             throw createAppError('ARTIFACT_NOT_READY')
         }
-        const [record] = await db
-            .select()
-            .from(deployment)
-            .where(and(eq(deployment.artifactId, artifactId), eq(deployment.status, 'loaded')))
-            .orderBy(desc(deployment.createdAt))
-            .limit(1)
+        const record = await db.findLoadedDeployment(artifactId)
         return record ? toDeployment(record) : null
     }
 
     const loadArtifact = async (artifactId: string, actorId: string) => {
-        const [readyArtifact] = await db.select().from(artifact).where(eq(artifact.id, artifactId)).limit(1)
+        const readyArtifact = await db.findArtifact(artifactId)
         if (!readyArtifact || readyArtifact.status !== 'ready') {
             throw createAppError('ARTIFACT_NOT_READY')
         }
-        const records = await db.select().from(deployment).where(eq(deployment.artifactId, artifactId)).orderBy(desc(deployment.createdAt))
+        const records = await db.listDeploymentsByArtifact(artifactId)
         const existing = DEPLOYMENT_REUSE_STATUS_PRIORITY.reduce<(typeof records)[number] | undefined>(
             (selected, status) => selected ?? records.find((record) => record.status === status),
             undefined,
@@ -55,9 +71,9 @@ export const createDeploymentService = ({ db, engineAgentClient, now }: Deployme
         const id = existing?.id ?? randomUUID()
         const createdAt = existing?.createdAt ?? now()
         if (existing) {
-            await db.update(deployment).set({ status: 'loading', updatedAt: now() }).where(eq(deployment.id, id))
+            await db.setStatus(id, 'loading', now())
         } else {
-            await db.insert(deployment).values({
+            await db.insert({
                 artifactId,
                 createdAt,
                 createdBy: actorId,
@@ -69,10 +85,10 @@ export const createDeploymentService = ({ db, engineAgentClient, now }: Deployme
         try {
             const result = await engineAgentClient.loadImage({ artifactPath: readyArtifact.storagePath })
             const updatedAt = now()
-            await db.update(deployment).set({ status: 'loaded', updatedAt }).where(eq(deployment.id, id))
+            await db.setStatus(id, 'loaded', updatedAt)
             return toDeployment({ artifactId, createdAt, id, status: 'loaded', updatedAt }, result.messages)
         } catch (error) {
-            await db.update(deployment).set({ status: 'failed', updatedAt: now() }).where(eq(deployment.id, id))
+            await db.setStatus(id, 'failed', now())
             throw error
         }
     }

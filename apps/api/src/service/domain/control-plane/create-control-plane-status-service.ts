@@ -2,28 +2,31 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Database } from 'bun:sqlite'
-import { inArray, sql } from 'drizzle-orm'
 import {
     CONTROL_PLANE_VERSION,
     controlPlaneMigrationSchema,
     controlPlaneStatusSchema,
     type ControlPlaneMigration,
 } from '@containers/contracts/control-plane'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { operationJob } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/error'
 import type { BackupService } from '../backup/create-backup-service'
 import type { MaintenanceService } from '../maintenance/create-maintenance-service'
 
 const ACTIVE_JOB_STATUSES = ['queued', 'running', 'cancelling'] as const
 
+type ControlPlaneStatusServiceDb = {
+    countActiveJobs: (statuses: string[]) => Promise<number>
+}
+
 type ControlPlaneStatusServiceDependencies = {
     backupService: Pick<BackupService, 'list'>
-    db: ControlDatabase
+    db: ControlPlaneStatusServiceDb
     maintenanceService: Pick<MaintenanceService, 'getStatus'>
     migrationsFolder: string
     sqlite: Database
 }
+
+export type { ControlPlaneStatusServiceDb }
 
 type JournalEntry = {
     idx: number
@@ -86,13 +89,10 @@ export const createControlPlaneStatusService = ({
     const getStatus = async () => {
         const [migrations, backups] = await Promise.all([resolveMigrations(), backupService.list()])
         const integrity = (await sqlite.query('PRAGMA integrity_check').get()) as { integrity_check: string }
-        const [activeJob] = await db
-            .select({ count: sql<number>`count(*)` })
-            .from(operationJob)
-            .where(inArray(operationJob.status, [...ACTIVE_JOB_STATUSES]))
+        const activeJobCount = await db.countActiveJobs([...ACTIVE_JOB_STATUSES])
         const maintenance = maintenanceService.getStatus()
         return controlPlaneStatusSchema.parse({
-            activeJobCount: activeJob?.count ?? 0,
+            activeJobCount,
             databaseIntegrity: {
                 control: integrity?.integrity_check ?? 'unavailable',
             },

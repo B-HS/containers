@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { deploymentManifest, user } from '@containers/db-schema/schema'
+import { buildDeploymentManifestServiceDb } from '../../../compose/compose-deployment-manifest'
 import { createDeploymentManifestService } from './create-deployment-manifest-service'
 
 const temporaryDirectories: string[] = []
@@ -31,7 +32,7 @@ const createTestContext = async () => {
         updatedAt: timestamp,
     })
     const service = createDeploymentManifestService({
-        db: database.db,
+        db: buildDeploymentManifestServiceDb(database.db),
         engineAgentClient: {
             getImages: async () => [
                 {

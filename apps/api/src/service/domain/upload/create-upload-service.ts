@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdir, open, readdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { and, count, eq, gt, lt, ne } from 'drizzle-orm'
 import {
     artifactListSchema,
     artifactSchema,
@@ -10,8 +9,6 @@ import {
     uploadSessionCreateSchema,
     uploadSessionSchema,
 } from '@containers/contracts/upload'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { artifact, uploadChunk, uploadSession } from '@containers/db-schema/schema'
 import type { ArtifactInspectionService } from './create-artifact-inspection-service'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
@@ -19,16 +16,76 @@ import { createAppError } from '../../../lib/error'
 const MAX_CHUNK_BYTES = 67_108_864
 const SESSION_TTL_MS = 24 * 60 * 60 * 1_000
 
+type UploadSessionRow = {
+    createdAt: Date
+    createdBy: string
+    expectedSha256: string
+    expectedSizeBytes: number
+    expiresAt: Date
+    fileName: string
+    id: string
+    idempotencyKey: string
+    mediaType: string
+    receivedBytes: number
+    status: string
+    temporaryPath: string
+    updatedAt: Date
+}
+
+type ArtifactRow = {
+    createdAt: Date
+    createdBy: string
+    fileName: string
+    id: string
+    mediaType: string
+    sha256: string
+    sizeBytes: number
+    status: string
+    storagePath: string
+}
+
+type UploadServiceDb = {
+    findOwnedSession: (id: string, createdBy: string) => Promise<UploadSessionRow | undefined>
+    findBySessionWithFilters: (id: string, createdBy: string, status: string, expiresBefore: Date) => Promise<UploadSessionRow | undefined>
+    findByActorIdempotency: (createdBy: string, idempotencyKey: string) => Promise<UploadSessionRow | undefined>
+    countActiveSessions: (createdBy: string, status: string, expiresBefore: Date) => Promise<number>
+    findArtifactBySha: (sha256: string) => Promise<ArtifactRow | undefined>
+    listStorageSizes: () => Promise<Array<{ sizeBytes: number }>>
+    listActiveSessionReservations: (status: string, expiresBefore: Date) => Promise<Array<{ expectedSizeBytes: number; receivedBytes: number }>>
+    insertSession: (record: UploadSessionRow) => Promise<void>
+    deleteSession: (id: string) => Promise<void>
+    appendChunk: (record: {
+        createdAt: Date
+        id: string
+        offsetBytes: number
+        sessionId: string
+        sha256: string
+        sizeBytes: number
+        receivedBytes: number
+        updatedAt: Date
+    }) => Promise<void>
+    updateSessionStatus: (id: string, status: string, updatedAt: Date) => Promise<void>
+    finalizeArtifact: (artifact: ArtifactRow, sessionId: string) => Promise<void>
+    listExpiredSessions: (expiresBefore: Date, statuses: string[]) => Promise<UploadSessionRow[]>
+    listAllSessionPaths: () => Promise<Array<{ temporaryPath: string }>>
+    listArtifactPaths: () => Promise<Array<{ storagePath: string }>>
+    findArtifactByStoragePath: (storagePath: string) => Promise<ArtifactRow | undefined>
+    findSessionByTemporaryPath: (temporaryPath: string) => Promise<UploadSessionRow | undefined>
+    listArtifacts: () => Promise<ArtifactRow[]>
+}
+
 type UploadServiceDependencies = {
     artifactInspectionService: Pick<ArtifactInspectionService, 'inspect'>
     artifactRoot: string
-    db: ControlDatabase
+    db: UploadServiceDb
     diskHardAvailableBytes: number
     diskSoftAvailableBytes: number
     engineAgentClient: Pick<EngineAgentClient, 'getOverview'>
     now: () => Date
     totalQuotaBytes: number
 }
+
+export type { UploadServiceDb }
 
 const hashFile = (filePath: string) =>
     new Promise<string>((resolve, reject) => {
@@ -82,11 +139,8 @@ export const createUploadService = ({
     }
     const reserveStorage = async (additionalBytes: number) => {
         const [artifacts, activeSessions, availableBytes] = await Promise.all([
-            db.select({ sizeBytes: artifact.sizeBytes }).from(artifact),
-            db
-                .select({ expectedSizeBytes: uploadSession.expectedSizeBytes, receivedBytes: uploadSession.receivedBytes })
-                .from(uploadSession)
-                .where(and(eq(uploadSession.status, 'uploading'), gt(uploadSession.expiresAt, now()))),
+            db.listStorageSizes(),
+            db.listActiveSessionReservations('uploading', now()),
             getAvailableBytes(),
         ])
         const storedBytes = artifacts.reduce((total, item) => total + item.sizeBytes, 0)
@@ -107,18 +161,7 @@ export const createUploadService = ({
 
     return {
         appendChunk: async (actorId: string, sessionId: string, offsetBytes: number, chunkSha256: string, bytes: Uint8Array) => {
-            const [session] = await db
-                .select()
-                .from(uploadSession)
-                .where(
-                    and(
-                        eq(uploadSession.id, sessionId),
-                        eq(uploadSession.createdBy, actorId),
-                        eq(uploadSession.status, 'uploading'),
-                        gt(uploadSession.expiresAt, now()),
-                    ),
-                )
-                .limit(1)
+            const session = await db.findBySessionWithFilters(sessionId, actorId, 'uploading', now())
 
             if (!session) {
                 throw createAppError('UPLOAD_SESSION_INVALID')
@@ -146,27 +189,22 @@ export const createUploadService = ({
             const receivedBytes = offsetBytes + bytes.byteLength
             const createdAt = now()
 
-            await db.transaction(async (transaction) => {
-                await transaction.insert(uploadChunk).values({
-                    createdAt,
-                    id: randomUUID(),
-                    offsetBytes,
-                    sessionId,
-                    sha256: chunkSha256,
-                    sizeBytes: bytes.byteLength,
-                })
-                await transaction.update(uploadSession).set({ receivedBytes, updatedAt: createdAt }).where(eq(uploadSession.id, sessionId))
+            await db.appendChunk({
+                createdAt,
+                id: randomUUID(),
+                offsetBytes,
+                receivedBytes,
+                sessionId,
+                sha256: chunkSha256,
+                sizeBytes: bytes.byteLength,
+                updatedAt: createdAt,
             })
 
             return uploadChunkResultSchema.parse({ receivedBytes, sessionId })
         },
         createSession: async (actorId: string, idempotencyKey: string, input: unknown) => {
             const payload = uploadSessionCreateSchema.parse(input)
-            const [existing] = await db
-                .select()
-                .from(uploadSession)
-                .where(and(eq(uploadSession.createdBy, actorId), eq(uploadSession.idempotencyKey, idempotencyKey)))
-                .limit(1)
+            const existing = await db.findByActorIdempotency(actorId, idempotencyKey)
 
             if (existing) {
                 if (
@@ -181,12 +219,9 @@ export const createUploadService = ({
                 return toUploadSession(existing)
             }
 
-            const [active] = await db
-                .select({ value: count() })
-                .from(uploadSession)
-                .where(and(eq(uploadSession.createdBy, actorId), eq(uploadSession.status, 'uploading'), gt(uploadSession.expiresAt, now())))
+            const activeCount = await db.countActiveSessions(actorId, 'uploading', now())
 
-            if ((active?.value ?? 0) >= 2) {
+            if (activeCount >= 2) {
                 throw createAppError('UPLOAD_CONCURRENCY_LIMIT')
             }
             const warnings = await reserveStorage(payload.expectedSizeBytes)
@@ -198,7 +233,7 @@ export const createUploadService = ({
             await mkdir(quarantineDirectory, { recursive: true })
             const temporaryPath = join(quarantineDirectory, `${id}.part`)
 
-            await db.insert(uploadSession).values({
+            await db.insertSession({
                 createdAt,
                 createdBy: actorId,
                 expectedSha256: payload.expectedSha256,
@@ -208,6 +243,7 @@ export const createUploadService = ({
                 id,
                 idempotencyKey,
                 mediaType: payload.mediaType,
+                receivedBytes: 0,
                 status: 'uploading',
                 temporaryPath,
                 updatedAt: createdAt,
@@ -217,28 +253,21 @@ export const createUploadService = ({
                 const file = await open(temporaryPath, 'wx', 0o600)
                 await file.close()
             } catch (error) {
-                await db
-                    .delete(uploadSession)
-                    .where(eq(uploadSession.id, id))
-                    .catch(() => undefined)
+                await db.deleteSession(id).catch(() => undefined)
                 throw error
             }
 
             return toUploadSession({ expiresAt, id, receivedBytes: 0, status: 'uploading' }, [...warnings])
         },
         finalizeSession: async (actorId: string, sessionId: string) => {
-            const [session] = await db
-                .select()
-                .from(uploadSession)
-                .where(and(eq(uploadSession.id, sessionId), eq(uploadSession.createdBy, actorId)))
-                .limit(1)
+            const session = await db.findOwnedSession(sessionId, actorId)
 
             if (!session) {
                 throw createAppError('UPLOAD_SESSION_INVALID')
             }
 
             if (session.status !== 'uploading') {
-                const [existing] = await db.select().from(artifact).where(eq(artifact.sha256, session.expectedSha256)).limit(1)
+                const existing = await db.findArtifactBySha(session.expectedSha256)
                 if (!existing) {
                     throw createAppError('UPLOAD_SESSION_INVALID')
                 }
@@ -256,18 +285,18 @@ export const createUploadService = ({
             const id = randomUUID()
             const readyDirectory = join(artifactRoot, 'ready')
 
-            const [duplicate] = await db.select().from(artifact).where(eq(artifact.sha256, session.expectedSha256)).limit(1)
+            const duplicate = await db.findArtifactBySha(session.expectedSha256)
             if (duplicate) {
                 await rm(session.temporaryPath, { force: true }).catch(() => undefined)
-                await db.update(uploadSession).set({ status: 'completed', updatedAt: createdAt }).where(eq(uploadSession.id, sessionId))
+                await db.updateSessionStatus(sessionId, 'completed', createdAt)
                 return toArtifact(duplicate)
             }
 
             await mkdir(readyDirectory, { recursive: true })
             const storagePath = join(readyDirectory, `${id}.archive`)
 
-            await db.transaction(async (transaction) => {
-                await transaction.insert(artifact).values({
+            await db.finalizeArtifact(
+                {
                     createdAt,
                     createdBy: actorId,
                     fileName: session.fileName,
@@ -277,9 +306,9 @@ export const createUploadService = ({
                     sizeBytes: session.expectedSizeBytes,
                     status: 'ready',
                     storagePath,
-                })
-                await transaction.update(uploadSession).set({ status: 'completed', updatedAt: createdAt }).where(eq(uploadSession.id, sessionId))
-            })
+                },
+                sessionId,
+            )
             await rename(session.temporaryPath, storagePath)
 
             return toArtifact({
@@ -292,31 +321,20 @@ export const createUploadService = ({
             })
         },
         getOwnedSession: async (actorId: string, sessionId: string) => {
-            const [session] = await db
-                .select()
-                .from(uploadSession)
-                .where(and(eq(uploadSession.id, sessionId), eq(uploadSession.createdBy, actorId)))
-                .limit(1)
+            const session = await db.findOwnedSession(sessionId, actorId)
 
             return session ? toUploadSession(session) : null
         },
         cleanupExpiredSessions: async () => {
-            const expired = await db
-                .select()
-                .from(uploadSession)
-                .where(and(lt(uploadSession.expiresAt, now()), ne(uploadSession.status, 'completed')))
-            const completedWithStaleFiles = await db
-                .select()
-                .from(uploadSession)
-                .where(and(eq(uploadSession.status, 'completed'), lt(uploadSession.expiresAt, now())))
+            const expired = await db.listExpiredSessions(now(), ['uploading', 'completed'])
             let removed = 0
-            for (const session of [...expired, ...completedWithStaleFiles]) {
+            for (const session of expired) {
                 await rm(session.temporaryPath, { force: true }).catch(() => undefined)
-                await db.delete(uploadSession).where(eq(uploadSession.id, session.id))
+                await db.deleteSession(session.id)
                 removed += 1
             }
 
-            const referencedPaths = new Set((await db.select({ storagePath: artifact.storagePath }).from(artifact)).map((row) => row.storagePath))
+            const referencedPaths = new Set((await db.listArtifactPaths()).map((row) => row.storagePath))
             const readyDirectory = join(artifactRoot, 'ready')
             const readyFiles = await readdir(readyDirectory).catch(() => [])
             for (const fileName of readyFiles) {
@@ -324,11 +342,7 @@ export const createUploadService = ({
                 if (referencedPaths.has(storagePath)) {
                     continue
                 }
-                const [nowReferenced] = await db
-                    .select({ storagePath: artifact.storagePath })
-                    .from(artifact)
-                    .where(eq(artifact.storagePath, storagePath))
-                    .limit(1)
+                const nowReferenced = await db.findArtifactByStoragePath(storagePath)
                 if (nowReferenced) {
                     continue
                 }
@@ -336,9 +350,7 @@ export const createUploadService = ({
                 removed += 1
             }
 
-            const referencedTemporaryPaths = new Set(
-                (await db.select({ temporaryPath: uploadSession.temporaryPath }).from(uploadSession)).map((row) => row.temporaryPath),
-            )
+            const referencedTemporaryPaths = new Set((await db.listAllSessionPaths()).map((row) => row.temporaryPath))
             const quarantineDirectory = join(artifactRoot, 'quarantine')
             const quarantineFiles = await readdir(quarantineDirectory).catch(() => [])
             for (const fileName of quarantineFiles) {
@@ -346,11 +358,7 @@ export const createUploadService = ({
                 if (referencedTemporaryPaths.has(temporaryPath)) {
                     continue
                 }
-                const [nowReferenced] = await db
-                    .select({ temporaryPath: uploadSession.temporaryPath })
-                    .from(uploadSession)
-                    .where(eq(uploadSession.temporaryPath, temporaryPath))
-                    .limit(1)
+                const nowReferenced = await db.findSessionByTemporaryPath(temporaryPath)
                 if (nowReferenced) {
                     continue
                 }
@@ -361,7 +369,7 @@ export const createUploadService = ({
         },
         listArtifacts: async () =>
             artifactListSchema.parse(
-                (await db.select().from(artifact).orderBy(artifact.createdAt)).map((record) => ({
+                (await db.listArtifacts()).map((record) => ({
                     createdAt: record.createdAt.toISOString(),
                     fileName: record.fileName,
                     id: record.id,

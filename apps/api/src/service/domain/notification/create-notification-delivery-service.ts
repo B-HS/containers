@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIPv6 } from 'node:net'
-import { eq } from 'drizzle-orm'
 import {
     NOTIFICATION_DELIVERY_STATUS,
     NOTIFICATION_EVENT_TYPE,
@@ -10,8 +9,6 @@ import {
     type NotificationDestination,
 } from '@containers/contracts/notification'
 import { OPERATION_JOB_KIND, type OperationJob } from '@containers/contracts/operation-job'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { notificationDelivery } from '@containers/db-schema/schema'
 import { createJobError, type OperationJobHandler } from '../job/create-operation-job-service'
 import type { NotificationDestinationService } from './create-notification-destination-service'
 
@@ -149,12 +146,45 @@ type EnqueueJob = (input: {
     payload: NotificationDeliverJobPayload
 }) => Promise<OperationJob>
 
+type DeliveryRow = {
+    createdAt: Date
+    destinationId: string
+    eventType: string
+    failureCode: string | null
+    id: string
+    jobId: string | null
+    sourceJobId: string
+    status: string
+    updatedAt: Date
+}
+
+type DeliveryInsertRecord = {
+    createdAt: Date
+    destinationId: string
+    eventType: string
+    failureCode: string | null
+    id: string
+    jobId?: string | null
+    sourceJobId: string
+    status: string
+    updatedAt: Date
+}
+
+type NotificationDeliveryServiceDb = {
+    findById: (id: string) => Promise<DeliveryRow | undefined>
+    listQueued: () => Promise<DeliveryRow[]>
+    insert: (record: DeliveryInsertRecord) => Promise<void>
+    update: (id: string, values: { failureCode?: string | null; jobId?: string | null; status?: string; updatedAt: Date }) => Promise<void>
+}
+
 type NotificationDeliveryServiceDependencies = {
-    db: ControlDatabase
+    db: NotificationDeliveryServiceDb
     destinationService: Pick<NotificationDestinationService, 'list' | 'resolveWebhook'>
     enqueue: EnqueueJob
     now: () => Date
 }
+
+export type { NotificationDeliveryServiceDb }
 
 const buildEmbed = (payload: NotificationDeliverJobPayload) => {
     if (payload.eventType === NOTIFICATION_EVENT_TYPE.TEST) {
@@ -178,11 +208,8 @@ const buildEmbed = (payload: NotificationDeliverJobPayload) => {
 }
 
 export const createNotificationDeliveryService = ({ db, destinationService, enqueue, now }: NotificationDeliveryServiceDependencies) => {
-    const updateDelivery = async (id: string, values: Partial<typeof notificationDelivery.$inferInsert>) => {
-        await db
-            .update(notificationDelivery)
-            .set({ ...values, updatedAt: now() })
-            .where(eq(notificationDelivery.id, id))
+    const updateDelivery = async (id: string, values: { failureCode?: string | null; jobId?: string | null; status?: string }) => {
+        await db.update(id, { ...values, updatedAt: now() })
     }
 
     const handleDeliver: OperationJobHandler = async ({ job }) => {
@@ -229,13 +256,13 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
         if (!payload.success) {
             return
         }
-        const [delivery] = await db.select().from(notificationDelivery).where(eq(notificationDelivery.id, payload.data.deliveryId)).limit(1)
+        const delivery = await db.findById(payload.data.deliveryId)
         if (!delivery || delivery.status !== NOTIFICATION_DELIVERY_STATUS.QUEUED) {
             return
         }
         if (job.status === 'succeeded') {
             const skipped = (job.result as { skipped?: boolean } | null)?.skipped === true
-            const values: Partial<typeof notificationDelivery.$inferInsert> = { status: NOTIFICATION_DELIVERY_STATUS.DELIVERED }
+            const values: { failureCode?: string | null; status: string } = { status: NOTIFICATION_DELIVERY_STATUS.DELIVERED }
             if (skipped) {
                 values.failureCode = 'NOTIFICATION_DESTINATION_DISABLED'
             }
@@ -253,7 +280,7 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
         const id = randomUUID()
         const timestamp = now()
         if (!destination.enabled) {
-            await db.insert(notificationDelivery).values({
+            await db.insert({
                 createdAt: timestamp,
                 destinationId,
                 eventType: NOTIFICATION_EVENT_TYPE.TEST,
@@ -265,7 +292,7 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
             })
             return { destinationId, id, skipped: true, status: NOTIFICATION_DELIVERY_STATUS.DELIVERED }
         }
-        await db.insert(notificationDelivery).values({
+        await db.insert({
             createdAt: timestamp,
             destinationId,
             eventType: NOTIFICATION_EVENT_TYPE.TEST,
@@ -295,7 +322,7 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
     const deliverBackupFailure = async (destination: NotificationDestination, sourceJob: OperationJob) => {
         const id = randomUUID()
         try {
-            await db.insert(notificationDelivery).values({
+            await db.insert({
                 createdAt: now(),
                 destinationId: destination.id,
                 eventType: NOTIFICATION_EVENT_TYPE.BACKUP_FAILED,
@@ -343,7 +370,7 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
     }
 
     const reconcileQueued = async () => {
-        const queued = await db.select().from(notificationDelivery).where(eq(notificationDelivery.status, NOTIFICATION_DELIVERY_STATUS.QUEUED))
+        const queued = await db.listQueued()
         for (const delivery of queued) {
             if (delivery.jobId !== null) {
                 continue

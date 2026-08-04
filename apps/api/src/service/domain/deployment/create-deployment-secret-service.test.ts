@@ -5,6 +5,8 @@ import { join, resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { deploymentSecret, user } from '@containers/db-schema/schema'
+import { buildDeploymentManifestServiceDb } from '../../../compose/compose-deployment-manifest'
+import { buildDeploymentSecretServiceDb } from '../../../compose/compose-deployment-secret'
 import { createDeploymentManifestService } from './create-deployment-manifest-service'
 import { createDeploymentSecretService } from './create-deployment-secret-service'
 
@@ -33,12 +35,12 @@ const createTestContext = async () => {
         updatedAt: timestamp,
     })
     const secretService = createDeploymentSecretService({
-        db: database.db,
+        db: buildDeploymentSecretServiceDb(database.db),
         masterSecret: 'test-master-secret-that-is-longer-than-thirty-two-characters',
         now: () => timestamp,
     })
     const manifestService = createDeploymentManifestService({
-        db: database.db,
+        db: buildDeploymentManifestServiceDb(database.db),
         engineAgentClient: {
             getImages: async () => [
                 {

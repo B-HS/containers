@@ -6,6 +6,8 @@ import { containerActionSchema, containerCreateRequestSchema, containerNetworkAt
 import { createControlDatabase } from '@containers/db-schema/database'
 import { deploymentRelease, user } from '@containers/db-schema/schema'
 import { eq } from 'drizzle-orm'
+import { buildDeploymentManifestServiceDb } from '../../../compose/compose-deployment-manifest'
+import { buildDeploymentReleaseServiceDb } from '../../../compose/compose-deployment-release'
 import { createDeploymentManifestService } from './create-deployment-manifest-service'
 import { createDeploymentReleaseService } from './create-deployment-release-service'
 
@@ -44,7 +46,7 @@ const createTestContext = async ({
         updatedAt: timestamp,
     })
     const manifestService = createDeploymentManifestService({
-        db: database.db,
+        db: buildDeploymentManifestServiceDb(database.db),
         engineAgentClient: {
             getImages: async () => [
                 {
@@ -76,7 +78,7 @@ const createTestContext = async ({
     let routeProbeIndex = 0
     const releaseService = createDeploymentReleaseService({
         probeNetwork: 'containers_probe',
-        db: database.db,
+        db: buildDeploymentReleaseServiceDb(database.db),
         deploymentManifestService: manifestService,
         deploymentSecretService: { resolve: async () => resolvedEnvironment },
         engineAgentClient: {

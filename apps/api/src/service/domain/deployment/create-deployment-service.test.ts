@@ -6,6 +6,7 @@ import { eq, sql } from 'drizzle-orm'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { artifact, deployment, user } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/error'
+import { buildDeploymentServiceDb } from '../../../compose/compose-deployment'
 import { createDeploymentService } from './create-deployment-service'
 
 const temporaryDirectories: string[] = []
@@ -44,7 +45,7 @@ const createTestContext = async (shouldFail = false) => {
         storagePath: `/artifacts/ready/${artifactId}.archive`,
     })
     const service = createDeploymentService({
-        db: database.db,
+        db: buildDeploymentServiceDb(database.db),
         engineAgentClient: {
             loadImage: async () => {
                 if (shouldFail) {
@@ -135,7 +136,7 @@ describe('배포 서비스 image load', () => {
     test('ready가 아닌 artifact는 getLoaded와 loadArtifact 모두 거부합니다', async () => {
         const { actorId, artifactId, db, sqlite } = await createTestContext()
         const service = createDeploymentService({
-            db,
+            db: buildDeploymentServiceDb(db),
             engineAgentClient: {
                 loadImage: async () => ({ messages: [], operation: 'load-image', targetId: artifactId }),
             },

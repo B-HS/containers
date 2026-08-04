@@ -1,8 +1,46 @@
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, type SQL } from 'drizzle-orm'
 import { auditEventListSchema, auditQuerySchema } from '@containers/contracts/audit'
-import type { ControlDatabase } from '@containers/db-schema/database'
-import { auditLog, user } from '@containers/db-schema/schema'
+
+type AuditListQuery = {
+    limit: number
+    operation?: string
+    result?: string
+    targetType?: string
+}
+
+type AuditListRecord = {
+    actorEmail: string | null
+    actorId: string | null
+    authMethod: string
+    createdAt: Date
+    detail: string | null
+    id: string
+    operation: string
+    requestId: string
+    result: string
+    sourceIp: string | null
+    targetId: string | null
+    targetType: string
+}
+
+type AuditInsertRecord = {
+    actorId: string
+    authMethod: string
+    createdAt: Date
+    detail?: string
+    id: string
+    operation: string
+    requestId: string
+    result: string
+    sourceIp?: string
+    targetId: string
+    targetType: string
+}
+
+type AuditServiceDb = {
+    list: (query: AuditListQuery) => Promise<AuditListRecord[]>
+    record: (record: AuditInsertRecord) => Promise<void>
+}
 
 type AuditRecord = {
     actorId: string
@@ -35,9 +73,11 @@ type AuditRecord = {
 }
 
 type AuditServiceDependencies = {
-    db: ControlDatabase
+    db: AuditServiceDb
     now: () => Date
 }
+
+export type { AuditServiceDb }
 
 const maskIp = (sourceIp: string | null) => {
     if (!sourceIp) {
@@ -74,38 +114,18 @@ const parseDetail = (detail: string | null) => {
 export const createAuditService = ({ db, now }: AuditServiceDependencies) => ({
     list: async (input: unknown) => {
         const query = auditQuerySchema.parse(input)
-        const conditions: SQL[] = []
-
+        const conditions: { operation?: string; result?: string; targetType?: string } = {}
         if (query.operation) {
-            conditions.push(eq(auditLog.operation, query.operation))
+            conditions.operation = query.operation
         }
         if (query.result) {
-            conditions.push(eq(auditLog.result, query.result))
+            conditions.result = query.result
         }
         if (query.targetType) {
-            conditions.push(eq(auditLog.targetType, query.targetType))
+            conditions.targetType = query.targetType
         }
 
-        const records = await db
-            .select({
-                actorEmail: user.email,
-                actorId: auditLog.actorId,
-                authMethod: auditLog.authMethod,
-                createdAt: auditLog.createdAt,
-                detail: auditLog.detail,
-                id: auditLog.id,
-                operation: auditLog.operation,
-                requestId: auditLog.requestId,
-                result: auditLog.result,
-                sourceIp: auditLog.sourceIp,
-                targetId: auditLog.targetId,
-                targetType: auditLog.targetType,
-            })
-            .from(auditLog)
-            .leftJoin(user, eq(auditLog.actorId, user.id))
-            .where(conditions.length > 0 ? and(...conditions) : undefined)
-            .orderBy(desc(auditLog.createdAt))
-            .limit(query.limit)
+        const records = await db.list({ ...conditions, limit: query.limit })
 
         return auditEventListSchema.parse(
             records.map((record) => ({
@@ -116,20 +136,23 @@ export const createAuditService = ({ db, now }: AuditServiceDependencies) => ({
             })),
         )
     },
-    record: async (record: AuditRecord) =>
-        db.insert(auditLog).values({
+    record: async (record: AuditRecord) => {
+        const detail = record.detail ? JSON.stringify(record.detail) : undefined
+        const sourceIp = record.sourceIp
+        return db.record({
             actorId: record.actorId,
             authMethod: record.authMethod ?? 'session',
             createdAt: now(),
-            detail: record.detail ? JSON.stringify(record.detail) : undefined,
             id: randomUUID(),
             operation: record.operation,
             requestId: record.requestId,
             result: record.result,
-            sourceIp: record.sourceIp,
             targetId: record.targetId,
             targetType: record.targetType,
-        }),
+            ...(detail === undefined ? {} : { detail }),
+            ...(sourceIp === undefined ? {} : { sourceIp }),
+        })
+    },
 })
 
 export type AuditService = ReturnType<typeof createAuditService>
