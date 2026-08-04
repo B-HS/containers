@@ -7,9 +7,9 @@
 확인 시각: **2026-08-05**
 
 - 작업 경로: `/Users/gkn/containers`
-- 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `dev`). 변경 범위는 `git status`·diff 로 판단한다. **2026-08-05 커밋 4건(`2c87a95`~`157ffdb`)은 아직 push 하지 않았다.**
+- 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `dev`). 변경 범위는 `git status`·diff 로 판단한다. **2026-08-05 커밋 13건(`2c87a95`~`4b58f4b`)은 아직 push 하지 않았다.**
 - Compose 5개 서비스 `nginx`, `web`, `api`, `engine-agent`, `traffic-worker`가 모두 healthy다.
-- 마지막 전체 gate: typecheck 8/8, ESLint 0, Prettier, **296 tests / 47 files**, build 8/8.
+- 마지막 전체 gate: typecheck 8/8, ESLint 0, Prettier, **314 tests / 49 files**, build 8/8.
 - 세션 상태 요약은 [HANDOFF.md](./HANDOFF.md)가 소유한다. 이 문서는 재개 절차와 안전 불변식만 담는다.
 
 아래 §3의 읽기 전용 점검으로 현재 값을 직접 확인한다. `integrity_check`가 `ok`, 활성 durable job 0, checkpoint 권한 `600 bun:bun`이 기대 핵심 결과다.

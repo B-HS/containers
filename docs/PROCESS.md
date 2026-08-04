@@ -531,3 +531,38 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - 패널: API key 화면 scope 13종 표시, 복구 다이얼로그 범위 Select 2종과 설명 교체·확인 버튼 잠금, 생성 폼 암호 길이 미달 시 제출 잠금. console error 0, 500px 폭 가로 스크롤 0
 - setup: `--help`·옵션 오류 exit 2·비대화식 전 구간·override 생성/보존/`--replace-override` 백업 확인 후 검증 파일 삭제
 - 미검증: 복구 다이얼로그 암호 입력 실렌더(현 백업 2건이 `secretsIncluded: false`, 암호 포함 백업 생성은 recent 세션 필요). 다크 모드는 토큰 임시 주입 미리보기로만 확인
+
+## 작업: 3단계 장기 운영 안정화 (2026-08-05)
+
+기준: [quality-assurance/2026-08-04-production-readiness.md](./quality-assurance/2026-08-04-production-readiness.md) §3 의 3단계 9개 항목. 사용자 지시 "9개 전부 순차적으로".
+
+- [x] a. traffic `access_event.raw_json` 제거(migration 0001)와 저장 상한·정기 VACUUM — 쓰기만 하고 읽는 곳이 없으면서 실측 저장량의 약 67% 를 차지했다. 재기동 시 1회 VACUUM(`PRAGMA user_version`)으로 회수. 행수·바이트 상한과 회수 비율 25% 기준 VACUUM 을 별도 보존 서비스(기본 60초)로 분리 — 기존엔 1초 poll 마다 삭제가 돌았다
+- [x] b. traffic 분석 index 교체와 조회 전용 worker thread — `status` 단독 index 는 필터가 항상 `status BETWEEN` 이라 선택도가 없는데도 planner 가 채택해 시간 범위를 못 좁혔다. `(occurred_at, status)` 복합 index(migration 0002)로 교체. `bun:sqlite` 가 동기 API 라 큰 조회가 이벤트 루프를 막던 것을 읽기 전용 연결의 worker thread 로 분리
+- [x] c. 백업 스냅샷 `serialize()` → `VACUUM INTO` + 스트리밍 digest — DB 크기만큼의 메모리 상주 제거
+- [x] d. traffic export 와 upload chunk 스트리밍화 — export 는 keyset pagination 5,000행 단위, upload 는 요청 스트림을 파일 offset 에 이어 쓰며 sha256 증분 계산
+- [x] e. 암호화 마스터 키 keyring 과 `secret.rotate` durable job — v1 은 기존 경로, 이후 `.v2`/`.v3`. 두 암호화 테이블에 `key_version`(migration 0013). 쓰기는 활성 버전, 읽기는 행의 버전. 백업 봉투는 전 버전을 담되 v1 을 기존 필드에 남겨 구버전 복원 호환
+- [x] f. artifact 삭제 API 와 보존 GC — recent owner·admin 삭제(배포 참조 시 `ARTIFACT_IN_USE`), 6시간 주기 보존 정리(기본 30일, 최신 5개 보존), `UPLOAD_TOTAL_QUOTA_BYTES` 기본값 300GiB→32GiB(실제 디스크보다 컸다)
+- [x] g. job worker id 기반 회수와 리소스 잠금 DB 강제(migration 0014) — 부팅 회수가 running job 전부를 실패 처리해 인스턴스를 하나 더 띄우면 남의 작업을 죽였다. `(kind, resource_key)` 활성 상태 부분 유니크 인덱스 추가
+- [x] h. audit 보존 아카이브와 rowid tie-break — 기간 경과 행을 JSONL 로 append 후 삭제(12시간 주기, 기본 365일). 초 단위 저장이라 같은 초 이벤트가 랜덤 UUID 순서로 뒤섞이던 정렬을 rowid 로 고정
+- [x] i. nginx revision 정리·API 스트림 상한·수집 지표 패널 노출 — 적용 시 최신 20개만 남기되 롤백이 쓰는 직전 revision 은 항상 보존, API SSE 프록시 동시 32 상한, `GET /api/traffic/health` 와 트래픽 화면 위젯
+
+### 실측 (2026-08-05)
+
+- 게이트: typecheck 8/8, lint 0, format:check, **test 314 pass / 49 files**, build 8/8, Compose 5개 healthy
+- raw_json 제거: traffic DB **19.9 MB → 4.7 MB**(76% 감소), 행수 23,764 유지, `integrity_check` ok
+- index 교체: 같은 데이터에서 최근 이벤트 조회 **4.06 ms → 0.12 ms**, 요약 2.61 → 0.87 ms, status 집계는 covering index. `(occurred_at, uri_path)`·`(occurred_at, request_time_ms)` 는 planner 미채택으로 제외
+- export 스트리밍: 실제 CSV export job 성공, 파일 sha256·크기가 job result 와 정확히 일치(75,890 B / 572행 + 헤더)
+- upload 스트리밍: 3 MB 를 1 MB × 3 청크로 실제 업로드 → finalize 의 전체 파일 sha256 검증 통과
+- 키 교체: 실제 deployment secret 1건으로 rotate job 2회 → v1→v2→v3, ciphertext 교체 확인. **API 재기동 후에도 keyring 이 파일에서 복원돼 v2 행을 복호화·재암호화**
+- 리소스 잠금: 같은 `(kind, resource_key)` 2번째 삽입이 DB 유니크 제약으로 거부됨
+- audit: 동일 초 그룹 10개에서 rowid 역순 정렬 확인
+- 수집 지표: 패널 트래픽 화면에 수집 이벤트 1,645 / 저장 25,392행(1%) / DB 5.3 MiB(1%) / 체크포인트 ok 렌더, console error 0
+
+### 실측에서만 드러난 결함
+
+`reader.releaseLock()` 이 Bun 의 실제 요청 body 리더에 없어 업로드 첫 청크가 INTERNAL_ERROR 로 죽었다. 타입체크·유닛테스트·로컬 Bun 서버 재현은 모두 통과했고 Compose 실측에서만 나왔다. 반복자 정리를 `cancel()` 로 바꿔 해결했다.
+
+### 검증하지 못한 것
+
+- nginx revision 정리의 **라이브 동작**: 현재 revision 8개로 보관 수(20) 미만이라 실제 정리가 일어나지 않았고, live nginx apply 를 유발하지 않았다. 단위 테스트(보관 수 2)로만 확인했다.
+- API SSE 동시 상한 32 도달: 32개 동시 스트림을 실제로 열지 않았다.

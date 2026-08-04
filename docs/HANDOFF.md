@@ -1,8 +1,8 @@
 # HANDOFF — 2026-08-05 세션 스냅샷
 
-- 대응 커밋: `157ffdb` (`dev`, **미푸시**)
+- 대응 커밋: `4b58f4b` (`dev`, **미푸시**)
 - 최종 갱신일: 2026-08-05
-- 검증 상태: typecheck 8/8 · lint 0 · **test 296 pass / 47 files** · format:check · build 8/8 · Compose 5개 healthy
+- 검증 상태: typecheck 8/8 · lint 0 · **test 314 pass / 49 files** · format:check · build 8/8 · Compose 5개 healthy
 - 이 문서가 **세션 인수인계 단일 진입점**이다. 다른 문서보다 먼저 읽는다.
 
 ## 1. 프로젝트 한 줄 정의
@@ -12,7 +12,7 @@
 ## 2. 현재 목표
 
 - **최종 목표**: 실운영 가능한 상태 + GitHub Actions가 API key만으로 배포를 완주할 수 있는 상태.
-- **현재 마일스톤**: 실운영 준비도 로드맵 **1·2단계 완료 + 3단계 착수 전 1순위 5건 완료**, **3단계 미착수**.
+- **현재 마일스톤**: 실운영 준비도 로드맵 **1·2·3단계 전 항목 완료**.
 - **직전 작업(2026-08-05)**: 1순위 5건 — `GET /api/images` `engine:read` 분기, API key scope UI 하드코딩 제거, 백업 복구 UI 의 복구 범위·암호 입력, `scripts/setup.sh` 비대화식 모드, 미해결 질문 2건 확인(둘 다 현행 유지). 결정 기록은 [acknowledge/0030](./acknowledge/0030-ci-verification-surface-and-exposure-scope.md).
 
 판정 근거는 [quality-assurance/2026-08-04-production-readiness.md](./quality-assurance/2026-08-04-production-readiness.md). 판정 당시 실운영 `no-go` / CI API `partially-possible`였고, 1·2단계로 blocker 9건 중 코드로 해결 가능한 것은 전부 해소했다. **남은 no-go 사유는 "외부 환경에서의 실검증 미수행"이지 코드 결함이 아니다**(§7 참조).
@@ -69,15 +69,25 @@
 - `apps/web/src/widgets/backup/**`·`features/backup-confirm-dialog` — 복구 범위(`preserve-host`/`full`) 선택과 암호 입력(백업이 `secretsIncluded` 일 때만), 생성 폼 암호 입력.
 - `scripts/setup.sh` — `--non-interactive`(비-TTY 자동 적용)·`--start-mode`·override 처리 플래그·`--help`.
 
+**실운영 3단계 (2026-08-05, 커밋 9건)** — 9개 항목 전부. 상세와 실측은 [PROCESS.md](./PROCESS.md) 의 "3단계 장기 운영 안정화" 절.
+
+- `apps/traffic-worker/**` — `access_event.raw_json` 제거(migration 0001, 실측 저장량의 약 67%)와 행수·바이트 상한·정기 VACUUM, 보존 정리를 1초 poll 에서 60초 전용 서비스로 분리.
+- `apps/traffic-worker/src/db/**` — `(occurred_at, status)` 복합 index(migration 0002)로 교체하고 읽기 전용 연결의 **worker thread** 로 분석·export 조회를 분리(`bun:sqlite` 동기 API 가 이벤트 루프를 막던 문제).
+- `apps/api/src/service/domain/backup/**`·`apps/traffic-worker` — 스냅샷을 `VACUUM INTO` + 스트리밍 digest 로 전환(메모리 상주 제거).
+- `apps/api/src/route/upload/**`·`service/domain/upload/**` — chunk 본문 스트리밍 쓰기, export 는 keyset pagination 스트리밍.
+- `packages/config/src/keyring.ts`·`service/domain/deployment/create-secret-rotation-service.ts` — 암호화 키 keyring 과 `secret.rotate` durable job(migration 0013).
+- `service/domain/upload/**` — artifact 삭제 API 와 보존 GC, 업로드 총량 기본 상한 조정.
+- `service/domain/job/**` — worker id 기반 회수와 `(kind, resource_key)` 활성 상태 부분 유니크 인덱스(migration 0014).
+- `service/domain/audit/**` — 보존 아카이브(JSONL)와 rowid tie-break 정렬.
+- `apps/engine-agent/**`·`apps/web/src/widgets/traffic/traffic-health-widget.tsx` — nginx revision 정리, API SSE 동시 상한, `GET /api/traffic/health` 와 수집·보존 지표 위젯.
+
 ### 진행 중
 
-없음. 다만 **2026-08-05 커밋 4건은 아직 push 하지 않았다.**
+없음. 다만 **2026-08-05 커밋 13건은 아직 push 하지 않았다.**
 
 ### 미착수
 
-**3단계(장기 운영 안정화)** — 항목·근거는 [quality-assurance/2026-08-04-production-readiness.md](./quality-assurance/2026-08-04-production-readiness.md) §3의 3단계. 요약은 §8 TODO 참조.
-
-**2단계에서 범위 밖으로 넘어온 잔여 5건** — §8 TODO 2순위.
+로드맵 3단계까지 전 항목이 끝났다. 남은 것은 §8 3순위(외부 자원이 있어야 가능한 실검증)와 §6 의 미해결 항목이다.
 
 ## 4. 의사결정 요약
 
@@ -141,16 +151,12 @@
 
 남은 것: §6 의 6번(암호 포함 백업 복구 다이얼로그 실렌더 확인)과 커밋 4건 push.
 
-### 2순위 — 3단계(장기 운영 안정화)
+### 2순위 — 3단계(장기 운영 안정화) — **2026-08-05 9개 항목 전부 완료**
 
-- `apps/traffic-worker` — `access_event.raw_json` 제거(실측 용량의 약 70%), 행수/바이트 상한, 정기 VACUUM.
-- traffic 분석 쿼리 복합 인덱스·시간 범위 상한, 무거운 쿼리를 별도 연결로 분리해 healthcheck 보호.
-- `apps/api/src/service/domain/backup/create-backup-service.ts` — `serialize()`(DB 크기만큼 메모리 상주) → `VACUUM INTO` 또는 SQLite backup API.
-- traffic export·upload chunk 스트리밍화.
-- 암호화 마스터 키 keyring + `keyVersion` 컬럼 + owner 전용 재암호화 rotate job.
-- artifact 삭제 API·retention GC, `UPLOAD_TOTAL_QUOTA` 기본값 조정.
-- API 단일 인스턴스 전제 문서화 후 worker instance id 기반 job 회수·원자적 claim.
-- audit 보존 정책·아카이브, nginx revision 파일 정리, SSE·exec 동시 세션 상한, traffic ingestion 이상 지표 패널 노출.
+실측 수치와 미검증 항목은 [PROCESS.md](./PROCESS.md) 의 "3단계 장기 운영 안정화" 절에 있다. 남은 후속은 아래 두 가지다.
+
+- nginx revision 정리의 라이브 동작 확인(현재 revision 8개로 보관 수 20 미만이라 정리가 발생하지 않았다).
+- API SSE 동시 상한 32 도달 시 429 확인(32개 동시 스트림을 실제로 열지 않았다).
 
 ### 3순위 — 외부 자원이 있어야 가능(코드는 준비됨)
 
