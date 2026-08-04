@@ -20,7 +20,7 @@
 #       image:load       artifact -> docker image load
 #       deployment:read  manifest·release 조회
 #       deployment:write manifest 생성, release 생성, rollback
-#       engine:read      배포 후 컨테이너·로그 확인
+#       engine:read      image load 결과(/api/images) 와 배포 후 컨테이너·로그 확인
 #       control-plane:read  배포 후 control plane 상태 확인
 #     job:write 는 교착된 job 을 CI 가 직접 취소할 때만 추가한다.
 #  5. 배포 manifest 는 저장소에 커밋한다(예: .github/deploy/manifest.json).
@@ -36,6 +36,7 @@
 #   POST /api/deployment-manifests/{id}/releases        202 job + release -> job succeeded 면 release healthy
 #   POST /api/deployment-releases/{id}/rollback         202 job + release -> job succeeded 면 rolled-back
 #   GET  /api/jobs/{id}, /api/jobs/{id}/events          job 상태·타임라인 (job:read)
+#   GET  /api/images                                    load 된 이미지 digest 확인 (engine:read)
 # job status 는 queued|running|cancelling|succeeded|failed|cancelled 이며 succeeded 만 성공이다.
 # release job 은 자동 재시도가 없다(maxAttempts 1). release 도중 실패하면 서버가 이전 라우트로 자동 복구한다.
 
@@ -223,11 +224,23 @@ jobs:
                   source "$RUNNER_TEMP/api.sh"
                   response="$(api_json POST "/api/artifacts/${ARTIFACT_ID}/load" '')"
                   job_id="$(jq -r '.data.job.id // empty' <<<"$response")"
-                  if [ -z "$job_id" ]; then
+                  if [ -n "$job_id" ]; then
+                      poll_job "$job_id" > /dev/null
+                  else
                       echo "already loaded: $(jq -r '.data.deployment.id' <<<"$response")"
-                      exit 0
                   fi
-                  poll_job "$job_id" > /dev/null
+
+            - name: Verify image is present on the engine
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+              run: |
+                  set -euo pipefail
+                  source "$RUNNER_TEMP/api.sh"
+                  if ! api_curl GET /api/images | jq -e --arg id "$IMAGE_DIGEST" '.data | any(.id == $id)' > /dev/null; then
+                      echo "loaded image $IMAGE_DIGEST is not present in /api/images" >&2
+                      exit 1
+                  fi
 
             - name: Create or reuse deployment manifest
               id: manifest

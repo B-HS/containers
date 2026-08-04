@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
+import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import {
     containerActionSchema,
     containerCreateRequestSchema,
@@ -19,6 +20,7 @@ import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
 import { createAppError } from '../../lib/error'
 import { withErrorHandling } from '../../lib/with-error-handling'
+import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { ControlService } from '../../service/domain/control/create-control-service'
@@ -38,6 +40,7 @@ const volumeNameParamSchema = z.object({ volumeName: z.string().min(1) })
 const prunePreviewQuerySchema = z.object({ includeVolumes: z.coerce.boolean().default(false) })
 
 type ControlRouteDependencies = {
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     controlService: ControlService
@@ -46,8 +49,16 @@ type ControlRouteDependencies = {
 
 const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-export const createControlRoute = ({ auditService, authService, controlService, operationJobService }: ControlRouteDependencies) =>
-    new Hono()
+export const createControlRoute = ({ apiKeyService, auditService, authService, controlService, operationJobService }: ControlRouteDependencies) => {
+    const authenticateEngineRead = async (headers: Headers) => {
+        if (headers.has('authorization')) {
+            await apiKeyService.authenticate(headers, API_KEY_SCOPE.ENGINE_READ)
+            return
+        }
+        await authService.requireRole(headers, ALL_ROLES)
+    }
+
+    return new Hono()
         .get(
             '/containers/:containerId/top',
             describeRoute({
@@ -99,7 +110,7 @@ export const createControlRoute = ({ auditService, authService, controlService, 
                 tags: ['Control'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, ALL_ROLES)
+                await authenticateEngineRead(context.req.raw.headers)
                 return context.json(successResponse(await controlService.getImages()), 200)
             }),
         )
@@ -815,3 +826,4 @@ export const createControlRoute = ({ auditService, authService, controlService, 
                 }
             }),
         )
+}

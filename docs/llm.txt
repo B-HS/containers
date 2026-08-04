@@ -62,6 +62,8 @@ Key source layout:
   apps/web/            Next.js App Router panel (ko/en/ja)
   packages/contracts/  Shared Zod schemas (single source of DTO truth)
   packages/db-schema/  Drizzle schema + SQLite migrations
+  packages/nginx-config/ nginx tokenizer/serializer shared by web GUI editor and
+                       engine-agent protected-contract validation (single parser)
   packages/config/     env parsing (Zod) + secret loading
 
 
@@ -161,8 +163,8 @@ API keys: `ctk_` + 32-byte random; only SHA-256 stored; scopes deny-by-default.
   authenticate() inner-joins user_role and rejects if disabledAt set or revoked.
   Disabling/demoting a user revokes their api keys + deletes sessions in one txn.
   Scopes: artifact:read, artifact:upload, backup:read, backup:write,
-          deployment:read, deployment:write, image:load, secret:read,
-          secret:write.
+          control-plane:read, deployment:read, deployment:write, engine:read,
+          image:load, job:read, job:write, secret:read, secret:write.
   Per-key rate limit 120/min (in-memory).
 
 Management-plane boundary (engine-agent): resources labeled
@@ -192,6 +194,7 @@ Control plane:   /api/control-plane/status GET (owner/admin)
 Maintenance:     /api/maintenance GET (all) / POST (owner recent)
 Engine:          /api/system/engine GET, /api/containers GET,
                  /api/containers/:containerId GET, .../logs GET
+                 (engine:read api key or all roles)
 Container ctrl:  /api/containers/:containerId/top|changes GET (all roles),
                  .../wait POST (operator)
                  /api/containers POST (admin recent, create)
@@ -199,7 +202,8 @@ Container ctrl:  /api/containers/:containerId/top|changes GET (all roles),
                    kill|pause|remove|rename|restart|start|stop|unpause|update)
                  /api/containers/:containerId/exec POST (owner recent)
                  /api/exec/ws/:ticket WS (owner recent + maintenance gate)
-Images:          /api/images GET, /api/images/:imageId/removal-impact GET,
+Images:          /api/images GET (engine:read or all roles),
+                 /api/images/:imageId/removal-impact GET,
                  /api/images/pull POST (admin recent, durable job),
                  /api/images/:imageId/tag POST (admin recent),
                  /api/images/:imageId DELETE (admin recent, confirmation)
