@@ -13,7 +13,6 @@ export const badgeVariants = cva(
                 destructive: 'bg-destructive text-destructive-foreground [a&]:hover:bg-destructive/90',
                 outline: 'bg-overlay-subtle text-foreground [a&]:hover:bg-overlay-hover',
                 neutral: 'bg-overlay-subtle text-text-muted [a&]:hover:bg-overlay-hover',
-                muted: 'bg-overlay-subtle text-text-muted [a&]:hover:bg-overlay-hover',
                 attention: 'bg-warning-surface text-warning',
                 danger: 'bg-danger-surface text-danger',
                 success: 'bg-success-surface text-success',

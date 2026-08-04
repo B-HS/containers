@@ -2,12 +2,17 @@
 
 import { useEffect, useRef, useState, type FC } from 'react'
 import { trafficLiveEventSchema, type TrafficLiveEvent } from '@containers/contracts/traffic'
+import { formatDateTime } from '@shared/lib/format-date-time'
 import { Button } from '@shared/ui/button'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@shared/ui/table'
 
 type TrafficLiveTailProps = {
     createLiveStream: () => EventSource
     initialEvents: TrafficLiveEvent[]
     labels: {
+        empty: string
+        emptyHint: string
         latency: string
         maskedIp: string
         path: string
@@ -18,11 +23,17 @@ type TrafficLiveTailProps = {
 }
 
 const MAX_EVENTS = 25
+const LATENCY_FRACTION_DIGITS = 1
 
 export const TrafficLiveTail: FC<TrafficLiveTailProps> = ({ createLiveStream, initialEvents, labels }) => {
+    const pausedRef = useRef(false)
     const [events, setEvents] = useState(initialEvents)
     const [paused, setPaused] = useState(false)
-    const pausedRef = useRef(false)
+
+    const togglePause = () => {
+        pausedRef.current = !pausedRef.current
+        setPaused(pausedRef.current)
+    }
 
     useEffect(() => {
         const source = createLiveStream()
@@ -44,45 +55,45 @@ export const TrafficLiveTail: FC<TrafficLiveTailProps> = ({ createLiveStream, in
     }, [createLiveStream])
 
     return (
-        <div>
-            <div className="mb-2 flex justify-end">
-                <Button
-                    className="h-7 px-2 text-xs"
-                    onClick={() => {
-                        pausedRef.current = !pausedRef.current
-                        setPaused(pausedRef.current)
-                    }}
-                    type="button"
-                >
+        <div className="grid gap-2">
+            <div className="flex justify-end">
+                <Button onClick={togglePause} size="xs" type="button" variant="outline">
                     {paused ? labels.resume : labels.pause}
                 </Button>
             </div>
-            <div className="overflow-x-auto">
-                <table className="w-full min-w-190 text-left text-xs">
-                    <thead className="text-muted-foreground">
-                        <tr>
-                            <th className="p-2 font-medium">UTC</th>
-                            <th className="p-2 font-medium">{labels.status}</th>
-                            <th className="p-2 font-medium">{labels.path}</th>
-                            <th className="p-2 font-medium">{labels.latency}</th>
-                            <th className="p-2 font-medium">{labels.maskedIp}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+            {events.length === 0 ? (
+                <Empty className="py-10">
+                    <EmptyHeader>
+                        <EmptyTitle className="text-base">{labels.empty}</EmptyTitle>
+                        <EmptyDescription>{labels.emptyHint}</EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
+            ) : (
+                <Table className="text-xs">
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>UTC</TableHead>
+                            <TableHead>{labels.status}</TableHead>
+                            <TableHead>{labels.path}</TableHead>
+                            <TableHead>{labels.latency}</TableHead>
+                            <TableHead>{labels.maskedIp}</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
                         {events.map((event) => (
-                            <tr key={event.requestId} className="border-t border-background">
-                                <td className="p-2 whitespace-nowrap">{event.occurredAt.replace('T', ' ').replace('.000Z', 'Z')}</td>
-                                <td className="p-2">{event.status}</td>
-                                <td className="max-w-80 truncate p-2 font-mono">
+                            <TableRow key={event.requestId} className="odd:bg-overlay-subtle">
+                                <TableCell>{formatDateTime(event.occurredAt)}</TableCell>
+                                <TableCell>{event.status}</TableCell>
+                                <TableCell className="max-w-80 truncate font-mono">
                                     {event.method} {event.uriPath}
-                                </td>
-                                <td className="p-2 whitespace-nowrap">{event.responseTimeMs.toFixed(1)} ms</td>
-                                <td className="p-2 font-mono whitespace-nowrap">{event.clientIpMasked}</td>
-                            </tr>
+                                </TableCell>
+                                <TableCell>{event.responseTimeMs.toFixed(LATENCY_FRACTION_DIGITS)} ms</TableCell>
+                                <TableCell className="font-mono">{event.clientIpMasked}</TableCell>
+                            </TableRow>
                         ))}
-                    </tbody>
-                </table>
-            </div>
+                    </TableBody>
+                </Table>
+            )}
         </div>
     )
 }

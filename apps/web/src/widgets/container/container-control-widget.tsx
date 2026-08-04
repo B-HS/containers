@@ -2,363 +2,165 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import { z } from 'zod'
-import { containerDetailSchema, containerLogResultSchema, type ContainerSummary } from '@containers/contracts/engine'
-import { useCreateExecTicket, useExecuteContainerCommand, usePerformContainerAction, useRemoveContainer } from '@entities/engine/engine.query'
-import { InteractiveTerminal } from '@features/interactive-terminal/interactive-terminal'
-import { LiveLogStream } from '@features/live-log-stream/live-log-stream'
-import { clientFetchData } from '@shared/lib/client-fetch'
-import { Badge } from '@shared/ui/badge'
+import { useTranslations } from 'next-intl'
+import { Boxes } from 'lucide-react'
+import { toast } from 'sonner'
+import {
+    useCreateExecTicket,
+    useExecuteContainerCommand,
+    useGetContainerDetail,
+    useGetContainerList,
+    useGetContainerLog,
+    usePerformContainerAction,
+    useRemoveContainer,
+} from '@entities/engine/engine.query'
 import { Button } from '@shared/ui/button'
-import { Checkbox } from '@shared/ui/checkbox'
-import { InlineAlert } from '@shared/ui/inline-alert'
-import { Input } from '@shared/ui/input'
-import { Label } from '@shared/ui/label'
-import { Textarea } from '@shared/ui/textarea'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@shared/ui/empty'
+import { Skeleton } from '@shared/ui/skeleton'
 import { MasterDetail } from '@shared/common/master-detail/master-detail'
 import { useMasterDetailSelection } from '@shared/common/master-detail/use-master-detail-selection'
 import { WidgetSection } from '@shared/common/widget-section'
+import { Link } from '../../i18n/navigation'
+import { CONTAINER_ACTION_TIMEOUT_SECONDS, CONTAINER_ACTIONS, CONTAINER_STOP_ACTIONS, type ContainerActionName } from './container-actions'
+import { ContainerDetailCard } from './container-detail-card'
+
+const OPERATOR_ROLES = ['owner', 'admin', 'operator']
+const REMOVE_ROLES = ['owner', 'admin']
+const SKELETON_ROWS = [0, 1, 2]
+
+const createSocket = (websocketPath: string) =>
+    new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${websocketPath}`)
+
+const createLogStream = (containerId: string) => new EventSource(`/api/stream/containers/${encodeURIComponent(containerId)}/logs?tail=100`)
 
 type ContainerControlWidgetProps = {
-    containers: ContainerSummary[]
-    labels: {
-        actionFailed: string
-        command: string
-        close: string
-        container: string
-        empty: string
-        exec: string
-        force: string
-        image: string
-        inspect: string
-        inspectFailed: string
-        liveLogs: string
-        liveLogsFailed: string
-        liveLogsStart: string
-        liveLogsStop: string
-        pause: string
-        remove: string
-        removeConfirmation: string
-        restart: string
-        running: string
-        start: string
-        state: string
-        stop: string
-        terminal: string
-        terminalConnect: string
-        terminalDisconnected: string
-        terminalFailed: string
-        title: string
-        unpause: string
-    }
     role: string
 }
 
-type ActionName = 'pause' | 'restart' | 'start' | 'stop' | 'unpause'
-
-type ContainerDetailCardProps = {
-    busyTarget: string | undefined
-    canExec: boolean
-    canOperate: boolean
-    canRemove: boolean
-    container: ContainerSummary
-    createExecTicket: (input: { columns: number; command: string[]; containerId: string; environment: string[]; rows: number }) => Promise<{
-        websocketPath: string
-    }>
-    createLogStream: (containerId: string) => EventSource
-    createSocket: (websocketPath: string) => WebSocket
-    error: string | undefined
-    execOutput: Record<string, string>
-    inspectionOutput: Record<string, string>
-    labels: ContainerControlWidgetProps['labels']
-    onExecute: (container: ContainerSummary, commandText: string) => void
-    onInspect: (containerId: string) => void
-    onPerformAction: (containerId: string, action: ActionName) => void
-    onRemove: (container: ContainerSummary, confirmation: string, force: boolean) => void
-}
-
-const ContainerDetailCard: FC<ContainerDetailCardProps> = ({
-    busyTarget,
-    canExec,
-    canOperate,
-    canRemove,
-    container,
-    createExecTicket,
-    createLogStream,
-    createSocket,
-    error,
-    execOutput,
-    inspectionOutput,
-    labels,
-    onExecute,
-    onInspect,
-    onPerformAction,
-    onRemove,
-}) => {
-    const name = container.names[0] ?? container.id.slice(0, 12)
-    const isBusy = busyTarget === container.id
-    const [force, setForce] = useState(false)
-
-    return (
-        <div className="grid min-w-0 gap-4">
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
-                <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate text-sm font-semibold">{name}</h3>
-                        <Badge variant="muted">{container.state}</Badge>
-                    </div>
-                    <dl className="mt-3 grid min-w-0 gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-                        <div className="min-w-0">
-                            <dt>{labels.container}</dt>
-                            <dd className="mt-1 truncate font-mono text-foreground">{container.id.slice(0, 12)}</dd>
-                        </div>
-                        <div className="min-w-0">
-                            <dt>{labels.image}</dt>
-                            <dd className="mt-1 truncate text-foreground">{container.image}</dd>
-                        </div>
-                        <div className="min-w-0">
-                            <dt>{labels.state}</dt>
-                            <dd className="mt-1 truncate text-foreground">{container.status}</dd>
-                        </div>
-                    </dl>
-                </div>
-                <div className="flex flex-wrap gap-px">
-                    {canOperate ? (
-                        <>
-                            <Button type="button" disabled={isBusy} onClick={() => onPerformAction(container.id, 'start')}>
-                                {labels.start}
-                            </Button>
-                            <Button type="button" disabled={isBusy} onClick={() => onPerformAction(container.id, 'stop')}>
-                                {labels.stop}
-                            </Button>
-                            <Button type="button" disabled={isBusy} onClick={() => onPerformAction(container.id, 'restart')}>
-                                {labels.restart}
-                            </Button>
-                            <Button type="button" disabled={isBusy} onClick={() => onPerformAction(container.id, 'pause')}>
-                                {labels.pause}
-                            </Button>
-                            <Button type="button" disabled={isBusy} onClick={() => onPerformAction(container.id, 'unpause')}>
-                                {labels.unpause}
-                            </Button>
-                        </>
-                    ) : null}
-                    <Button type="button" disabled={isBusy} onClick={() => void onInspect(container.id)}>
-                        {labels.inspect}
-                    </Button>
-                </div>
-            </div>
-            {error ? (
-                <p className="bg-red-950 p-3 text-sm text-red-100" role="alert">
-                    {error}
-                </p>
-            ) : null}
-            {inspectionOutput[container.id] !== undefined ? (
-                <pre className="max-h-96 overflow-auto bg-background p-3 text-xs">{inspectionOutput[container.id]}</pre>
-            ) : null}
-            <LiveLogStream
-                containerId={container.id}
-                createLogStream={createLogStream}
-                labels={{
-                    failed: labels.liveLogsFailed,
-                    start: labels.liveLogsStart,
-                    stop: labels.liveLogsStop,
-                    title: labels.liveLogs,
-                }}
-            />
-            {canExec ? (
-                <>
-                    <form
-                        className="grid gap-2 border-t border-background pt-3"
-                        onSubmit={(event) => {
-                            event.preventDefault()
-                            const command = String(new FormData(event.currentTarget).get('command') ?? '')
-                            void onExecute(container, command)
-                        }}
-                    >
-                        <Label htmlFor={`command-${container.id}`}>{labels.command}</Label>
-                        <p className="text-xs text-muted-foreground">{labels.running}</p>
-                        <Textarea id={`command-${container.id}`} name="command" placeholder={'printf\nhello'} required />
-                        <Button className="justify-self-start" type="submit" variant="default" disabled={isBusy}>
-                            {labels.exec}
-                        </Button>
-                        {execOutput[container.id] !== undefined ? (
-                            <pre className="max-h-64 overflow-auto bg-background p-3 text-xs">{execOutput[container.id]}</pre>
-                        ) : null}
-                    </form>
-                    <InteractiveTerminal
-                        containerId={container.id}
-                        containerName={name}
-                        createExecTicket={createExecTicket}
-                        createSocket={createSocket}
-                        labels={{
-                            close: labels.close,
-                            command: labels.command,
-                            connect: labels.terminalConnect,
-                            disconnected: labels.terminalDisconnected,
-                            failed: labels.terminalFailed,
-                            terminal: labels.terminal,
-                        }}
-                    />
-                </>
-            ) : null}
-            {canRemove ? (
-                <form
-                    className="grid gap-2 border-t border-background pt-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end"
-                    onSubmit={(event) => {
-                        event.preventDefault()
-                        const formData = new FormData(event.currentTarget)
-                        void onRemove(container, String(formData.get('confirmation') ?? ''), force)
-                    }}
-                >
-                    <div className="grid gap-2">
-                        <Label htmlFor={`confirmation-${container.id}`}>
-                            {labels.removeConfirmation}: {name}
-                        </Label>
-                        <Input id={`confirmation-${container.id}`} name="confirmation" autoComplete="off" required />
-                    </div>
-                    <Label htmlFor={`force-${container.id}`} className="flex h-10 items-center gap-2 px-3">
-                        <Checkbox id={`force-${container.id}`} checked={force} onCheckedChange={(checked) => setForce(checked === true)} />
-                        {labels.force}
-                    </Label>
-                    <Button variant="default" className="bg-red-700 text-white" type="submit" disabled={isBusy}>
-                        {labels.remove}
-                    </Button>
-                </form>
-            ) : null}
-        </div>
-    )
-}
-
-export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ containers, labels, role }) => {
-    const [busyTarget, setBusyTarget] = useState<string>()
-    const [error, setError] = useState<string>()
+export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ role }) => {
     const [execOutput, setExecOutput] = useState<Record<string, string>>({})
-    const [inspectionOutput, setInspectionOutput] = useState<Record<string, string>>({})
+    const [inspectId, setInspectId] = useState('')
+    const t = useTranslations('Dashboard')
+    const containerList = useGetContainerList()
+    const containers = containerList.data ?? []
     const { onSelect, selectedId, selectedItem } = useMasterDetailSelection(containers)
-    const canOperate = ['owner', 'admin', 'operator'].includes(role)
-    const canRemove = ['owner', 'admin'].includes(role)
+    const canOperate = OPERATOR_ROLES.includes(role)
+    const canRemove = REMOVE_ROLES.includes(role)
     const canExec = role === 'owner'
     const performAction = usePerformContainerAction()
     const executeCommand = useExecuteContainerCommand()
     const removeContainer = useRemoveContainer()
     const createExecTicket = useCreateExecTicket()
+    const inspectDetail = useGetContainerDetail(inspectId)
+    const inspectLog = useGetContainerLog(inspectId)
+    const isInspecting = inspectId.length > 0 && (inspectDetail.isPending || inspectLog.isPending)
+    const inspectOutput =
+        inspectDetail.data && inspectLog.data
+            ? `${JSON.stringify(inspectDetail.data, null, 2)}\n\n[stdout]\n${inspectLog.data.stdout}\n[stderr]\n${inspectLog.data.stderr}`
+            : undefined
+    const pendingAction = CONTAINER_ACTIONS.find(
+        (action) => performAction.isPending && performAction.variables?.containerId === selectedId && performAction.variables.action === action,
+    )
 
-    const performActionHandler = async (containerId: string, action: ActionName) => {
-        setBusyTarget(containerId)
-        setError(undefined)
-
-        try {
-            await performAction.mutateAsync({
+    const runAction = (containerId: string, action: ContainerActionName) => {
+        performAction.mutate(
+            {
                 containerId,
                 action,
-                ...(['restart', 'stop'].includes(action) ? { timeoutSeconds: 10 } : {}),
-            })
-            window.location.reload()
-        } catch {
-            setError(labels.actionFailed)
-        } finally {
-            setBusyTarget(undefined)
-        }
+                ...(CONTAINER_STOP_ACTIONS.includes(action) ? { timeoutSeconds: CONTAINER_ACTION_TIMEOUT_SECONDS } : {}),
+            },
+            {
+                onError: () => toast.error(t('actionFailed')),
+                onSuccess: () => toast.success(t('containerActionSucceeded')),
+            },
+        )
     }
 
-    const execute = async (container: ContainerSummary, commandText: string) => {
+    const runExec = (containerId: string, commandText: string) => {
         const command = commandText
             .split('\n')
             .map((part) => part.trim())
             .filter((part) => part.length > 0)
-        setBusyTarget(container.id)
-        setError(undefined)
-        try {
-            const result = await executeCommand.mutateAsync({ containerId: container.id, command })
-            setExecOutput((current) => ({ ...current, [container.id]: `${String(result.stdout)}${String(result.stderr)}` }))
-        } catch {
-            setError(labels.actionFailed)
-        } finally {
-            setBusyTarget(undefined)
-        }
+        executeCommand.mutate(
+            { containerId, command },
+            {
+                onError: () => toast.error(t('actionFailed')),
+                onSuccess: (result) => setExecOutput((current) => ({ ...current, [containerId]: `${result.stdout}${result.stderr}` })),
+            },
+        )
     }
 
-    const remove = async (container: ContainerSummary, confirmation: string, force: boolean) => {
-        setBusyTarget(container.id)
-        setError(undefined)
-        try {
-            await removeContainer.mutateAsync({ containerId: container.id, confirmation, force })
-            window.location.reload()
-        } catch {
-            setError(labels.actionFailed)
-        } finally {
-            setBusyTarget(undefined)
-        }
+    const runRemove = (containerId: string, input: { confirmation: string; force: boolean }) => {
+        removeContainer.mutate(
+            { containerId, ...input },
+            {
+                onError: () => toast.error(t('actionFailed')),
+                onSuccess: () => toast.success(t('containerRemoved')),
+            },
+        )
     }
-
-    const inspect = async (containerId: string) => {
-        setBusyTarget(containerId)
-        setError(undefined)
-        try {
-            const [detail, logs] = await Promise.all([
-                clientFetchData<z.infer<typeof containerDetailSchema>>(`/api/containers/${encodeURIComponent(containerId)}`),
-                clientFetchData<z.infer<typeof containerLogResultSchema>>(`/api/containers/${encodeURIComponent(containerId)}/logs?tail=200`),
-            ])
-            setInspectionOutput((current) => ({
-                ...current,
-                [containerId]: `${JSON.stringify(detail, null, 2)}\n\n[stdout]\n${logs.stdout}\n[stderr]\n${logs.stderr}`,
-            }))
-        } catch {
-            setError(labels.inspectFailed)
-        } finally {
-            setBusyTarget(undefined)
-        }
-    }
-
-    const createSocket = (websocketPath: string) =>
-        new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${websocketPath}`)
-
-    const createLogStream = (containerId: string) => new EventSource(`/api/stream/containers/${encodeURIComponent(containerId)}/logs?tail=100`)
 
     return (
-        <WidgetSection id="container-control-title" title={labels.title} badge={containers.length}>
-            {error ? (
-                <InlineAlert role="alert" tone="error">
-                    {error}
-                </InlineAlert>
-            ) : null}
-            {containers.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{labels.empty}</p> : null}
-            <MasterDetail
-                empty={null}
-                items={containers.map((container) => {
-                    const name = container.names[0] ?? container.id.slice(0, 12)
-                    return {
+        <WidgetSection id="container-control-title" title={t('containerControl')} badge={containers.length}>
+            {containerList.isPending ? (
+                <div className="grid gap-2 p-4">
+                    {SKELETON_ROWS.map((row) => (
+                        <Skeleton key={row} className="h-12 w-full" />
+                    ))}
+                </div>
+            ) : (
+                <MasterDetail
+                    empty={
+                        <Empty>
+                            <EmptyHeader>
+                                <EmptyMedia variant="icon">
+                                    <Boxes aria-hidden="true" />
+                                </EmptyMedia>
+                                <EmptyTitle>{t('empty')}</EmptyTitle>
+                                <EmptyDescription>{t('containerEmptyDescription')}</EmptyDescription>
+                            </EmptyHeader>
+                            {canRemove ? (
+                                <EmptyContent>
+                                    <Button asChild size="sm">
+                                        <Link href="/containers/new">{t('containerCreate')}</Link>
+                                    </Button>
+                                </EmptyContent>
+                            ) : null}
+                        </Empty>
+                    }
+                    items={containers.map((container) => ({
                         badge: container.state,
                         id: container.id,
                         subtitle: container.image,
-                        title: name,
-                    }
-                })}
-                listLabel={labels.container}
-                onSelect={onSelect}
-                selectedId={selectedId}
-            >
-                {selectedItem ? (
-                    <ContainerDetailCard
-                        busyTarget={busyTarget}
-                        canExec={canExec}
-                        canOperate={canOperate}
-                        canRemove={canRemove}
-                        container={selectedItem}
-                        createExecTicket={createExecTicket.mutateAsync}
-                        createLogStream={createLogStream}
-                        createSocket={createSocket}
-                        error={error}
-                        execOutput={execOutput}
-                        inspectionOutput={inspectionOutput}
-                        labels={labels}
-                        onExecute={execute}
-                        onInspect={inspect}
-                        onPerformAction={performActionHandler}
-                        onRemove={remove}
-                    />
-                ) : null}
-            </MasterDetail>
+                        title: container.names[0] ?? container.id.slice(0, 12),
+                    }))}
+                    listLabel={t('container')}
+                    onSelect={onSelect}
+                    selectedId={selectedId}
+                >
+                    {selectedItem ? (
+                        <ContainerDetailCard
+                            canExec={canExec}
+                            canOperate={canOperate}
+                            canRemove={canRemove}
+                            container={selectedItem}
+                            createExecTicket={createExecTicket.mutateAsync}
+                            createLogStream={createLogStream}
+                            createSocket={createSocket}
+                            execOutput={execOutput[selectedItem.id]}
+                            inspectOutput={inspectId === selectedItem.id ? inspectOutput : undefined}
+                            isExecuting={executeCommand.isPending}
+                            isInspecting={isInspecting && inspectId === selectedItem.id}
+                            isRemoving={removeContainer.isPending}
+                            onExecute={(commandText) => runExec(selectedItem.id, commandText)}
+                            onInspect={() => setInspectId(selectedItem.id)}
+                            onPerformAction={(action) => runAction(selectedItem.id, action)}
+                            onRemove={(input) => runRemove(selectedItem.id, input)}
+                            pendingAction={pendingAction}
+                        />
+                    ) : null}
+                </MasterDetail>
+            )}
         </WidgetSection>
     )
 }

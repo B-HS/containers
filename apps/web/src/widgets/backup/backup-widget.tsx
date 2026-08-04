@@ -2,152 +2,177 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import type { BackupManifest } from '@containers/contracts/backup'
-import { useCreateBackup, useRemoveBackup, useRestoreBackup } from '@entities/backup/backup.query'
+import { useQuery } from '@tanstack/react-query'
+import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
+import { backupQueryOptions, useRemoveBackup, useRestoreBackup } from '@entities/backup/backup.query'
+import { BackupConfirmDialog } from '@features/backup-confirm-dialog/backup-confirm-dialog'
 import { formatBytes } from '@shared/lib/format-bytes'
 import { formatDateTime } from '@shared/lib/format-date-time'
-import { Badge } from '@shared/ui/badge'
+import { Alert, AlertTitle } from '@shared/ui/alert'
 import { Button } from '@shared/ui/button'
-import { InlineAlert } from '@shared/ui/inline-alert'
-import { Input } from '@shared/ui/input'
-import { Label } from '@shared/ui/label'
-import { MasterDetail } from '@shared/common/master-detail/master-detail'
-import { useMasterDetailSelection } from '@shared/common/master-detail/use-master-detail-selection'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
+import { Skeleton } from '@shared/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@shared/ui/table'
 import { WidgetSection } from '@shared/common/widget-section'
+import { BackupCreateForm } from '@widgets/backup/backup-create-form'
 
-type BackupWidgetProps = {
-    backups: BackupManifest[]
-    labels: {
-        confirmation: string
-        create: string
-        empty: string
-        failed: string
-        label: string
-        notice: string
-        remove: string
-        restore: string
-        restored: string
-        size: string
-        title: string
-    }
+const SKELETON_ROW_COUNT = 3
+
+type BackupDialog = {
+    backupId: string
+    mode: 'remove' | 'restore'
 }
 
-export const BackupWidget: FC<BackupWidgetProps> = ({ backups: initialBackups, labels }) => {
-    const [backups, setBackups] = useState(initialBackups)
-    const [busy, setBusy] = useState<string>()
-    const [error, setError] = useState<string>()
-    const [status, setStatus] = useState<string>()
-    const { onSelect, selectedId, selectedItem: selectedBackup } = useMasterDetailSelection(backups)
-    const createBackup = useCreateBackup()
+type BackupWidgetProps = {
+    canManage: boolean
+}
+
+export const BackupWidget: FC<BackupWidgetProps> = ({ canManage }) => {
+    const [dialog, setDialog] = useState<BackupDialog>()
+    const translations = useTranslations('Dashboard')
+    const backups = useQuery({ ...backupQueryOptions(), enabled: canManage })
     const removeBackup = useRemoveBackup()
     const restoreBackup = useRestoreBackup()
 
-    const create = async (form: HTMLFormElement) => {
-        setBusy('create')
-        setError(undefined)
-        setStatus(undefined)
-        try {
-            const formData = new FormData(form)
-            const label = String(formData.get('label') ?? '').trim()
-            const backup = await createBackup.mutateAsync(label || null)
-            setBackups((current) => [backup, ...current])
-            form.reset()
-        } catch (createError) {
-            setError(createError instanceof Error ? createError.message : labels.failed)
-        } finally {
-            setBusy(undefined)
-        }
+    const items = backups.data ?? []
+    const target = items.find((backup) => backup.id === dialog?.backupId)
+
+    const closeDialog = () => setDialog(undefined)
+
+    const restore = (confirmation: string) => {
+        if (!target) return
+        restoreBackup.mutate(
+            { backupId: target.id, confirmation },
+            {
+                onError: (restoreError) => toast.error(restoreError instanceof Error ? restoreError.message : translations('backupFailed')),
+                onSuccess: () => {
+                    closeDialog()
+                    toast.success(translations('backupRestored'))
+                },
+            },
+        )
     }
 
-    const mutate = async (backup: BackupManifest, operation: 'remove' | 'restore', confirmation: string) => {
-        setBusy(`${operation}:${backup.id}`)
-        setError(undefined)
-        setStatus(undefined)
-        try {
-            if (operation === 'remove') {
-                await removeBackup.mutateAsync({ backupId: backup.id, confirmation })
-                setBackups((current) => current.filter((item) => item.id !== backup.id))
-            } else {
-                await restoreBackup.mutateAsync({ backupId: backup.id, confirmation })
-                setStatus(labels.restored)
-                window.setTimeout(() => window.location.reload(), 800)
-            }
-        } catch (mutationError) {
-            setError(mutationError instanceof Error ? mutationError.message : labels.failed)
-        } finally {
-            setBusy(undefined)
-        }
+    const remove = (confirmation: string) => {
+        if (!target) return
+        removeBackup.mutate(
+            { backupId: target.id, confirmation },
+            {
+                onError: (removeError) => toast.error(removeError instanceof Error ? removeError.message : translations('backupFailed')),
+                onSuccess: () => {
+                    closeDialog()
+                    toast.success(translations('backupRemoved'))
+                },
+            },
+        )
+    }
+
+    if (!canManage) {
+        return (
+            <WidgetSection id="backup-control-title" title={translations('backupControl')} notice={translations('backupNotice')}>
+                <Alert className="m-6 w-auto">
+                    <AlertTitle>{translations('permissionRequired')}</AlertTitle>
+                </Alert>
+            </WidgetSection>
+        )
     }
 
     return (
-        <WidgetSection id="backup-control-title" title={labels.title} notice={labels.notice} badge={backups.length}>
-            {error ? (
-                <InlineAlert role="alert" tone="error">
-                    {error}
-                </InlineAlert>
+        <WidgetSection id="backup-control-title" title={translations('backupControl')} notice={translations('backupNotice')} badge={items.length}>
+            <BackupCreateForm />
+            {backups.isPending ? (
+                <div className="grid gap-2 p-6">
+                    {Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+                        <Skeleton key={index} className="h-9 w-full" />
+                    ))}
+                </div>
             ) : null}
-            {status ? <InlineAlert tone="notice">{status}</InlineAlert> : null}
-            <form
-                className="flex min-w-0 gap-px border-t border-background p-3"
-                onSubmit={(event) => {
-                    event.preventDefault()
-                    void create(event.currentTarget)
-                }}
-            >
-                <Label htmlFor="backup-label" className="sr-only">
-                    {labels.label}
-                </Label>
-                <Input id="backup-label" name="label" className="min-w-0" maxLength={100} placeholder={labels.label} />
-                <Button type="submit" variant="default" disabled={busy === 'create'}>
-                    {labels.create}
-                </Button>
-            </form>
-            {backups.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{labels.empty}</p> : null}
-            {selectedBackup ? (
-                <MasterDetail
-                    empty={labels.empty}
-                    items={backups.map((backup) => ({
-                        id: backup.id,
-                        subtitle: formatDateTime(backup.createdAt) ?? backup.id,
-                        title: backup.label ?? backup.id,
-                    }))}
-                    listLabel={labels.title}
-                    onSelect={onSelect}
-                    selectedId={selectedId}
-                >
-                    <div className="grid gap-3 p-3">
-                        <div className="flex min-w-0 items-start justify-between gap-3">
-                            <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold">{selectedBackup.label ?? selectedBackup.id}</p>
-                                <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{selectedBackup.id}</p>
-                            </div>
-                            <Badge variant="muted">
-                                {labels.size} {formatBytes(selectedBackup.controlBytes + selectedBackup.trafficBytes)}
-                            </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">{formatDateTime(selectedBackup.createdAt)}</p>
-                        <form
-                            className="grid gap-1"
-                            onSubmit={(event) => {
-                                event.preventDefault()
-                                const formData = new FormData(event.currentTarget)
-                                const operation = String(formData.get('operation')) === 'restore' ? 'restore' : 'remove'
-                                void mutate(selectedBackup, operation, String(formData.get('confirmation') ?? ''))
-                            }}
-                        >
-                            <Label htmlFor={`backup-confirmation-${selectedBackup.id}`}>{labels.confirmation}</Label>
-                            <Input id={`backup-confirmation-${selectedBackup.id}`} name="confirmation" className="min-w-0" />
-                            <div className="flex gap-px">
-                                <Button name="operation" value="restore" type="submit" variant="default" disabled={Boolean(busy)}>
-                                    {labels.restore}
-                                </Button>
-                                <Button name="operation" value="remove" type="submit" variant="default" disabled={Boolean(busy)}>
-                                    {labels.remove}
-                                </Button>
-                            </div>
-                        </form>
-                    </div>
-                </MasterDetail>
+            {!backups.isPending && items.length === 0 ? (
+                <Empty>
+                    <EmptyHeader>
+                        <EmptyTitle>{translations('backupEmpty')}</EmptyTitle>
+                        <EmptyDescription>{translations('backupEmptyDescription')}</EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
+            ) : null}
+            {items.length > 0 ? (
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>{translations('backupLabel')}</TableHead>
+                            <TableHead>{translations('checksum')}</TableHead>
+                            <TableHead>{translations('size')}</TableHead>
+                            <TableHead>{translations('createdAt')}</TableHead>
+                            <TableHead className="text-right">{translations('backupRestore')}</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {items.map((backup) => (
+                            <TableRow key={backup.id} className="odd:bg-overlay-subtle">
+                                <TableCell className="max-w-56 truncate font-medium text-text-strong">{backup.label ?? backup.id}</TableCell>
+                                <TableCell className="max-w-56 truncate font-mono text-xs text-text-subtle">{backup.id}</TableCell>
+                                <TableCell className="text-text-muted">{formatBytes(backup.controlBytes + backup.trafficBytes)}</TableCell>
+                                <TableCell className="text-text-muted">{formatDateTime(backup.createdAt)}</TableCell>
+                                <TableCell className="text-right">
+                                    <div className="flex justify-end gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={() => setDialog({ backupId: backup.id, mode: 'restore' })}
+                                        >
+                                            {translations('backupRestore')}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="xs"
+                                            className="text-danger"
+                                            onClick={() => setDialog({ backupId: backup.id, mode: 'remove' })}
+                                        >
+                                            {translations('remove')}
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            ) : null}
+            {target && dialog?.mode === 'restore' ? (
+                <BackupConfirmDialog
+                    key={`restore-${target.id}`}
+                    open
+                    actionLabel={translations('backupRestore')}
+                    cancelLabel={translations('cancel')}
+                    confirmationLabel={translations('backupRestoreConfirmLabel')}
+                    description={translations('backupRestoreDescription')}
+                    expectedConfirmation={target.id}
+                    inputId={`backup-restore-confirmation-${target.id}`}
+                    pending={restoreBackup.isPending}
+                    targetLabel={target.label ?? target.id}
+                    title={translations('backupRestoreTitle')}
+                    onConfirm={restore}
+                    onOpenChange={closeDialog}
+                />
+            ) : null}
+            {target && dialog?.mode === 'remove' ? (
+                <BackupConfirmDialog
+                    key={`remove-${target.id}`}
+                    open
+                    actionLabel={translations('remove')}
+                    cancelLabel={translations('cancel')}
+                    confirmationLabel={translations('backupRemoveConfirmLabel')}
+                    description={translations('backupRemoveDescription')}
+                    expectedConfirmation={target.id}
+                    inputId={`backup-remove-confirmation-${target.id}`}
+                    pending={removeBackup.isPending}
+                    targetLabel={target.label ?? target.id}
+                    title={translations('backupRemoveTitle')}
+                    onConfirm={remove}
+                    onOpenChange={closeDialog}
+                />
             ) : null}
         </WidgetSection>
     )

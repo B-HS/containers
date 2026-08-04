@@ -19,7 +19,7 @@ export const WidgetSection: FC<WidgetSectionProps> = ({ badge, children, header,
                 </h2>
                 {notice ? <p className="mt-1 text-xs text-text-subtle">{notice}</p> : null}
             </div>
-            {header ?? (badge === undefined ? null : <Badge variant="muted">{badge}</Badge>)}
+            {header ?? (badge === undefined ? null : <Badge variant="neutral">{badge}</Badge>)}
         </header>
         {children}
     </section>

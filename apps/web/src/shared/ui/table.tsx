@@ -32,6 +32,7 @@ const TableRow: FC<ComponentProps<'tr'>> = ({ className, ...props }) => (
 const TableHead: FC<ComponentProps<'th'>> = ({ className, ...props }) => (
     <th
         data-slot="table-head"
+        scope="col"
         className={cn(
             'h-10 px-3 text-left align-middle text-xs font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
             className,

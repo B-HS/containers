@@ -3,9 +3,8 @@
 import type { FC } from 'react'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import type { z } from 'zod'
-import { nginxConfigStateSchema } from '@containers/contracts/nginx'
-import { useApplyNginxConfig } from '@entities/nginx/nginx.query'
+import { toast } from 'sonner'
+import { useApplyNginxConfig, useGetNginxConfig } from '@entities/nginx/nginx.query'
 import { formatDateTime } from '@shared/lib/format-date-time'
 import type { NginxBlock, NginxConfig, NginxDirective } from '@shared/lib/nginx-config/parse-nginx-config'
 import { parseNginxConfig } from '@shared/lib/nginx-config/parse-nginx-config'
@@ -18,21 +17,24 @@ import {
     getChildIndent,
     replaceBlockChildrenInOrder,
 } from '@shared/lib/nginx-config/nginx-editor-model'
+import { Alert, AlertDescription } from '@shared/ui/alert'
 import { Button } from '@shared/ui/button'
-import { Card } from '@shared/ui/card'
-import { InlineAlert } from '@shared/ui/inline-alert'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
+import { Skeleton } from '@shared/ui/skeleton'
+import { Spinner } from '@shared/ui/spinner'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@shared/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@shared/ui/tabs'
 import { Textarea } from '@shared/ui/textarea'
 import { MasterDetail, type MasterDetailItem } from '@shared/common/master-detail/master-detail'
 import { useMasterDetailSelection } from '@shared/common/master-detail/use-master-detail-selection'
 import { WidgetSection } from '@shared/common/widget-section'
-import { NginxBlockEditor } from './nginx-block-editor'
-import { NginxGlobalEditor } from './nginx-global-editor'
-import { NginxUpstreamEditor } from './nginx-upstream-editor'
+import { NginxBlockEditor } from '@widgets/nginx/nginx-block-editor'
+import { NginxGlobalEditor } from '@widgets/nginx/nginx-global-editor'
+import { NginxUpstreamEditor } from '@widgets/nginx/nginx-upstream-editor'
 
-type NginxConfigState = z.infer<typeof nginxConfigStateSchema>
+const APPLY_ROLES = ['owner', 'admin']
 
 type ServerSidebarItem = MasterDetailItem & {
     serverIndex: number
@@ -51,39 +53,37 @@ type NginxConfigWidgetProps = {
         title: string
     }
     role: string
-    state: NginxConfigState | undefined
 }
 
-export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, state }) => {
+export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role }) => {
     const t = useTranslations('Dashboard')
-    const [busy, setBusy] = useState(false)
+    const { data: state, isPending } = useGetNginxConfig()
+    const applyNginxConfig = useApplyNginxConfig()
     const [error, setError] = useState<string>()
-    const [success, setSuccess] = useState(false)
     const [mode, setMode] = useState<'gui' | 'raw'>('raw')
     const [section, setSection] = useState<'upstream' | 'server' | 'global'>('upstream')
-    const [rawConfig, setRawConfig] = useState(state?.config ?? '')
+    const [draftConfig, setDraftConfig] = useState<string>()
     const [rootConfig, setRootConfig] = useState<NginxConfig>()
     const [serverBlocks, setServerBlocks] = useState<NginxBlock[]>([])
     const [upstreamBlocks, setUpstreamBlocks] = useState<NginxBlock[]>([])
     const [parseError, setParseError] = useState(false)
-    const canApply = ['owner', 'admin'].includes(role)
-    const applyNginxConfig = useApplyNginxConfig()
+    const canApply = APPLY_ROLES.includes(role)
+    const rawConfig = draftConfig ?? state?.config ?? ''
+    const busy = applyNginxConfig.isPending
 
     const apply = async (config: string) => {
         if (!state) {
             return
         }
-        setBusy(true)
         setError(undefined)
-        setSuccess(false)
         try {
             await applyNginxConfig.mutateAsync({ config, expectedSha256: state.sha256 })
-            setSuccess(true)
-            window.location.reload()
+            setDraftConfig(undefined)
+            toast.success(labels.success)
         } catch (applyError) {
-            setError(applyError instanceof Error ? applyError.message : labels.failed)
-        } finally {
-            setBusy(false)
+            const message = applyError instanceof Error ? applyError.message : labels.failed
+            setError(message)
+            toast.error(message)
         }
     }
 
@@ -98,7 +98,7 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
             'upstream',
             nextUpstreams.map((block) => block.children),
         )
-        setRawConfig(serializeNginxConfig(config))
+        setDraftConfig(serializeNginxConfig(config))
     }
 
     const enterGui = () => {
@@ -111,6 +111,7 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
             setMode('gui')
         } catch {
             setParseError(true)
+            setMode('gui')
         }
     }
 
@@ -313,27 +314,52 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
         onSelectServer(`server-${serverIndex}-location-${locations.length - 1}`)
     }
 
+    if (isPending) {
+        return (
+            <WidgetSection id="nginx-config-title" title={labels.title}>
+                <div className="grid gap-3 p-6">
+                    <Skeleton className="h-4 w-64" />
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-64 w-full" />
+                </div>
+            </WidgetSection>
+        )
+    }
+
+    if (!state) {
+        return (
+            <WidgetSection id="nginx-config-title" title={labels.title}>
+                <Empty>
+                    <EmptyHeader>
+                        <EmptyTitle>{labels.failed}</EmptyTitle>
+                        <EmptyDescription>{t('nginxGui.loadFailed')}</EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
+            </WidgetSection>
+        )
+    }
+
     return (
-        <WidgetSection id="nginx-config-title" title={labels.title} badge={state?.history.length ?? 0}>
-            {error ? (
-                <InlineAlert role="alert" tone="error">
-                    {error}
-                </InlineAlert>
-            ) : null}
-            {success ? (
-                <InlineAlert tone="notice" className="bg-muted text-foreground">
-                    {labels.success}
-                </InlineAlert>
-            ) : null}
-            {state ? (
-                <div className="grid gap-3 border-t border-background p-3">
-                    <div>
-                        <Label htmlFor="nginx-config-editor">nginx.conf</Label>
-                        <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                            {labels.sha256}: {state.sha256}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">{labels.protectedNotice}</p>
-                    </div>
+        <WidgetSection id="nginx-config-title" title={labels.title} badge={state.history.length}>
+            <div className="grid gap-px bg-background">
+                <div className="grid gap-1 bg-surface-2 px-4 py-3">
+                    <Label htmlFor="nginx-config-editor">nginx.conf</Label>
+                    <p className="font-mono text-xs break-all tabular-nums text-text-muted">
+                        {labels.sha256}: {state.sha256}
+                    </p>
+                    <p className="text-xs text-text-subtle">{labels.protectedNotice}</p>
+                </div>
+                {canApply ? null : (
+                    <Alert className="bg-surface-1">
+                        <AlertDescription>{t('nginxGui.readOnly')}</AlertDescription>
+                    </Alert>
+                )}
+                {error ? (
+                    <Alert variant="destructive">
+                        <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                ) : null}
+                <div className="bg-surface-1 p-4">
                     {canApply ? (
                         <Tabs value={mode} onValueChange={(next) => (next === 'gui' ? enterGui() : setMode('raw'))}>
                             <TabsList>
@@ -342,13 +368,11 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                             </TabsList>
                             <TabsContent value="gui">
                                 {parseError ? (
-                                    <div className="grid gap-2 py-3">
-                                        <InlineAlert role="alert" tone="error">
-                                            {t('nginxGui.invalid')}
-                                        </InlineAlert>
-                                    </div>
+                                    <Alert className="mt-4" variant="warning">
+                                        <AlertDescription>{t('nginxGui.invalid')}</AlertDescription>
+                                    </Alert>
                                 ) : rootConfig ? (
-                                    <div className="grid gap-3 py-3">
+                                    <div className="grid gap-4 pt-4">
                                         <Tabs value={section} onValueChange={(next) => setSection(next as 'upstream' | 'server' | 'global')}>
                                             <TabsList>
                                                 <TabsTrigger value="upstream">{t('nginxGui.sectionUpstream')}</TabsTrigger>
@@ -356,20 +380,15 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                                                 <TabsTrigger value="global">{t('nginxGui.sectionGlobal')}</TabsTrigger>
                                             </TabsList>
                                             <TabsContent value="upstream">
-                                                <div className="grid gap-3">
+                                                <div className="grid gap-4 pt-4">
                                                     {upstreamBlocks.length === 0 ? (
-                                                        <p className="py-2 text-sm text-muted-foreground">{t('nginxGui.noUpstreams')}</p>
+                                                        <p className="text-sm text-text-subtle">{t('nginxGui.noUpstreams')}</p>
                                                     ) : null}
                                                     {upstreamBlocks.map((block, index) => (
-                                                        <div key={`upstream-${index}`} className="grid gap-2 rounded-md border border-border p-3">
+                                                        <div key={`upstream-${index}`} className="grid gap-3 bg-overlay-subtle p-4">
                                                             <div className="flex items-center justify-between">
-                                                                <code className="font-mono text-sm">upstream</code>
-                                                                <Button
-                                                                    className="h-7 px-2 text-xs"
-                                                                    type="button"
-                                                                    variant="ghost"
-                                                                    onClick={() => removeUpstream(block)}
-                                                                >
+                                                                <code className="font-mono text-sm text-text-strong">upstream</code>
+                                                                <Button type="button" variant="ghost" size="xs" onClick={() => removeUpstream(block)}>
                                                                     {t('nginxGui.remove')}
                                                                 </Button>
                                                             </div>
@@ -379,15 +398,21 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                                                             />
                                                         </div>
                                                     ))}
-                                                    <Button className="h-7 px-2 text-xs" type="button" variant="outline" onClick={addUpstream}>
+                                                    <Button
+                                                        className="justify-self-start"
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={addUpstream}
+                                                    >
                                                         {t('nginxGui.addUpstream')}
                                                     </Button>
                                                 </div>
                                             </TabsContent>
                                             <TabsContent value="server">
-                                                <div className="grid gap-3">
+                                                <div className="grid gap-4 pt-4">
                                                     <MasterDetail
-                                                        empty={<p className="py-2 text-sm text-muted-foreground">{t('nginxGui.noServers')}</p>}
+                                                        empty={<p className="text-sm text-text-subtle">{t('nginxGui.noServers')}</p>}
                                                         items={serverItems}
                                                         listLabel={t('nginxGui.sectionServer')}
                                                         onSelect={onSelectServer}
@@ -395,22 +420,22 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                                                     >
                                                         {selectedServerIndex !== undefined && selectedServer !== undefined ? (
                                                             selectedLocationIndex === undefined ? (
-                                                                <div className="grid gap-3">
+                                                                <div className="grid gap-4">
                                                                     <div className="flex items-center justify-between">
-                                                                        <code className="font-mono text-sm">server</code>
+                                                                        <code className="font-mono text-sm text-text-strong">server</code>
                                                                         <div className="flex items-center gap-2">
                                                                             <Button
-                                                                                className="h-7 px-2 text-xs"
                                                                                 type="button"
                                                                                 variant="outline"
+                                                                                size="xs"
                                                                                 onClick={() => addLocation(selectedServerIndex)}
                                                                             >
                                                                                 {t('nginxGui.addLocation')}
                                                                             </Button>
                                                                             <Button
-                                                                                className="h-7 px-2 text-xs"
                                                                                 type="button"
                                                                                 variant="ghost"
+                                                                                size="xs"
                                                                                 onClick={() => removeServer(selectedServer)}
                                                                             >
                                                                                 {t('nginxGui.remove')}
@@ -424,7 +449,7 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                                                                     />
                                                                 </div>
                                                             ) : selectedLocation ? (
-                                                                <div className="grid gap-3">
+                                                                <div className="grid gap-4">
                                                                     <div className="flex items-center gap-2">
                                                                         <Label
                                                                             className="shrink-0 text-xs"
@@ -434,7 +459,7 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                                                                         </Label>
                                                                         <Input
                                                                             id={`location-path-${selectedServerIndex}-${selectedLocationIndex}`}
-                                                                            className="h-7 font-mono text-xs"
+                                                                            className="h-8 font-mono text-xs"
                                                                             value={selectedLocation.args[0] ?? ''}
                                                                             onChange={(event) =>
                                                                                 updateLocationPath(
@@ -446,9 +471,9 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                                                                             spellCheck={false}
                                                                         />
                                                                         <Button
-                                                                            className="h-7 px-2 text-xs"
                                                                             type="button"
                                                                             variant="ghost"
+                                                                            size="xs"
                                                                             onClick={() => removeLocation(selectedServerIndex, selectedLocationIndex)}
                                                                         >
                                                                             {t('nginxGui.remove')}
@@ -466,9 +491,10 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                                                         ) : null}
                                                     </MasterDetail>
                                                     <Button
-                                                        className="h-7 justify-self-start px-2 text-xs"
+                                                        className="justify-self-start"
                                                         type="button"
                                                         variant="outline"
+                                                        size="sm"
                                                         onClick={addServer}
                                                     >
                                                         {t('nginxGui.addServer')}
@@ -476,18 +502,13 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                                                 </div>
                                             </TabsContent>
                                             <TabsContent value="global">
-                                                <div className="grid gap-3 py-2">
+                                                <div className="pt-4">
                                                     <NginxGlobalEditor config={rootConfig} onChange={handleRootChange} />
                                                 </div>
                                             </TabsContent>
                                         </Tabs>
-                                        <Button
-                                            className="justify-self-start"
-                                            type="button"
-                                            variant="default"
-                                            disabled={busy}
-                                            onClick={() => void apply(rawConfig)}
-                                        >
+                                        <Button className="justify-self-start" type="button" disabled={busy} onClick={() => void apply(rawConfig)}>
+                                            {busy ? <Spinner /> : null}
                                             {busy ? labels.applying : t('nginxGui.apply')}
                                         </Button>
                                     </div>
@@ -495,7 +516,7 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                             </TabsContent>
                             <TabsContent value="raw">
                                 <form
-                                    className="grid gap-3"
+                                    className="grid gap-4 pt-4"
                                     onSubmit={(event) => {
                                         event.preventDefault()
                                         void apply(String(new FormData(event.currentTarget).get('config') ?? ''))
@@ -504,47 +525,50 @@ export const NginxConfigWidget: FC<NginxConfigWidgetProps> = ({ labels, role, st
                                     <Textarea
                                         id="nginx-config-editor"
                                         name="config"
-                                        className="min-h-128 whitespace-pre overflow-auto"
+                                        className="min-h-128 overflow-auto whitespace-pre"
                                         value={rawConfig}
-                                        onChange={(event) => setRawConfig(event.target.value)}
-                                        readOnly={!canApply}
+                                        onChange={(event) => setDraftConfig(event.target.value)}
                                         spellCheck={false}
                                     />
-                                    {canApply ? (
-                                        <Button className="justify-self-start" type="submit" variant="default" disabled={busy}>
-                                            {busy ? labels.applying : labels.apply}
-                                        </Button>
-                                    ) : null}
+                                    <Button className="justify-self-start" type="submit" disabled={busy}>
+                                        {busy ? <Spinner /> : null}
+                                        {busy ? labels.applying : labels.apply}
+                                    </Button>
                                 </form>
                             </TabsContent>
                         </Tabs>
                     ) : (
                         <Textarea
                             id="nginx-config-editor"
-                            className="min-h-128 whitespace-pre overflow-auto"
+                            className="min-h-128 overflow-auto whitespace-pre"
                             value={rawConfig}
-                            onChange={(event) => setRawConfig(event.target.value)}
                             readOnly
                             spellCheck={false}
                         />
                     )}
                 </div>
-            ) : (
-                <p className="p-3 text-sm text-muted-foreground">{labels.failed}</p>
-            )}
-            {state?.history.length ? (
-                <div className="border-t border-background p-3">
-                    <h3 className="text-sm font-semibold">{labels.history}</h3>
-                    <div className="mt-2 grid gap-px bg-background">
-                        {state.history.map((revision) => (
-                            <Card key={revision.sha256} className="min-w-0 gap-1 p-3">
-                                <p className="truncate font-mono text-xs">{revision.sha256}</p>
-                                <p className="text-xs text-muted-foreground">{formatDateTime(revision.createdAt)}</p>
-                            </Card>
-                        ))}
+                {state.history.length > 0 ? (
+                    <div className="grid gap-3 bg-surface-1 p-4">
+                        <h3 className="text-sm font-semibold text-text-strong">{labels.history}</h3>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>{labels.sha256}</TableHead>
+                                    <TableHead>{t('nginxGui.appliedAt')}</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {state.history.map((revision) => (
+                                    <TableRow key={revision.sha256}>
+                                        <TableCell className="max-w-0 truncate font-mono text-xs tabular-nums">{revision.sha256}</TableCell>
+                                        <TableCell className="text-xs tabular-nums text-text-muted">{formatDateTime(revision.createdAt)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
                     </div>
-                </div>
-            ) : null}
+                ) : null}
+            </div>
         </WidgetSection>
     )
 }

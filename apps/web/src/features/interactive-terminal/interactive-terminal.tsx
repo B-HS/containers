@@ -2,12 +2,20 @@
 
 import type { FC } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { interactiveExecServerMessageSchema } from '@containers/contracts/engine-control'
 import { Button } from '@shared/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@shared/ui/dialog'
 import { Label } from '@shared/ui/label'
 import { Textarea } from '@shared/ui/textarea'
+
+const HEARTBEAT_INTERVAL_MS = 20_000
+
+const TERMINAL_SURFACE_DARK = { background: '#1c1c1c', cursor: '#fafafa', foreground: '#fafafa' }
+const TERMINAL_SURFACE_LIGHT = { background: '#f1f1f1', cursor: '#171717', foreground: '#171717' }
 
 type InteractiveTerminalProps = {
     containerId: string
@@ -16,38 +24,34 @@ type InteractiveTerminalProps = {
         websocketPath: string
     }>
     createSocket: (websocketPath: string) => WebSocket
-    labels: {
-        close: string
-        command: string
-        connect: string
-        disconnected: string
-        failed: string
-        terminal: string
-    }
 }
 
-export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId, containerName, createExecTicket, createSocket, labels }) => {
+export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId, containerName, createExecTicket, createSocket }) => {
     const hostRef = useRef<HTMLDivElement>(null)
     const socketRef = useRef<WebSocket | null>(null)
     const [command, setCommand] = useState<string[]>()
-    const [error, setError] = useState<string>()
     const [open, setOpen] = useState(false)
+    const t = useTranslations('Dashboard')
+    const disconnectedLabel = t('terminalDisconnected')
+    const failedLabel = t('terminalFailed')
 
     useEffect(() => {
-        if (!open || !command || !hostRef.current) {
+        const host = hostRef.current
+        if (!open || !command || !host) {
             return
         }
 
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
         const terminal = new Terminal({
             convertEol: true,
             cursorBlink: true,
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
             fontSize: 13,
-            theme: { background: '#09090b', foreground: '#fafafa' },
+            theme: prefersDark ? TERMINAL_SURFACE_DARK : TERMINAL_SURFACE_LIGHT,
         })
         const fitAddon = new FitAddon()
         terminal.loadAddon(fitAddon)
-        terminal.open(hostRef.current)
+        terminal.open(host)
         fitAddon.fit()
         terminal.focus()
         let disposed = false
@@ -70,7 +74,7 @@ export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId,
                         if (websocket.readyState === WebSocket.OPEN) {
                             websocket.send(JSON.stringify({ type: 'heartbeat' }))
                         }
-                    }, 20_000)
+                    }, HEARTBEAT_INTERVAL_MS)
                 })
                 websocket.addEventListener('message', (event) => {
                     const message = interactiveExecServerMessageSchema.safeParse(JSON.parse(String(event.data)))
@@ -83,7 +87,7 @@ export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId,
                         terminal.writeln(`\r\n${message.data.message}`)
                     } else if (message.data.type === 'exit') {
                         exitReported = true
-                        terminal.writeln(`\r\n${labels.disconnected} (${message.data.exitCode})`)
+                        terminal.writeln(`\r\n${disconnectedLabel} (${message.data.exitCode})`)
                     }
                 })
                 websocket.addEventListener('close', () => {
@@ -91,12 +95,13 @@ export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId,
                         clearInterval(heartbeatTimer)
                     }
                     if (!exitReported) {
-                        terminal.writeln(`\r\n${labels.disconnected}`)
+                        terminal.writeln(`\r\n${disconnectedLabel}`)
                     }
                 })
             } catch (connectError) {
                 if (!disposed) {
-                    setError(connectError instanceof Error ? connectError.message : labels.failed)
+                    toast.error(connectError instanceof Error ? connectError.message : failedLabel)
+                    setOpen(false)
                 }
             }
         }
@@ -112,7 +117,7 @@ export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId,
                 socketRef.current.send(JSON.stringify({ columns: terminal.cols, rows: terminal.rows, type: 'resize' }))
             }
         })
-        resizeObserver.observe(hostRef.current)
+        resizeObserver.observe(host)
         void connect()
 
         return () => {
@@ -129,46 +134,40 @@ export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId,
             socketRef.current = null
             terminal.dispose()
         }
-    }, [command, containerId, createExecTicket, createSocket, labels.disconnected, labels.failed, open])
+    }, [command, containerId, createExecTicket, createSocket, disconnectedLabel, failedLabel, open])
 
     return (
         <>
             <form
-                className="grid gap-2 border-t border-background pt-3"
+                className="grid gap-2 bg-overlay-subtle p-4"
                 onSubmit={(event) => {
                     event.preventDefault()
                     const nextCommand = String(new FormData(event.currentTarget).get('terminalCommand') ?? '')
                         .split('\n')
                         .map((part) => part.trim())
                         .filter((part) => part.length > 0)
-                    setError(undefined)
                     setCommand(nextCommand)
                     setOpen(true)
                 }}
             >
-                <Label htmlFor={`terminal-command-${containerId}`}>{labels.command}</Label>
+                <Label htmlFor={`terminal-command-${containerId}`}>{t('terminal')}</Label>
+                <p className="text-xs text-text-subtle">{t('commandHelp')}</p>
                 <Textarea id={`terminal-command-${containerId}`} name="terminalCommand" defaultValue="/bin/sh" required />
-                <Button className="justify-self-start" type="submit">
-                    {labels.connect}
+                <Button className="justify-self-start" size="sm" type="submit" variant="outline">
+                    {t('terminalConnect')}
                 </Button>
-                {error ? <p className="bg-red-950 p-3 text-sm text-red-100">{error}</p> : null}
             </form>
-            {open ? (
-                <div className="fixed inset-0 z-50 grid grid-rows-[auto_minmax(0,1fr)] bg-zinc-950 p-3 text-zinc-50" role="dialog" aria-modal="true">
-                    <header className="flex items-center justify-between gap-3 pb-3">
-                        <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">
-                                {labels.terminal}: {containerName}
-                            </p>
-                            <p className="truncate font-mono text-xs text-zinc-400">{command?.join(' ')}</p>
-                        </div>
-                        <Button type="button" onClick={() => setOpen(false)}>
-                            {labels.close}
-                        </Button>
-                    </header>
-                    <div ref={hostRef} className="min-h-0 overflow-hidden" />
-                </div>
-            ) : null}
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="grid h-svh max-w-none grid-rows-[auto_minmax(0,1fr)] gap-4 p-4 sm:max-w-none">
+                    <DialogHeader className="pr-10">
+                        <DialogTitle className="truncate text-sm">
+                            {t('terminal')}: {containerName}
+                        </DialogTitle>
+                        <DialogDescription className="truncate font-mono text-xs">{command?.join(' ')}</DialogDescription>
+                    </DialogHeader>
+                    <div ref={hostRef} className="min-h-0 overflow-hidden bg-surface-3 p-2" />
+                </DialogContent>
+            </Dialog>
         </>
     )
 }

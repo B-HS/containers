@@ -2,10 +2,12 @@
 
 import type { FC, FormEvent } from 'react'
 import { useState } from 'react'
+import { Alert, AlertDescription } from '@shared/ui/alert'
 import { Button } from '@shared/ui/button'
-import { Card } from '@shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
+import { Spinner } from '@shared/ui/spinner'
 
 type AcceptInvitationPanelLabels = {
     action: string
@@ -19,14 +21,12 @@ type AcceptInvitationPanelLabels = {
 
 type AcceptInvitationPanelProps = {
     labels: AcceptInvitationPanelLabels
-    locale: string
-    onAccept: (input: { name: string; password: string; token: string }) => Promise<void>
-    token: string
+    onAccept: (input: { name: string; password: string }) => Promise<void>
 }
 
 export type { AcceptInvitationPanelLabels }
 
-export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, locale, onAccept, token }) => {
+export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, onAccept }) => {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string>()
 
@@ -37,12 +37,7 @@ export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, 
         const form = new FormData(event.currentTarget)
 
         try {
-            await onAccept({
-                name: String(form.get('name') ?? ''),
-                password: String(form.get('password') ?? ''),
-                token,
-            })
-            window.location.assign(`/${locale}`)
+            await onAccept({ name: String(form.get('name') ?? ''), password: String(form.get('password') ?? '') })
         } catch {
             setError(labels.failed)
         } finally {
@@ -51,31 +46,42 @@ export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, 
     }
 
     return (
-        <main className="grid min-h-screen place-items-center bg-background p-3 text-foreground">
-            <Card className="w-full max-w-md gap-6 p-6">
-                <header>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Containers</p>
-                    <h1 className="mt-4 text-2xl font-semibold tracking-tight">{labels.title}</h1>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{labels.description}</p>
-                </header>
-                <form className="grid gap-4" onSubmit={submit}>
-                    <div className="grid gap-2">
-                        <Label htmlFor="accept-name">{labels.name}</Label>
-                        <Input id="accept-name" name="name" maxLength={100} required />
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="accept-password">{labels.password}</Label>
-                        <Input id="accept-password" name="password" type="password" minLength={12} maxLength={128} required />
-                    </div>
-                    {error ? (
-                        <p className="bg-red-950 p-3 text-sm text-red-100" role="alert">
-                            {error}
-                        </p>
-                    ) : null}
-                    <Button type="submit" variant="default" disabled={busy}>
-                        {busy ? labels.pending : labels.action}
-                    </Button>
-                </form>
+        <main className="grid min-h-screen place-items-center bg-background p-4 text-foreground">
+            <Card className="w-full max-w-md gap-6 py-8">
+                <CardHeader className="gap-3">
+                    <p className="text-xs font-medium tracking-[0.18em] text-text-subtle uppercase">Containers</p>
+                    <CardTitle className="text-2xl tracking-tight">{labels.title}</CardTitle>
+                    <CardDescription className="leading-6">{labels.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <form className="grid gap-5" onSubmit={submit}>
+                        <div className="grid gap-2">
+                            <Label htmlFor="accept-name">{labels.name}</Label>
+                            <Input id="accept-name" name="name" autoComplete="name" maxLength={100} required />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="accept-password">{labels.password}</Label>
+                            <Input
+                                id="accept-password"
+                                name="password"
+                                autoComplete="new-password"
+                                type="password"
+                                minLength={12}
+                                maxLength={128}
+                                required
+                            />
+                        </div>
+                        {error ? (
+                            <Alert variant="destructive">
+                                <AlertDescription>{error}</AlertDescription>
+                            </Alert>
+                        ) : null}
+                        <Button type="submit" variant="default" disabled={busy}>
+                            {busy ? <Spinner /> : null}
+                            {busy ? labels.pending : labels.action}
+                        </Button>
+                    </form>
+                </CardContent>
             </Card>
         </main>
     )

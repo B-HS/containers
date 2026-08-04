@@ -2,7 +2,9 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@shared/ui/button'
+import { Spinner } from '@shared/ui/spinner'
 
 type LogoutButtonProps = {
     label: string
@@ -10,6 +12,7 @@ type LogoutButtonProps = {
 }
 
 export const LogoutButton: FC<LogoutButtonProps> = ({ label, onSignOut }) => {
+    const router = useRouter()
     const [pending, setPending] = useState(false)
 
     const logout = async () => {
@@ -17,14 +20,15 @@ export const LogoutButton: FC<LogoutButtonProps> = ({ label, onSignOut }) => {
 
         try {
             await onSignOut()
-            window.location.reload()
+            router.refresh()
         } finally {
             setPending(false)
         }
     }
 
     return (
-        <Button className="mt-4 w-full" type="button" disabled={pending} onClick={logout}>
+        <Button className="w-full" type="button" variant="outline" size="sm" disabled={pending} onClick={logout}>
+            {pending ? <Spinner /> : null}
             {label}
         </Button>
     )

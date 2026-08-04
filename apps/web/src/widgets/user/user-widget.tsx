@@ -1,128 +1,53 @@
 'use client'
 
 import type { FC } from 'react'
-import { useState } from 'react'
-import type { ManagedUser } from '@containers/contracts/user-management'
-import { useUpdateUser } from '@entities/user/user.query'
-import { Badge } from '@shared/ui/badge'
-import { Button } from '@shared/ui/button'
-import { Card } from '@shared/ui/card'
-import { InlineAlert } from '@shared/ui/inline-alert'
-import { Label } from '@shared/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
+import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
+import { useGetUsers, useUpdateUser } from '@entities/user/user.query'
+import { UserCard } from '@features/user-card/user-card'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
+import { Skeleton } from '@shared/ui/skeleton'
 import { WidgetSection } from '@shared/common/widget-section'
 
 type UserWidgetProps = {
     currentUserId: string
-    labels: {
-        active: string
-        apply: string
-        disable: string
-        disabled: string
-        empty: string
-        enable: string
-        failed: string
-        role: string
-        title: string
-    }
-    users: ManagedUser[]
 }
 
-type UserCardProps = {
-    busy: boolean
-    currentUserId: string
-    labels: UserWidgetProps['labels']
-    onUpdate: (userId: string, input: { disabled?: boolean; role?: string }) => void
-    user: ManagedUser
-}
-
-const UserCard: FC<UserCardProps> = ({ busy, currentUserId, labels, onUpdate, user }) => {
-    const immutable = user.role === 'owner' || user.id === currentUserId
-    const [role, setRole] = useState<string>(user.role)
-
-    return (
-        <Card className="min-w-0 gap-3 p-3">
-            <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{user.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-                </div>
-                <Badge variant="muted">{user.disabledAt ? labels.disabled : labels.active}</Badge>
-            </div>
-            <form
-                className="flex flex-wrap items-end gap-2"
-                onSubmit={(event) => {
-                    event.preventDefault()
-                    void onUpdate(user.id, { role })
-                }}
-            >
-                <div className="grid min-w-40 flex-1 gap-1">
-                    <Label htmlFor={`user-role-${user.id}`}>{labels.role}</Label>
-                    <Select value={role} onValueChange={setRole} disabled={immutable}>
-                        <SelectTrigger id={`user-role-${user.id}`} className="w-full">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {user.role === 'owner' ? <SelectItem value="owner">owner</SelectItem> : null}
-                            <SelectItem value="admin">admin</SelectItem>
-                            <SelectItem value="operator">operator</SelectItem>
-                            <SelectItem value="viewer">viewer</SelectItem>
-                            <SelectItem value="auditor">auditor</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <Button type="submit" variant="default" disabled={immutable || busy}>
-                    {labels.apply}
-                </Button>
-                <Button
-                    type="button"
-                    variant="default"
-                    disabled={immutable || busy}
-                    onClick={() => void onUpdate(user.id, { disabled: !user.disabledAt })}
-                >
-                    {user.disabledAt ? labels.enable : labels.disable}
-                </Button>
-            </form>
-        </Card>
-    )
-}
-
-export const UserWidget: FC<UserWidgetProps> = ({ currentUserId, labels, users }) => {
-    const [busy, setBusy] = useState<string>()
-    const [error, setError] = useState<string>()
+export const UserWidget: FC<UserWidgetProps> = ({ currentUserId }) => {
+    const t = useTranslations('Dashboard')
+    const usersQuery = useGetUsers()
+    const users = usersQuery.data ?? []
     const updateUser = useUpdateUser()
 
-    const update = async (userId: string, input: { disabled?: boolean; role?: string }) => {
-        setBusy(userId)
-        setError(undefined)
-        try {
-            await updateUser.mutateAsync({ userId, ...input })
-            window.location.reload()
-        } catch (updateError) {
-            setError(updateError instanceof Error ? updateError.message : labels.failed)
-        } finally {
-            setBusy(undefined)
-        }
+    const update = (userId: string, input: { disabled?: boolean; role?: string }) => {
+        updateUser.mutate(
+            { userId, ...input },
+            {
+                onError: (error) => toast.error(error instanceof Error ? error.message : t('userManagementFailed')),
+                onSuccess: () => toast.success(t('userUpdated')),
+            },
+        )
     }
 
     return (
-        <WidgetSection id="user-management-title" title={labels.title} badge={users.length}>
-            {error ? (
-                <InlineAlert role="alert" tone="error">
-                    {error}
-                </InlineAlert>
+        <WidgetSection id="user-management-title" title={t('userManagement')} badge={users.length}>
+            {usersQuery.isPending ? (
+                <div className="grid gap-2 p-4">
+                    <Skeleton className="h-24 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                </div>
             ) : null}
-            {users.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{labels.empty}</p> : null}
+            {!usersQuery.isPending && users.length === 0 ? (
+                <Empty>
+                    <EmptyHeader>
+                        <EmptyTitle>{t('userEmpty')}</EmptyTitle>
+                        <EmptyDescription>{t('userEmptyDescription')}</EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
+            ) : null}
             <div className="grid gap-px bg-background lg:grid-cols-2">
                 {users.map((user) => (
-                    <UserCard
-                        key={user.id}
-                        busy={busy === user.id}
-                        currentUserId={currentUserId}
-                        labels={labels}
-                        onUpdate={(userId, input) => void update(userId, input)}
-                        user={user}
-                    />
+                    <UserCard key={user.id} currentUserId={currentUserId} onUpdate={update} pending={updateUser.isPending} user={user} />
                 ))}
             </div>
         </WidgetSection>

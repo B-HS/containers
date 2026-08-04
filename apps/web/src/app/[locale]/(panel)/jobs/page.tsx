@@ -1,49 +1,42 @@
+import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
 import { getTranslations } from 'next-intl/server'
 import { getBackupSchedule, getJobs } from '@entities/job/job.api'
 import { getMaintenanceStatus } from '@entities/maintenance/maintenance.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
+import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { JobWidget } from '@widgets/job/job-widget'
 
 const JobsPage = async () => {
-    const [translations, navTranslations, session] = await Promise.all([getTranslations('Dashboard'), getTranslations('Nav'), getSession()])
+    const [navTranslations, session] = await Promise.all([getTranslations('Nav'), getSession()])
 
     if (session.mode !== 'authenticated') {
         return null
     }
 
-    const canManageApiKeys = session.canManageApiKeys
-    const [jobs, backupSchedule, maintenanceStatus] = await Promise.all([
-        canManageApiKeys ? getJobs(API_INTERNAL_URL, session.cookie).catch(() => []) : Promise.resolve([]),
-        canManageApiKeys ? getBackupSchedule(API_INTERNAL_URL, session.cookie).catch(() => undefined) : Promise.resolve(undefined),
-        canManageApiKeys ? getMaintenanceStatus(API_INTERNAL_URL, session.cookie).catch(() => undefined) : Promise.resolve(undefined),
-    ])
+    const queryClient = new QueryClient()
+    if (session.canManageApiKeys) {
+        await Promise.all([
+            queryClient.prefetchQuery({ queryKey: QUERY_KEY.JOB.LIST, queryFn: () => getJobs(API_INTERNAL_URL, session.cookie) }),
+            queryClient.prefetchQuery({
+                queryKey: QUERY_KEY.JOB.BACKUP_SCHEDULE,
+                queryFn: () => getBackupSchedule(API_INTERNAL_URL, session.cookie),
+            }),
+            queryClient.prefetchQuery({
+                queryKey: QUERY_KEY.MAINTENANCE.STATUS,
+                queryFn: () => getMaintenanceStatus(API_INTERNAL_URL, session.cookie),
+            }),
+        ])
+    }
 
     return (
-        <div className="grid gap-px">
-            <PageHeader description={navTranslations('subtitles.jobs')} title={navTranslations('items.jobs')} />
-            <JobWidget
-                jobs={jobs}
-                maintenance={maintenanceStatus}
-                schedule={backupSchedule}
-                labels={{
-                    attempt: translations('jobAttempt'),
-                    cancel: translations('jobCancel'),
-                    cancelFailed: translations('jobCancelFailed'),
-                    empty: translations('jobEmpty'),
-                    finished: translations('jobFinished'),
-                    interval: translations('jobInterval'),
-                    lastFailure: translations('jobLastFailure'),
-                    lastSuccess: translations('jobLastSuccess'),
-                    maintenance: translations('jobMaintenance'),
-                    nextRun: translations('jobNextRun'),
-                    none: translations('jobNone'),
-                    scheduled: translations('jobScheduled'),
-                    title: translations('jobControl'),
-                }}
-            />
-        </div>
+        <HydrationBoundary state={dehydrate(queryClient)}>
+            <div className="grid gap-px">
+                <PageHeader description={navTranslations('subtitles.jobs')} title={navTranslations('items.jobs')} />
+                <JobWidget canManage={session.canManageApiKeys} />
+            </div>
+        </HydrationBoundary>
     )
 }
 

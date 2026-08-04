@@ -2,177 +2,274 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import type { NetworkSummary } from '@containers/contracts/engine-control'
+import { useTranslations } from 'next-intl'
+import { Layers } from 'lucide-react'
+import { toast } from 'sonner'
 import { useCreateContainer } from '@entities/engine/engine.query'
+import { useGetImages } from '@entities/image/image.query'
+import { useGetInfrastructure } from '@entities/infrastructure/infrastructure.query'
 import { Button } from '@shared/ui/button'
-import { Card } from '@shared/ui/card'
 import { Checkbox } from '@shared/ui/checkbox'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@shared/ui/empty'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
+import { Skeleton } from '@shared/ui/skeleton'
+import { Spinner } from '@shared/ui/spinner'
 import { Textarea } from '@shared/ui/textarea'
+import { WidgetSection } from '@shared/common/widget-section'
+import { Link, useRouter } from '../../i18n/navigation'
+
+const CREATE_ROLES = ['owner', 'admin']
+const DEFAULT_NETWORK = 'containers_edge'
+const MEBIBYTE = 1_048_576
+const NANO_CPU = 1_000_000_000
+const NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/
+const SKELETON_ROWS = [0, 1, 2, 3]
 
 type ContainerCreateWidgetProps = {
-    images: Array<{ id: string; repoTags: string[] }>
-    labels: {
-        autoStart: string
-        command: string
-        cpu: string
-        create: string
-        failed: string
-        image: string
-        memory: string
-        name: string
-        network: string
-        port: string
-        readOnly: string
-        title: string
-    }
-    networks: NetworkSummary[]
     role: string
 }
 
-export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ images, labels, networks, role }) => {
+export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) => {
     const [autoStart, setAutoStart] = useState(true)
-    const [busy, setBusy] = useState(false)
-    const [error, setError] = useState<string>()
-    const [image, setImage] = useState(images[0]?.repoTags[0] ?? images[0]?.id ?? '')
-    const [network, setNetwork] = useState('containers_edge')
+    const [errors, setErrors] = useState<{ image?: string; name?: string }>({})
+    const [image, setImage] = useState('')
+    const [network, setNetwork] = useState(DEFAULT_NETWORK)
     const [readOnly, setReadOnly] = useState(true)
-    const canCreate = ['owner', 'admin'].includes(role)
+    const t = useTranslations('Dashboard')
+    const router = useRouter()
+    const imageList = useGetImages()
+    const infrastructure = useGetInfrastructure()
     const createContainer = useCreateContainer()
+    const images = imageList.data ?? []
+    const networks = (infrastructure.data?.networks ?? []).filter((candidate) => candidate.driver === 'bridge')
+    const selectedImage = image || images[0]?.repoTags[0] || images[0]?.id || ''
 
-    if (!canCreate) {
+    if (!CREATE_ROLES.includes(role)) {
         return null
     }
 
+    const submit = (formData: FormData) => {
+        const name = String(formData.get('name') ?? '').trim()
+        const nextErrors = {
+            ...(NAME_PATTERN.test(name) ? {} : { name: t('containerNameInvalid') }),
+            ...(selectedImage ? {} : { image: t('containerImageRequired') }),
+        }
+        setErrors(nextErrors)
+        if (Object.keys(nextErrors).length > 0) {
+            toast.error(t('containerCreateFailed'))
+            return
+        }
+
+        const port = String(formData.get('port') ?? '').trim()
+        createContainer.mutate(
+            {
+                autoStart,
+                command: String(formData.get('command') ?? '')
+                    .split('\n')
+                    .map((part) => part.trim())
+                    .filter((part) => part.length > 0),
+                containerPort: port ? Number(port) : undefined,
+                image: selectedImage,
+                memoryBytes: Number(formData.get('memoryMiB')) * MEBIBYTE,
+                name,
+                nanoCpus: Number(formData.get('cpu')) * NANO_CPU,
+                network,
+                readOnlyRootFilesystem: readOnly,
+            },
+            {
+                onError: () => toast.error(t('containerCreateFailed')),
+                onSuccess: () => {
+                    toast.success(t('containerCreated'))
+                    router.push('/containers')
+                },
+            },
+        )
+    }
+
+    if (imageList.isPending || infrastructure.isPending) {
+        return (
+            <WidgetSection id="container-create-title" title={t('containerCreate')}>
+                <div className="grid gap-3 p-6">
+                    {SKELETON_ROWS.map((row) => (
+                        <Skeleton key={row} className="h-10 w-full" />
+                    ))}
+                </div>
+            </WidgetSection>
+        )
+    }
+
+    if (images.length === 0) {
+        return (
+            <WidgetSection id="container-create-title" title={t('containerCreate')}>
+                <Empty>
+                    <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                            <Layers aria-hidden="true" />
+                        </EmptyMedia>
+                        <EmptyTitle>{t('containerNoImages')}</EmptyTitle>
+                        <EmptyDescription>{t('containerNoImagesDescription')}</EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                        <Button asChild size="sm">
+                            <Link href="/registry">{t('registryPull')}</Link>
+                        </Button>
+                    </EmptyContent>
+                </Empty>
+            </WidgetSection>
+        )
+    }
+
     return (
-        <section className="mt-px min-w-0 overflow-hidden bg-card" aria-labelledby="container-create-title">
-            <header className="p-3">
-                <h2 id="container-create-title" className="text-sm font-semibold">
-                    {labels.title}
-                </h2>
-            </header>
-            {error ? (
-                <p className="mx-3 mb-3 bg-red-950 p-3 text-sm text-red-100" role="alert">
-                    {error}
-                </p>
-            ) : null}
-            <Card className="p-3">
-                <form
-                    className="grid gap-3 xl:grid-cols-2"
-                    onSubmit={async (event) => {
-                        event.preventDefault()
-                        setBusy(true)
-                        setError(undefined)
-                        const form = new FormData(event.currentTarget)
-                        const port = String(form.get('port') ?? '').trim()
-                        const command = String(form.get('command') ?? '')
-                            .split('\n')
-                            .map((part) => part.trim())
-                            .filter((part) => part.length > 0)
-
-                        try {
-                            await createContainer.mutateAsync({
-                                autoStart,
-                                command,
-                                containerPort: port ? Number(port) : undefined,
-                                image,
-                                memoryBytes: Number(form.get('memoryMiB')) * 1_048_576,
-                                name: String(form.get('name') ?? ''),
-                                nanoCpus: Number(form.get('cpu')) * 1_000_000_000,
-                                network,
-                                readOnlyRootFilesystem: readOnly,
-                            })
-
-                            window.location.reload()
-                        } catch {
-                            setError(labels.failed)
-                        } finally {
-                            setBusy(false)
-                        }
-                    }}
-                >
-                    <div className="grid gap-2">
-                        <Label htmlFor="container-create-name">{labels.name}</Label>
-                        <Input id="container-create-name" name="name" required />
+        <WidgetSection id="container-create-title" title={t('containerCreate')}>
+            <form
+                className="grid gap-px bg-background"
+                onSubmit={(event) => {
+                    event.preventDefault()
+                    submit(new FormData(event.currentTarget))
+                }}
+            >
+                <fieldset className="grid gap-4 bg-surface-1 p-6">
+                    <legend className="sr-only">{t('containerSectionBasic')}</legend>
+                    <div>
+                        <h3 className="text-sm font-semibold text-text-strong">{t('containerSectionBasic')}</h3>
+                        <p className="mt-1 text-xs text-text-muted">{t('containerSectionBasicHelp')}</p>
                     </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="container-create-image">{labels.image}</Label>
-                        <Select value={image} onValueChange={setImage} disabled={images.length === 0}>
-                            <SelectTrigger id="container-create-image" className="w-full">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {images.map((imageItem) => {
-                                    const identifier = imageItem.repoTags[0] ?? imageItem.id
-                                    return (
-                                        <SelectItem key={imageItem.id} value={identifier}>
-                                            {identifier}
-                                        </SelectItem>
-                                    )
-                                })}
-                            </SelectContent>
-                        </Select>
+                    <div className="grid gap-4 xl:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label htmlFor="container-create-name">{t('containerName')}</Label>
+                            <Input
+                                id="container-create-name"
+                                name="name"
+                                autoComplete="off"
+                                aria-invalid={errors.name !== undefined}
+                                aria-describedby="container-create-name-help"
+                                required
+                            />
+                            <p id="container-create-name-help" className={errors.name ? 'text-xs text-danger' : 'text-xs text-text-subtle'}>
+                                {errors.name ?? t('containerNameHelp')}
+                            </p>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="container-create-image">{t('image')}</Label>
+                            <Select value={selectedImage} onValueChange={setImage}>
+                                <SelectTrigger id="container-create-image" className="w-full" aria-invalid={errors.image !== undefined}>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {images.map((candidate) => {
+                                        const identifier = candidate.repoTags[0] ?? candidate.id
+                                        return (
+                                            <SelectItem key={candidate.id} value={identifier}>
+                                                {identifier}
+                                            </SelectItem>
+                                        )
+                                    })}
+                                </SelectContent>
+                            </Select>
+                            <p className={errors.image ? 'text-xs text-danger' : 'text-xs text-text-subtle'}>
+                                {errors.image ?? t('containerImageHelp')}
+                            </p>
+                        </div>
                     </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="container-create-network">{labels.network}</Label>
-                        <Select value={network} onValueChange={setNetwork}>
-                            <SelectTrigger id="container-create-network" className="w-full">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {networks
-                                    .filter((networkItem) => networkItem.driver === 'bridge')
-                                    .map((networkItem) => (
-                                        <SelectItem key={networkItem.id} value={networkItem.name}>
-                                            {networkItem.name}
+                </fieldset>
+
+                <fieldset className="grid gap-4 bg-surface-1 p-6">
+                    <legend className="sr-only">{t('containerSectionNetwork')}</legend>
+                    <div>
+                        <h3 className="text-sm font-semibold text-text-strong">{t('containerSectionNetwork')}</h3>
+                        <p className="mt-1 text-xs text-text-muted">{t('containerSectionNetworkHelp')}</p>
+                    </div>
+                    <div className="grid gap-4 xl:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label htmlFor="container-create-network">{t('containerNetwork')}</Label>
+                            <Select value={network} onValueChange={setNetwork}>
+                                <SelectTrigger id="container-create-network" className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {networks.map((candidate) => (
+                                        <SelectItem key={candidate.id} value={candidate.name}>
+                                            {candidate.name}
                                         </SelectItem>
                                     ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                        <div className="grid gap-2">
-                            <Label htmlFor="container-create-memory">{labels.memory}</Label>
-                            <Input id="container-create-memory" name="memoryMiB" type="number" min="16" max="65536" defaultValue="512" required />
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-text-subtle">{t('containerNetworkHelp')}</p>
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="container-create-cpu">{labels.cpu}</Label>
-                            <Input id="container-create-cpu" name="cpu" type="number" min="0.1" max="10" step="0.1" defaultValue="1" required />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="container-create-port">{labels.port}</Label>
+                            <Label htmlFor="container-create-port">{t('containerPort')}</Label>
                             <Input id="container-create-port" name="port" type="number" min="1" max="65535" />
+                            <p className="text-xs text-text-subtle">{t('containerPortHelp')}</p>
                         </div>
                     </div>
-                    <div className="grid gap-2 xl:col-span-2">
-                        <Label htmlFor="container-create-command">{labels.command}</Label>
+                </fieldset>
+
+                <fieldset className="grid gap-4 bg-surface-1 p-6">
+                    <legend className="sr-only">{t('containerSectionResource')}</legend>
+                    <div>
+                        <h3 className="text-sm font-semibold text-text-strong">{t('containerSectionResource')}</h3>
+                        <p className="mt-1 text-xs text-text-muted">{t('containerSectionResourceHelp')}</p>
+                    </div>
+                    <div className="grid gap-4 xl:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label htmlFor="container-create-memory">{t('containerMemory')}</Label>
+                            <Input id="container-create-memory" name="memoryMiB" type="number" min="16" max="65536" defaultValue="512" required />
+                            <p className="text-xs text-text-subtle">{t('containerMemoryHelp')}</p>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="container-create-cpu">{t('containerCpu')}</Label>
+                            <Input id="container-create-cpu" name="cpu" type="number" min="0.1" max="10" step="0.1" defaultValue="1" required />
+                            <p className="text-xs text-text-subtle">{t('containerCpuHelp')}</p>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset className="grid gap-4 bg-surface-1 p-6">
+                    <legend className="sr-only">{t('containerSectionSecurity')}</legend>
+                    <div>
+                        <h3 className="text-sm font-semibold text-text-strong">{t('containerSectionSecurity')}</h3>
+                        <p className="mt-1 text-xs text-text-muted">{t('containerSectionSecurityHelp')}</p>
+                    </div>
+                    <div className="grid gap-3">
+                        <div className="grid gap-1 bg-overlay-subtle p-3">
+                            <Label htmlFor="container-create-read-only">
+                                <Checkbox
+                                    id="container-create-read-only"
+                                    checked={readOnly}
+                                    onCheckedChange={(checked) => setReadOnly(checked === true)}
+                                />
+                                {t('containerReadOnly')}
+                            </Label>
+                            <p className="pl-6 text-xs text-text-subtle">{t('containerReadOnlyHelp')}</p>
+                        </div>
+                        <div className="grid gap-1 bg-overlay-subtle p-3">
+                            <Label htmlFor="container-create-auto-start">
+                                <Checkbox
+                                    id="container-create-auto-start"
+                                    checked={autoStart}
+                                    onCheckedChange={(checked) => setAutoStart(checked === true)}
+                                />
+                                {t('containerAutoStart')}
+                            </Label>
+                            <p className="pl-6 text-xs text-text-subtle">{t('containerAutoStartHelp')}</p>
+                        </div>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="container-create-command">{t('command')}</Label>
                         <Textarea id="container-create-command" name="command" placeholder={'executable\nargument'} />
+                        <p className="text-xs text-text-subtle">{t('commandHelp')}</p>
                     </div>
-                    <div className="flex flex-wrap gap-4 text-xs xl:col-span-2">
-                        <div className="flex items-center gap-2">
-                            <Checkbox
-                                id="container-create-auto-start"
-                                checked={autoStart}
-                                onCheckedChange={(checked) => setAutoStart(checked === true)}
-                            />
-                            <Label htmlFor="container-create-auto-start">{labels.autoStart}</Label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Checkbox
-                                id="container-create-read-only"
-                                checked={readOnly}
-                                onCheckedChange={(checked) => setReadOnly(checked === true)}
-                            />
-                            <Label htmlFor="container-create-read-only">{labels.readOnly}</Label>
-                        </div>
-                    </div>
-                    <Button type="submit" variant="default" disabled={busy || images.length === 0} className="xl:col-span-2">
-                        {labels.create}
+                </fieldset>
+
+                <div className="flex justify-end bg-surface-2 px-6 py-4">
+                    <Button type="submit" disabled={createContainer.isPending}>
+                        {createContainer.isPending ? <Spinner /> : null}
+                        {t('create')}
                     </Button>
-                </form>
-            </Card>
-        </section>
+                </div>
+            </form>
+        </WidgetSection>
     )
 }

@@ -2,140 +2,173 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import type { MaintenanceStatus } from '@containers/contracts/maintenance'
-import type { BackupSchedule, OperationJob } from '@containers/contracts/operation-job'
+import { useQuery } from '@tanstack/react-query'
+import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
+import { OPERATION_JOB_STATUS } from '@containers/contracts/operation-job'
 import { ACTIVE_JOB_STATUSES } from '@entities/job/job.api'
-import { useCancelJob } from '@entities/job/job.query'
+import { backupScheduleQueryOptions, jobListQueryOptions, useCancelJob } from '@entities/job/job.query'
+import { maintenanceQueryOptions } from '@entities/maintenance/maintenance.query'
+import { JobCancelDialog } from '@features/job-cancel-dialog/job-cancel-dialog'
+import { JobStatusBadge } from '@features/job-status-badge/job-status-badge'
+import { SummaryGrid } from '@features/summary-grid/summary-grid'
 import { formatDateTime } from '@shared/lib/format-date-time'
+import { Alert, AlertTitle } from '@shared/ui/alert'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
-import { Card } from '@shared/ui/card'
-import { InlineAlert } from '@shared/ui/inline-alert'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
+import { Skeleton } from '@shared/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@shared/ui/table'
 import { WidgetSection } from '@shared/common/widget-section'
 
+const SKELETON_ROW_COUNT = 4
+
 type JobWidgetProps = {
-    jobs: OperationJob[]
-    labels: {
-        attempt: string
-        cancel: string
-        cancelFailed: string
-        empty: string
-        finished: string
-        interval: string
-        lastFailure: string
-        lastSuccess: string
-        maintenance: string
-        nextRun: string
-        none: string
-        scheduled: string
-        title: string
-    }
-    maintenance: MaintenanceStatus | undefined
-    schedule: BackupSchedule | undefined
+    canManage: boolean
 }
 
-export const JobWidget: FC<JobWidgetProps> = ({ jobs: initialJobs, labels, maintenance, schedule }) => {
-    const [jobs, setJobs] = useState(initialJobs)
-    const [busy, setBusy] = useState<string>()
-    const [error, setError] = useState<string>()
+export const JobWidget: FC<JobWidgetProps> = ({ canManage }) => {
+    const [cancelJobId, setCancelJobId] = useState<string>()
+    const translations = useTranslations('Dashboard')
+    const jobs = useQuery({ ...jobListQueryOptions(), enabled: canManage })
+    const schedule = useQuery({ ...backupScheduleQueryOptions(), enabled: canManage })
+    const maintenance = useQuery({ ...maintenanceQueryOptions(), enabled: canManage })
     const cancelJob = useCancelJob()
 
-    const cancel = async (jobId: string) => {
-        setBusy(jobId)
-        setError(undefined)
-        try {
-            const cancelled = await cancelJob.mutateAsync(jobId)
-            setJobs((current) => current.map((job) => (job.id === cancelled.id ? cancelled : job)))
-        } catch (cancelError) {
-            setError(cancelError instanceof Error ? cancelError.message : labels.cancelFailed)
-        } finally {
-            setBusy(undefined)
-        }
+    const items = jobs.data ?? []
+    const target = items.find((job) => job.id === cancelJobId)
+    const scheduleData = schedule.data
+
+    const cancel = () => {
+        if (!target) return
+        cancelJob.mutate(target.id, {
+            onError: (cancelError) => toast.error(cancelError instanceof Error ? cancelError.message : translations('jobCancelFailed')),
+            onSuccess: () => {
+                setCancelJobId(undefined)
+                toast.success(translations('jobCancelled'))
+            },
+        })
+    }
+
+    if (!canManage) {
+        return (
+            <WidgetSection id="job-control-title" title={translations('jobControl')}>
+                <Alert className="m-6 w-auto">
+                    <AlertTitle>{translations('permissionRequired')}</AlertTitle>
+                </Alert>
+            </WidgetSection>
+        )
     }
 
     return (
         <WidgetSection
             id="job-control-title"
-            title={labels.title}
+            title={translations('jobControl')}
             header={
                 <div className="flex items-center gap-2">
-                    {maintenance?.enabled ? (
-                        <Badge className="bg-red-700 text-white">
-                            {labels.maintenance}
-                            {maintenance.reason === null ? '' : ` (${maintenance.reason})`}
+                    {maintenance.data?.enabled ? (
+                        <Badge variant="danger">
+                            {translations('jobMaintenance')}
+                            {maintenance.data.reason === null ? '' : ` (${maintenance.data.reason})`}
                         </Badge>
                     ) : null}
-                    <Badge variant="muted">{jobs.length}</Badge>
+                    <Badge variant="neutral">{items.length}</Badge>
                 </div>
             }
         >
-            {error ? (
-                <InlineAlert role="alert" tone="error">
-                    {error}
-                </InlineAlert>
+            {scheduleData ? (
+                <SummaryGrid
+                    className="bg-surface-3 p-6"
+                    items={[
+                        { label: translations('jobInterval'), value: `${scheduleData.intervalHours}h` },
+                        { label: translations('jobNextRun'), value: formatDateTime(scheduleData.nextRunAt) },
+                        { label: translations('jobLastSuccess'), value: formatDateTime(scheduleData.lastSuccessAt) ?? translations('jobNone') },
+                        {
+                            label: translations('jobLastFailure'),
+                            value: `${formatDateTime(scheduleData.lastFailureAt) ?? translations('jobNone')}${
+                                scheduleData.lastFailureCode === null ? '' : ` (${scheduleData.lastFailureCode})`
+                            }`,
+                        },
+                    ]}
+                />
             ) : null}
-            {schedule ? (
-                <dl className="grid gap-2 border-t border-background p-3 text-xs text-muted-foreground sm:grid-cols-4">
-                    <div className="min-w-0">
-                        <dt>{labels.interval}</dt>
-                        <dd className="mt-1 truncate text-foreground">{schedule.intervalHours}h</dd>
-                    </div>
-                    <div className="min-w-0">
-                        <dt>{labels.nextRun}</dt>
-                        <dd className="mt-1 truncate text-foreground">{formatDateTime(schedule.nextRunAt)}</dd>
-                    </div>
-                    <div className="min-w-0">
-                        <dt>{labels.lastSuccess}</dt>
-                        <dd className="mt-1 truncate text-foreground">{formatDateTime(schedule.lastSuccessAt) ?? labels.none}</dd>
-                    </div>
-                    <div className="min-w-0">
-                        <dt>{labels.lastFailure}</dt>
-                        <dd className="mt-1 truncate text-foreground">
-                            {formatDateTime(schedule.lastFailureAt) ?? labels.none}
-                            {schedule.lastFailureCode === null ? '' : ` (${schedule.lastFailureCode})`}
-                        </dd>
-                    </div>
-                </dl>
+            {jobs.isPending ? (
+                <div className="grid gap-2 p-6">
+                    {Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+                        <Skeleton key={index} className="h-9 w-full" />
+                    ))}
+                </div>
             ) : null}
-            {jobs.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{labels.empty}</p> : null}
-            <div className="grid gap-px bg-background xl:grid-cols-2">
-                {jobs.map((job) => (
-                    <Card key={job.id} className="min-w-0 gap-3 p-3">
-                        <div className="flex min-w-0 items-start justify-between gap-3">
-                            <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <p className="truncate text-sm font-semibold">{job.kind}</p>
-                                    <Badge variant="muted">{job.status}</Badge>
-                                    {job.progressStep === null ? null : <Badge variant="muted">{job.progressStep}</Badge>}
-                                </div>
-                                <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{job.id}</p>
-                            </div>
-                            {ACTIVE_JOB_STATUSES.includes(job.status) ? (
-                                <Button type="button" variant="default" disabled={busy === job.id} onClick={() => void cancel(job.id)}>
-                                    {labels.cancel}
-                                </Button>
-                            ) : null}
-                        </div>
-                        <dl className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-                            <div className="min-w-0">
-                                <dt>{labels.attempt}</dt>
-                                <dd className="mt-1 truncate text-foreground">
+            {!jobs.isPending && items.length === 0 ? (
+                <Empty>
+                    <EmptyHeader>
+                        <EmptyTitle>{translations('jobEmpty')}</EmptyTitle>
+                        <EmptyDescription>{translations('jobEmptyDescription')}</EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
+            ) : null}
+            {items.length > 0 ? (
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>{translations('jobKind')}</TableHead>
+                            <TableHead>{translations('jobStatus')}</TableHead>
+                            <TableHead>{translations('jobAttempt')}</TableHead>
+                            <TableHead>
+                                {translations('jobScheduled')} · {translations('jobNextRetry')}
+                            </TableHead>
+                            <TableHead>{translations('jobFinished')}</TableHead>
+                            <TableHead className="text-right">{translations('jobCancel')}</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {items.map((job) => (
+                            <TableRow key={job.id} className="odd:bg-overlay-subtle">
+                                <TableCell className="max-w-64">
+                                    <span className="block truncate font-medium text-text-strong">{job.kind}</span>
+                                    <span className="block truncate font-mono text-xs text-text-subtle">{job.progressStep ?? job.id}</span>
+                                </TableCell>
+                                <TableCell>
+                                    <JobStatusBadge status={job.status} />
+                                </TableCell>
+                                <TableCell className={job.status === OPERATION_JOB_STATUS.FAILED ? 'text-danger' : 'text-text-muted'}>
                                     {job.attempt}/{job.maxAttempts}
                                     {job.failureCode === null ? '' : ` (${job.failureCode})`}
-                                </dd>
-                            </div>
-                            <div className="min-w-0">
-                                <dt>{labels.finished}</dt>
-                                <dd className="mt-1 truncate text-foreground">{formatDateTime(job.finishedAt) ?? labels.none}</dd>
-                            </div>
-                            <div className="min-w-0">
-                                <dt>{labels.scheduled}</dt>
-                                <dd className="mt-1 truncate text-foreground">{formatDateTime(job.scheduledAt)}</dd>
-                            </div>
-                        </dl>
-                    </Card>
-                ))}
-            </div>
+                                </TableCell>
+                                <TableCell className="text-text-muted">{formatDateTime(job.scheduledAt)}</TableCell>
+                                <TableCell className="text-text-muted">{formatDateTime(job.finishedAt) ?? translations('jobNone')}</TableCell>
+                                <TableCell className="text-right">
+                                    {ACTIVE_JOB_STATUSES.includes(job.status) ? (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="xs"
+                                            className="text-danger"
+                                            onClick={() => setCancelJobId(job.id)}
+                                        >
+                                            {translations('jobCancel')}
+                                        </Button>
+                                    ) : null}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            ) : null}
+            {target ? (
+                <JobCancelDialog
+                    open
+                    actionLabel={translations('jobCancel')}
+                    cancelLabel={translations('cancel')}
+                    description={translations('jobCancelDescription')}
+                    jobId={target.id}
+                    jobKind={target.kind}
+                    pending={cancelJob.isPending}
+                    title={translations('jobCancelTitle')}
+                    onConfirm={cancel}
+                    onOpenChange={() => setCancelJobId(undefined)}
+                />
+            ) : null}
         </WidgetSection>
     )
 }

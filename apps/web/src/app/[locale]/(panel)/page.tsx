@@ -9,11 +9,7 @@ import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { OverviewWidget } from '@widgets/overview/overview-widget'
-import { TrafficWidget } from '@widgets/traffic/traffic-widget'
-
-const BYTE_GIB = 1_073_741_824
-
-const formatGib = (bytes: number) => `${(bytes / BYTE_GIB).toFixed(1)} GiB`
+import { TrafficSummaryWidget } from '@widgets/traffic/traffic-summary-widget'
 
 const OverviewPage = async () => {
     const [translations, session] = await Promise.all([getTranslations('Dashboard'), getSession()])
@@ -24,22 +20,19 @@ const OverviewPage = async () => {
 
     const cookie = session.cookie
     const queryClient = new QueryClient()
-    const [apiAvailable, engineDashboard, trafficSummary, trafficAnalytics, nginxStatus] = await Promise.all([
-        getApiHealth(API_INTERNAL_URL).then(
-            () => {
-                queryClient.setQueryData(QUERY_KEY.HEALTH.API, { status: 'ok' })
-                return true
-            },
-            () => false,
-        ),
+    const [apiHealth, engineDashboard, trafficSummary, trafficAnalytics, nginxStatus] = await Promise.all([
+        getApiHealth(API_INTERNAL_URL).catch(() => undefined),
         getEngineDashboard(API_INTERNAL_URL, cookie).catch(() => undefined),
         getTrafficSummary(API_INTERNAL_URL, cookie).catch(() => undefined),
         getTrafficAnalytics(API_INTERNAL_URL, cookie).catch(() => undefined),
         getNginxStatus(API_INTERNAL_URL, cookie).catch(() => undefined),
     ])
+    if (apiHealth) {
+        queryClient.setQueryData(QUERY_KEY.HEALTH.API, apiHealth)
+    }
     if (engineDashboard) {
-        queryClient.setQueryData(['engine', 'overview'], engineDashboard.overview)
-        queryClient.setQueryData(['engine', 'container', 'list'], engineDashboard.containers)
+        queryClient.setQueryData(QUERY_KEY.ENGINE.OVERVIEW, engineDashboard.overview)
+        queryClient.setQueryData(QUERY_KEY.ENGINE.CONTAINER.LIST, engineDashboard.containers)
     }
     if (trafficSummary) {
         queryClient.setQueryData(QUERY_KEY.TRAFFIC.SUMMARY, trafficSummary)
@@ -50,56 +43,13 @@ const OverviewPage = async () => {
     if (nginxStatus) {
         queryClient.setQueryData(QUERY_KEY.NGINX.STATUS, nginxStatus)
     }
-    const diskValue = engineDashboard
-        ? `${formatGib(engineDashboard.overview.disk.usedBytes)} / ${formatGib(engineDashboard.overview.disk.capacityBytes)}`
-        : undefined
 
     return (
         <HydrationBoundary state={dehydrate(queryClient)}>
             <div className="grid gap-px">
                 <PageHeader description={translations('subtitle')} title={translations('heading')} />
-                <OverviewWidget
-                    apiAvailable={apiAvailable}
-                    containerCount={engineDashboard?.containers.length}
-                    degradedLabel={translations('degraded')}
-                    diskValue={diskValue}
-                    engineValue={engineDashboard ? `v${engineDashboard.overview.version}` : undefined}
-                    healthyLabel={translations('healthy')}
-                    labels={{
-                        api: translations('api'),
-                        containers: translations('containers'),
-                        disk: translations('disk'),
-                        engine: translations('engine'),
-                        nginx: translations('nginx'),
-                        traffic: translations('traffic'),
-                    }}
-                    nginxValue={nginxStatus ? `${nginxStatus.activeConnections} active` : undefined}
-                    trafficValue={trafficSummary ? `${trafficSummary.requestsPerSecond.toFixed(2)} req/s` : undefined}
-                />
-                <TrafficWidget
-                    analytics={trafficAnalytics}
-                    canExport={session.canManageApiKeys}
-                    labels={{
-                        average: translations('trafficAverage'),
-                        bytes: translations('trafficBytes'),
-                        empty: translations('trafficEmpty'),
-                        errorRate: translations('trafficErrorRate'),
-                        latency: translations('trafficLatency'),
-                        maskedIp: translations('trafficMaskedIp'),
-                        path: translations('trafficPath'),
-                        pause: translations('trafficLivePause'),
-                        recent: translations('trafficRecent'),
-                        requests: translations('trafficRequests'),
-                        resume: translations('trafficLiveResume'),
-                        status: translations('trafficStatus'),
-                        title: translations('trafficAnalytics'),
-                        topPaths: translations('trafficTopPaths'),
-                        download: translations('trafficExportDownload'),
-                        exportCsv: translations('trafficExportCsv'),
-                        exportFailed: translations('trafficExportFailed'),
-                        exportNdjson: translations('trafficExportNdjson'),
-                    }}
-                />
+                <OverviewWidget />
+                <TrafficSummaryWidget />
             </div>
         </HydrationBoundary>
     )

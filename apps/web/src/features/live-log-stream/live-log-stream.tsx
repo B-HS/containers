@@ -2,6 +2,8 @@
 
 import type { FC } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import { containerLogStreamChunkSchema } from '@containers/contracts/engine-stream'
 import { Button } from '@shared/ui/button'
 
@@ -10,21 +12,14 @@ const MAX_BUFFER_CHARS = 200_000
 type LiveLogStreamProps = {
     containerId: string
     createLogStream: (containerId: string) => EventSource
-    labels: {
-        failed: string
-        start: string
-        stop: string
-        title: string
-    }
 }
 
-export const LiveLogStream: FC<LiveLogStreamProps> = ({ containerId, createLogStream, labels }) => {
+export const LiveLogStream: FC<LiveLogStreamProps> = ({ containerId, createLogStream }) => {
     const outputRef = useRef<HTMLPreElement>(null)
     const sourceRef = useRef<EventSource | null>(null)
-
     const [buffer, setBuffer] = useState<string>()
     const [isFollowing, setIsFollowing] = useState(false)
-    const [error, setError] = useState<string>()
+    const t = useTranslations('Dashboard')
 
     const stop = () => {
         sourceRef.current?.close()
@@ -33,7 +28,7 @@ export const LiveLogStream: FC<LiveLogStreamProps> = ({ containerId, createLogSt
     }
 
     const start = () => {
-        setError(undefined)
+        sourceRef.current?.close()
         setBuffer('')
         setIsFollowing(true)
         const source = createLogStream(containerId)
@@ -52,7 +47,7 @@ export const LiveLogStream: FC<LiveLogStreamProps> = ({ containerId, createLogSt
         }
         source.onerror = () => {
             if (sourceRef.current === source) {
-                setError(labels.failed)
+                toast.error(t('liveLogsFailed'))
                 stop()
             }
         }
@@ -67,23 +62,21 @@ export const LiveLogStream: FC<LiveLogStreamProps> = ({ containerId, createLogSt
     useEffect(() => () => sourceRef.current?.close(), [])
 
     return (
-        <div className="grid gap-2 border-t border-background pt-3">
-            <div className="flex items-center justify-between">
-                <p className="text-xs font-medium">{labels.title}</p>
-                <Button type="button" onClick={() => (isFollowing ? stop() : start())}>
-                    {isFollowing ? labels.stop : labels.start}
+        <section className="grid gap-3 bg-overlay-subtle p-4">
+            <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <h4 className="text-xs font-medium text-text-strong">{t('liveLogs')}</h4>
+                    <p className="mt-1 text-xs text-text-subtle">{containerId.slice(0, 12)}</p>
+                </div>
+                <Button type="button" size="xs" variant={isFollowing ? 'secondary' : 'outline'} onClick={() => (isFollowing ? stop() : start())}>
+                    {isFollowing ? t('liveLogsStop') : t('liveLogsStart')}
                 </Button>
             </div>
-            {error ? (
-                <p className="bg-red-950 p-2 text-xs text-red-100" role="alert">
-                    {error}
-                </p>
-            ) : null}
             {buffer !== undefined ? (
-                <pre ref={outputRef} className="max-h-64 overflow-auto whitespace-pre-wrap bg-background p-3 text-xs">
+                <pre ref={outputRef} className="max-h-64 overflow-auto bg-surface-3 p-3 text-xs whitespace-pre-wrap">
                     {buffer}
                 </pre>
             ) : null}
-        </div>
+        </section>
     )
 }

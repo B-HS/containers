@@ -1,6 +1,9 @@
 'use client'
 
 import type { FC } from 'react'
+import { useTranslations } from 'next-intl'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { useBootstrapOwner, useSignInEmail } from '@entities/auth/auth.query'
 import { AuthPanel } from '@features/auth-panel/auth-panel'
 import type { AuthPanelLabels } from '@features/auth-panel/auth-panel'
@@ -11,6 +14,8 @@ type AuthPanelWidgetProps = {
 }
 
 export const AuthPanelWidget: FC<AuthPanelWidgetProps> = ({ labels, mode }) => {
+    const t = useTranslations('Auth')
+    const router = useRouter()
     const signInEmail = useSignInEmail()
     const bootstrapOwner = useBootstrapOwner()
 
@@ -20,7 +25,8 @@ export const AuthPanelWidget: FC<AuthPanelWidgetProps> = ({ labels, mode }) => {
         } else {
             await signInEmail.mutateAsync({ email: input.email, password: input.password })
         }
-        window.location.reload()
+        toast.success(t('signedIn'))
+        router.refresh()
     }
 
     return <AuthPanel labels={labels} mode={mode} onAuthenticate={authenticate} />

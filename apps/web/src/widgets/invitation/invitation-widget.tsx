@@ -2,111 +2,114 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
+import { CopyIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import { useCreateInvitation } from '@entities/invitation/invitation.query'
+import { Alert, AlertDescription, AlertTitle } from '@shared/ui/alert'
 import { Button } from '@shared/ui/button'
-import { Card } from '@shared/ui/card'
-import { InlineAlert } from '@shared/ui/inline-alert'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
 import { WidgetSection } from '@shared/common/widget-section'
 
+const INVITATION_ROLES = ['admin', 'operator', 'viewer', 'auditor']
+
 type InvitationWidgetProps = {
-    labels: {
-        copy: string
-        create: string
-        email: string
-        expires: string
-        failed: string
-        link: string
-        role: string
-        title: string
-        warning: string
-    }
     role: string
 }
 
-export const InvitationWidget: FC<InvitationWidgetProps> = ({ labels, role }) => {
-    const [busy, setBusy] = useState(false)
-    const [error, setError] = useState<string>()
+export const InvitationWidget: FC<InvitationWidgetProps> = ({ role }) => {
     const [invitationUrl, setInvitationUrl] = useState<string>()
     const [selectedRole, setSelectedRole] = useState('admin')
+    const t = useTranslations('Dashboard')
     const createInvitation = useCreateInvitation()
+
+    const create = (form: HTMLFormElement) => {
+        const formData = new FormData(form)
+        setInvitationUrl(undefined)
+        createInvitation.mutate(
+            {
+                email: String(formData.get('email') ?? ''),
+                expiresInHours: Number(formData.get('expiresInHours')),
+                role: selectedRole,
+            },
+            {
+                onError: (error) => toast.error(error instanceof Error ? error.message : t('invitationFailed')),
+                onSuccess: (data) => {
+                    setInvitationUrl(data.invitationUrl)
+                    toast.success(t('invitationCreated'))
+                },
+            },
+        )
+    }
+
+    const copy = async (value: string) => {
+        await navigator.clipboard.writeText(value)
+        toast.success(t('copied'))
+    }
 
     if (!['owner', 'admin'].includes(role)) {
         return null
     }
 
     return (
-        <WidgetSection id="invitation-control-title" title={labels.title}>
-            <Card className="gap-3 p-3">
-                <form
-                    className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px_120px_auto] sm:items-end"
-                    onSubmit={async (event) => {
-                        event.preventDefault()
-                        setBusy(true)
-                        setError(undefined)
-                        setInvitationUrl(undefined)
-                        const form = new FormData(event.currentTarget)
-
-                        try {
-                            const data = await createInvitation.mutateAsync({
-                                email: String(form.get('email') ?? ''),
-                                expiresInHours: Number(form.get('expiresInHours')),
-                                role: selectedRole,
-                            })
-                            setInvitationUrl(data.invitationUrl)
-                        } catch {
-                            setError(labels.failed)
-                        } finally {
-                            setBusy(false)
-                        }
-                    }}
-                >
-                    <div className="grid gap-2">
-                        <Label htmlFor="invitation-email">{labels.email}</Label>
-                        <Input id="invitation-email" name="email" type="email" required />
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="invitation-role">{labels.role}</Label>
-                        <Select value={selectedRole} onValueChange={setSelectedRole}>
-                            <SelectTrigger id="invitation-role" className="w-full">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="admin">admin</SelectItem>
-                                <SelectItem value="operator">operator</SelectItem>
-                                <SelectItem value="viewer">viewer</SelectItem>
-                                <SelectItem value="auditor">auditor</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="invitation-expires">{labels.expires}</Label>
-                        <Input id="invitation-expires" name="expiresInHours" type="number" min="1" max="168" defaultValue="24" required />
-                    </div>
-                    <Button type="submit" variant="default" disabled={busy}>
-                        {labels.create}
-                    </Button>
-                </form>
-                {error ? (
-                    <InlineAlert role="alert" tone="error" className="mx-0 mb-0">
-                        {error}
-                    </InlineAlert>
-                ) : null}
-                {invitationUrl ? (
-                    <div className="grid gap-2">
-                        <Label htmlFor="invitation-url">{labels.link}</Label>
-                        <div className="flex min-w-0 gap-px">
-                            <Input id="invitation-url" value={invitationUrl} readOnly className="min-w-0 font-mono" />
-                            <Button type="button" onClick={() => void navigator.clipboard.writeText(invitationUrl)}>
-                                {labels.copy}
+        <WidgetSection id="invitation-control-title" title={t('invitationControl')}>
+            <form
+                className="grid gap-4 bg-surface-1 p-6 sm:grid-cols-[minmax(0,1fr)_160px_140px_auto] sm:items-end"
+                onSubmit={(event) => {
+                    event.preventDefault()
+                    create(event.currentTarget)
+                }}
+            >
+                <div className="grid gap-2">
+                    <Label htmlFor="invitation-email">{t('invitationEmail')}</Label>
+                    <Input id="invitation-email" name="email" type="email" required />
+                </div>
+                <div className="grid min-w-0 gap-2">
+                    <Label htmlFor="invitation-role">{t('invitationRole')}</Label>
+                    <Select value={selectedRole} onValueChange={setSelectedRole}>
+                        <SelectTrigger id="invitation-role" className="w-full">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {INVITATION_ROLES.map((item) => (
+                                <SelectItem key={item} value={item}>
+                                    {item}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="invitation-expires">{t('invitationExpires')}</Label>
+                    <Input id="invitation-expires" name="expiresInHours" type="number" min="1" max="168" defaultValue="24" required />
+                </div>
+                <Button type="submit" disabled={createInvitation.isPending}>
+                    {t('createInvitation')}
+                </Button>
+            </form>
+            {invitationUrl ? (
+                <Alert variant="warning" className="m-4 w-auto">
+                    <AlertTitle>{t('invitationLink')}</AlertTitle>
+                    <AlertDescription>
+                        <p>{t('invitationWarning')}</p>
+                        <div className="mt-2 flex w-full min-w-0 items-center gap-2">
+                            <Input
+                                aria-label={t('invitationLink')}
+                                className="min-w-0 flex-1 font-mono text-xs"
+                                readOnly
+                                value={invitationUrl}
+                                onFocus={(event) => event.currentTarget.select()}
+                            />
+                            <Button type="button" size="sm" variant="outline" onClick={() => void copy(invitationUrl)}>
+                                <CopyIcon />
+                                {t('copy')}
                             </Button>
                         </div>
-                        <p className="text-xs text-muted-foreground">{labels.warning}</p>
-                    </div>
-                ) : null}
-            </Card>
+                    </AlertDescription>
+                </Alert>
+            ) : null}
         </WidgetSection>
     )
 }

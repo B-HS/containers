@@ -2,190 +2,109 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import type { RegistryCredential } from '@containers/contracts/registry-credential'
-import { clientFetchData } from '@shared/lib/client-fetch'
-import { Button } from '@shared/ui/button'
-import { InlineAlert } from '@shared/ui/inline-alert'
-import { Input } from '@shared/ui/input'
-import { Label } from '@shared/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
+import { toast } from 'sonner'
+import type { RegistryCredentialUpsert } from '@containers/contracts/registry-credential'
+import { useGetRegistryCredentials, usePullImage, useRemoveRegistryCredential, useSaveRegistryCredential } from '@entities/registry/registry.query'
+import { RegistryCredentialDetail } from '@features/registry/registry-credential-detail'
+import { RegistryCredentialForm } from '@features/registry/registry-credential-form'
+import { RegistryPullForm } from '@features/registry/registry-pull-form'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
+import { Skeleton } from '@shared/ui/skeleton'
 import { MasterDetail } from '@shared/common/master-detail/master-detail'
 import { useMasterDetailSelection } from '@shared/common/master-detail/use-master-detail-selection'
 import { WidgetSection } from '@shared/common/widget-section'
+import type { RegistryLabels } from './registry-labels'
 
 type RegistryWidgetProps = {
-    credentials: RegistryCredential[]
-    labels: {
-        confirmation: string
-        credential: string
-        empty: string
-        failed: string
-        name: string
-        notice: string
-        password: string
-        publicCredential: string
-        pull: string
-        pullReference: string
-        remove: string
-        rotate: string
-        save: string
-        serverAddress: string
-        started: string
-        title: string
-        username: string
-        version: string
-    }
+    labels: RegistryLabels
     role: string
 }
 
-export const RegistryWidget: FC<RegistryWidgetProps> = ({ credentials: initialCredentials, labels, role }) => {
+const SKELETON_ROW_COUNT = 3
+
+export const RegistryWidget: FC<RegistryWidgetProps> = ({ labels, role }) => {
     const [busy, setBusy] = useState<string>()
-    const [credentialId, setCredentialId] = useState('__public__')
-    const [credentials, setCredentials] = useState(initialCredentials)
-    const [error, setError] = useState<string>()
-    const [started, setStarted] = useState(false)
+    const { data, isPending } = useGetRegistryCredentials()
+    const credentials = data ?? []
     const isOwner = role === 'owner'
     const { onSelect, selectedId, selectedItem: selectedCredential } = useMasterDetailSelection(credentials)
+    const saveCredential = useSaveRegistryCredential()
+    const removeCredential = useRemoveRegistryCredential()
+    const pullImage = usePullImage()
 
-    const upsert = async (credentialId: string | undefined, input: Record<string, string>) => {
-        const key = credentialId ?? 'create'
-        setBusy(key)
-        setError(undefined)
+    const toMessage = (error: unknown) => (error instanceof Error ? error.message : labels.failed)
+
+    const save = async (credentialId: string | undefined, credential: RegistryCredentialUpsert, successMessage: string) => {
+        setBusy(credentialId ?? 'create')
         try {
-            const credential = await clientFetchData<RegistryCredential>(
-                credentialId === undefined ? '/api/registry-credentials' : `/api/registry-credentials/${credentialId}`,
-                {
-                    body: JSON.stringify(input),
-                    headers: { 'content-type': 'application/json' },
-                    method: 'POST',
-                },
-            )
-            setCredentials((current) => [...current.filter((candidate) => candidate.id !== credential.id), credential])
+            await saveCredential.mutateAsync({ credential, ...(credentialId === undefined ? {} : { credentialId }) })
+            toast.success(successMessage)
             return true
-        } catch (upsertError) {
-            setError(upsertError instanceof Error ? upsertError.message : labels.failed)
+        } catch (saveError) {
+            toast.error(toMessage(saveError))
             return false
         } finally {
             setBusy(undefined)
         }
     }
 
-    const remove = async (credential: RegistryCredential, confirmation: string) => {
-        setBusy(credential.id)
-        setError(undefined)
+    const remove = async (credentialId: string, confirmation: string) => {
+        setBusy(credentialId)
         try {
-            await clientFetchData<unknown>(`/api/registry-credentials/${credential.id}`, {
-                body: JSON.stringify({ confirmation }),
-                headers: { 'content-type': 'application/json' },
-                method: 'DELETE',
-            })
-            setCredentials((current) => current.filter((candidate) => candidate.id !== credential.id))
+            await removeCredential.mutateAsync({ credentialId, confirmation })
+            toast.success(labels.removed)
         } catch (removeError) {
-            setError(removeError instanceof Error ? removeError.message : labels.failed)
+            toast.error(toMessage(removeError))
         } finally {
             setBusy(undefined)
         }
     }
 
-    const pull = async (reference: string, credentialId: string) => {
+    const pull = async (reference: string, credentialId: string | undefined) => {
         setBusy('pull')
-        setError(undefined)
-        setStarted(false)
         try {
-            await clientFetchData<unknown>('/api/images/pull', {
-                body: JSON.stringify({ ...(credentialId ? { credentialId } : {}), reference }),
-                headers: { 'content-type': 'application/json' },
-                method: 'POST',
-            })
-            setStarted(true)
+            await pullImage.mutateAsync({ reference, ...(credentialId === undefined ? {} : { credentialId }) })
+            toast.success(labels.started)
         } catch (pullError) {
-            setError(pullError instanceof Error ? pullError.message : labels.failed)
+            toast.error(toMessage(pullError))
         } finally {
             setBusy(undefined)
         }
     }
 
     return (
-        <WidgetSection id="registry-control-title" title={labels.title} badge={credentials.length}>
-            <p className="border-t border-background p-3 text-sm text-muted-foreground">{labels.notice}</p>
-            {error ? (
-                <InlineAlert role="alert" tone="error">
-                    {error}
-                </InlineAlert>
-            ) : null}
-            <div className="gap-3 border-t border-background p-3">
-                <form
-                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end"
-                    onSubmit={(event) => {
-                        event.preventDefault()
-                        const data = new FormData(event.currentTarget)
-                        void pull(String(data.get('reference') ?? ''), credentialId === '__public__' ? '' : credentialId)
-                    }}
-                >
-                    <div className="grid gap-1">
-                        <Label htmlFor="registry-pull-reference">{labels.pullReference}</Label>
-                        <Input id="registry-pull-reference" name="reference" required placeholder="registry.example.com/team/image:tag" />
-                    </div>
-                    <div className="grid gap-1">
-                        <Label htmlFor="registry-pull-credential">{labels.credential}</Label>
-                        <Select value={credentialId} onValueChange={setCredentialId}>
-                            <SelectTrigger id="registry-pull-credential" className="w-full">
-                                <SelectValue placeholder={labels.publicCredential} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="__public__">{labels.publicCredential}</SelectItem>
-                                {credentials.map((credential) => (
-                                    <SelectItem key={credential.id} value={credential.id}>
-                                        {credential.name} · {credential.serverAddress}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <Button type="submit" variant="default" disabled={busy !== undefined}>
-                        {labels.pull}
-                    </Button>
-                </form>
-                {started ? <p className="text-xs text-emerald-700">{labels.started}</p> : null}
-            </div>
-            {isOwner ? (
-                <form
-                    className="grid gap-2 border-t border-background p-3 sm:grid-cols-2"
-                    onSubmit={(event) => {
-                        event.preventDefault()
-                        const form = event.currentTarget
-                        const data = new FormData(form)
-                        void upsert(undefined, {
-                            name: String(data.get('name') ?? ''),
-                            password: String(data.get('password') ?? ''),
-                            serverAddress: String(data.get('serverAddress') ?? ''),
-                            username: String(data.get('username') ?? ''),
-                        }).then((success) => {
-                            if (success) form.reset()
-                        })
-                    }}
-                >
-                    {(['name', 'serverAddress', 'username', 'password'] as const).map((field) => (
-                        <div key={field} className="grid gap-1">
-                            <Label htmlFor={`registry-${field}`}>{labels[field]}</Label>
-                            <Input
-                                id={`registry-${field}`}
-                                name={field}
-                                autoComplete={field === 'password' ? 'new-password' : 'off'}
-                                required
-                                type={field === 'password' ? 'password' : 'text'}
-                            />
-                        </div>
+        <WidgetSection id="registry-control-title" title={labels.title} badge={credentials.length} notice={labels.notice}>
+            <RegistryPullForm
+                busy={busy !== undefined}
+                credentials={credentials}
+                labels={labels}
+                onPull={(reference, id) => void pull(reference, id)}
+            />
+            {isOwner && (
+                <RegistryCredentialForm
+                    busy={busy !== undefined}
+                    labels={labels}
+                    onSave={(credential) => save(undefined, credential, labels.created)}
+                />
+            )}
+            {isPending && (
+                <div className="grid gap-px bg-background p-px">
+                    {Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => index).map((index) => (
+                        <Skeleton key={index} className="h-12 w-full" />
                     ))}
-                    <Button type="submit" variant="default" disabled={busy !== undefined}>
-                        {labels.save}
-                    </Button>
-                </form>
-            ) : null}
-            {credentials.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{labels.empty}</p> : null}
-            {selectedCredential ? (
+                </div>
+            )}
+            {!isPending && credentials.length === 0 && (
+                <Empty>
+                    <EmptyHeader>
+                        <EmptyTitle>{labels.empty}</EmptyTitle>
+                        <EmptyDescription>{labels.emptyDescription}</EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
+            )}
+            {!isPending && credentials.length > 0 && (
                 <MasterDetail
-                    empty={labels.empty}
+                    empty={null}
                     items={credentials.map((credential) => ({
                         badge: labels.credential,
                         id: credential.id,
@@ -196,68 +115,29 @@ export const RegistryWidget: FC<RegistryWidgetProps> = ({ credentials: initialCr
                     onSelect={onSelect}
                     selectedId={selectedId}
                 >
-                    <div className="grid gap-3 p-3">
-                        <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">{selectedCredential.name}</p>
-                            <p className="truncate font-mono text-xs text-muted-foreground">{selectedCredential.serverAddress}</p>
-                            <p className="text-xs text-muted-foreground">
-                                {selectedCredential.username} · {labels.version} {selectedCredential.version}
-                            </p>
-                        </div>
-                        {isOwner ? (
-                            <div className="grid gap-2 md:grid-cols-2">
-                                <form
-                                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
-                                    onSubmit={(event) => {
-                                        event.preventDefault()
-                                        const form = event.currentTarget
-                                        const data = new FormData(form)
-                                        void upsert(selectedCredential.id, {
-                                            name: selectedCredential.name,
-                                            password: String(data.get('password') ?? ''),
-                                            serverAddress: selectedCredential.serverAddress,
-                                            username: selectedCredential.username,
-                                        }).then((success) => {
-                                            if (success) form.reset()
-                                        })
-                                    }}
-                                >
-                                    <div className="grid gap-1">
-                                        <Label htmlFor={`registry-password-${selectedCredential.id}`}>{labels.password}</Label>
-                                        <Input
-                                            id={`registry-password-${selectedCredential.id}`}
-                                            name="password"
-                                            autoComplete="new-password"
-                                            required
-                                            type="password"
-                                        />
-                                    </div>
-                                    <Button type="submit" variant="default" disabled={busy !== undefined}>
-                                        {labels.rotate}
-                                    </Button>
-                                </form>
-                                <form
-                                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
-                                    onSubmit={(event) => {
-                                        event.preventDefault()
-                                        void remove(selectedCredential, String(new FormData(event.currentTarget).get('confirmation') ?? ''))
-                                    }}
-                                >
-                                    <div className="grid gap-1">
-                                        <Label htmlFor={`registry-confirmation-${selectedCredential.id}`}>
-                                            {labels.confirmation}: {selectedCredential.name}
-                                        </Label>
-                                        <Input id={`registry-confirmation-${selectedCredential.id}`} name="confirmation" required />
-                                    </div>
-                                    <Button type="submit" variant="default" disabled={busy !== undefined}>
-                                        {labels.remove}
-                                    </Button>
-                                </form>
-                            </div>
-                        ) : null}
-                    </div>
+                    {selectedCredential && (
+                        <RegistryCredentialDetail
+                            busy={busy !== undefined}
+                            canManage={isOwner}
+                            credential={selectedCredential}
+                            labels={labels}
+                            onRemove={(confirmation) => void remove(selectedCredential.id, confirmation)}
+                            onRotate={(password) =>
+                                save(
+                                    selectedCredential.id,
+                                    {
+                                        name: selectedCredential.name,
+                                        password,
+                                        serverAddress: selectedCredential.serverAddress,
+                                        username: selectedCredential.username,
+                                    },
+                                    labels.rotated,
+                                )
+                            }
+                        />
+                    )}
                 </MasterDetail>
-            ) : null}
+            )}
         </WidgetSection>
     )
 }

@@ -1,39 +1,17 @@
 'use client'
 
-import type { FC, ReactNode } from 'react'
+import type { FC } from 'react'
 import { useTranslations } from 'next-intl'
 import type { DirectiveEntry } from '@shared/lib/nginx-config/nginx-directives'
 import type { NginxConfigNode, NginxDirective } from '@shared/lib/nginx-config/parse-nginx-config'
 import { findDirectiveNodes, removeDirectiveNodes, upsertDirectiveNode } from '@shared/lib/nginx-config/nginx-editor-model'
 import { tokenizeNginxArgs } from '@shared/lib/nginx-config/parse-nginx-config'
+import { Button } from '@shared/ui/button'
 import { Checkbox } from '@shared/ui/checkbox'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
-import { Button } from '@shared/ui/button'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@shared/ui/tooltip'
-
-type DirectiveTooltipProps = {
-    children: ReactNode
-    entry: DirectiveEntry
-}
-
-const DirectiveTooltip: FC<DirectiveTooltipProps> = ({ children, entry }) => {
-    const t = useTranslations('Dashboard')
-    const descriptionKey = `nginxGui.directive.${entry.name}`
-    const description = t.has(descriptionKey) ? t(descriptionKey) : undefined
-    if (description === undefined) {
-        return <>{children}</>
-    }
-    return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>{children}</TooltipTrigger>
-                <TooltipContent>{description}</TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    )
-}
+import { NginxHelpTooltip } from '@features/nginx-help-tooltip/nginx-help-tooltip'
 
 type NginxDirectiveEditorProps = {
     entry: DirectiveEntry
@@ -46,6 +24,7 @@ export const NginxDirectiveEditor: FC<NginxDirectiveEditorProps> = ({ entry, chi
     const t = useTranslations('Dashboard')
     const existing = findDirectiveNodes(children, entry.name)
     const placeholder = entry.placeholderKey ? t(`nginxGui.placeholder.${entry.placeholderKey}`) : undefined
+    const helpKey = `nginxGui.directive.${entry.name}`
 
     if (entry.multiple) {
         const setNodeArgs = (node: NginxDirective, value: string) => {
@@ -64,24 +43,24 @@ export const NginxDirectiveEditor: FC<NginxDirectiveEditorProps> = ({ entry, chi
         return (
             <div className="grid gap-2">
                 <div className="flex items-center gap-2">
-                    <DirectiveTooltip entry={entry}>
-                        <code className="font-mono text-sm text-foreground">{entry.name}</code>
-                    </DirectiveTooltip>
-                    <Button className="ml-auto h-7 px-2 text-xs" type="button" variant="outline" onClick={addNode}>
+                    <NginxHelpTooltip messageKey={helpKey}>
+                        <code className="font-mono text-sm text-text-strong">{entry.name}</code>
+                    </NginxHelpTooltip>
+                    <Button className="ml-auto" type="button" variant="outline" size="xs" onClick={addNode}>
                         {t('nginxGui.add')}
                     </Button>
                 </div>
-                {existing.length === 0 ? <p className="pl-4 text-xs text-muted-foreground">{t('nginxGui.noValues')}</p> : null}
+                {existing.length === 0 ? <p className="pl-4 text-xs text-text-subtle">{t('nginxGui.noValues')}</p> : null}
                 {existing.map((node, index) => (
                     <div key={`${node.raw}-${index}`} className="flex items-center gap-2 pl-4">
                         <Input
-                            className="h-7 font-mono text-xs"
+                            className="h-8 font-mono text-xs"
                             placeholder={placeholder}
                             value={node.args.join(' ')}
                             onChange={(event) => setNodeArgs(node, event.target.value)}
                             spellCheck={false}
                         />
-                        <Button className="h-7 px-2 text-xs" type="button" variant="ghost" onClick={() => removeNode(node)}>
+                        <Button type="button" variant="ghost" size="xs" onClick={() => removeNode(node)}>
                             {t('nginxGui.remove')}
                         </Button>
                     </div>
@@ -116,11 +95,11 @@ export const NginxDirectiveEditor: FC<NginxDirectiveEditorProps> = ({ entry, chi
         return (
             <div className="flex items-center gap-2">
                 <Checkbox id={`nginx-${entry.name}`} checked={checked} onCheckedChange={(next) => toggle(next === true)} />
-                <DirectiveTooltip entry={entry}>
+                <NginxHelpTooltip messageKey={helpKey}>
                     <Label className="font-mono text-sm" htmlFor={`nginx-${entry.name}`}>
                         {entry.name}
                     </Label>
-                </DirectiveTooltip>
+                </NginxHelpTooltip>
             </div>
         )
     }
@@ -129,13 +108,13 @@ export const NginxDirectiveEditor: FC<NginxDirectiveEditorProps> = ({ entry, chi
         return (
             <div className="flex items-center gap-2">
                 <Checkbox id={`nginx-${entry.name}`} checked={checked} onCheckedChange={(next) => toggle(next === true)} />
-                <DirectiveTooltip entry={entry}>
+                <NginxHelpTooltip messageKey={helpKey}>
                     <Label className="font-mono text-sm" htmlFor={`nginx-${entry.name}`}>
                         {entry.name}
                     </Label>
-                </DirectiveTooltip>
+                </NginxHelpTooltip>
                 <Select value={checked ? value : ''} onValueChange={setValue}>
-                    <SelectTrigger className="ml-auto h-7 w-40">
+                    <SelectTrigger className="ml-auto h-8 w-40">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -154,13 +133,13 @@ export const NginxDirectiveEditor: FC<NginxDirectiveEditorProps> = ({ entry, chi
     return (
         <div className="flex items-center gap-2">
             <Checkbox id={`nginx-${entry.name}`} checked={checked} onCheckedChange={(next) => toggle(next === true)} />
-            <DirectiveTooltip entry={entry}>
+            <NginxHelpTooltip messageKey={helpKey}>
                 <Label className="shrink-0 font-mono text-sm" htmlFor={`nginx-${entry.name}`}>
                     {entry.name}
                 </Label>
-            </DirectiveTooltip>
+            </NginxHelpTooltip>
             <Input
-                className="h-7 font-mono text-xs"
+                className="h-8 font-mono text-xs"
                 placeholder={placeholder}
                 value={value}
                 onChange={(event) => setValue(event.target.value)}

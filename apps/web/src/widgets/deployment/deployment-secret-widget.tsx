@@ -1,126 +1,124 @@
 'use client'
 
 import type { FC } from 'react'
-import { useState } from 'react'
-import { deploymentSecretSchema } from '@containers/contracts/deployment-secret'
-import { useCreateDeploymentSecret, useRemoveDeploymentSecret } from '@entities/deployment/deployment-secret.query'
-import { Badge } from '@shared/ui/badge'
+import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
+import { useCreateDeploymentSecret, useGetDeploymentSecrets, useRemoveDeploymentSecret } from '@entities/deployment/deployment-secret.query'
+import { ConfirmActionDialog } from '@features/confirm-action-dialog/confirm-action-dialog'
 import { Button } from '@shared/ui/button'
-import { Card } from '@shared/ui/card'
-import { InlineAlert } from '@shared/ui/inline-alert'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
+import { Skeleton } from '@shared/ui/skeleton'
 import { WidgetSection } from '@shared/common/widget-section'
-import { z } from 'zod'
-
-type DeploymentSecret = z.infer<typeof deploymentSecretSchema>
 
 type DeploymentSecretWidgetProps = {
-    labels: {
-        confirmation: string
-        empty: string
-        failed: string
-        reference: string
-        remove: string
-        save: string
-        title: string
-        value: string
-        valueNotice: string
-        version: string
-    }
-    secrets: DeploymentSecret[]
+    labels?: Record<string, string>
+    secrets?: unknown[]
 }
 
-export const DeploymentSecretWidget: FC<DeploymentSecretWidgetProps> = ({ labels, secrets: initialSecrets }) => {
-    const [busy, setBusy] = useState<string>()
-    const [error, setError] = useState<string>()
-    const [secrets, setSecrets] = useState(initialSecrets)
+/**
+ * Text comes from the Dashboard message namespace and data from the deployment secret query,
+ * so the legacy props are accepted for compatibility with the route file and are not read.
+ */
+export const DeploymentSecretWidget: FC<DeploymentSecretWidgetProps> = () => {
+    const t = useTranslations('Dashboard')
+    const secretsQuery = useGetDeploymentSecrets()
+    const secrets = secretsQuery.data ?? []
     const createSecret = useCreateDeploymentSecret()
     const removeSecret = useRemoveDeploymentSecret()
 
-    const save = async (form: HTMLFormElement) => {
-        setBusy('save')
-        setError(undefined)
+    const save = (form: HTMLFormElement) => {
         const formData = new FormData(form)
-        try {
-            const saved = await createSecret.mutateAsync({
-                reference: String(formData.get('reference')),
-                value: String(formData.get('value')),
-            })
-            setSecrets((current) => [saved, ...current.filter((item) => item.id !== saved.id)])
-            form.reset()
-        } catch (saveError) {
-            setError(saveError instanceof Error ? saveError.message : labels.failed)
-        } finally {
-            setBusy(undefined)
-        }
+        createSecret.mutate(
+            { reference: String(formData.get('reference')), value: String(formData.get('value')) },
+            {
+                onError: (error) => toast.error(error instanceof Error ? error.message : t('deploymentSecretFailed')),
+                onSuccess: () => {
+                    form.reset()
+                    toast.success(t('deploymentSecretSaved'))
+                },
+            },
+        )
     }
 
-    const remove = async (secret: DeploymentSecret, confirmation: string) => {
-        setBusy(secret.id)
-        setError(undefined)
-        try {
-            await removeSecret.mutateAsync({ id: secret.id, confirmation })
-            setSecrets((current) => current.filter((item) => item.id !== secret.id))
-        } catch (removeError) {
-            setError(removeError instanceof Error ? removeError.message : labels.failed)
-        } finally {
-            setBusy(undefined)
-        }
+    const remove = (id: string, confirmation: string) => {
+        removeSecret.mutate(
+            { id, confirmation },
+            {
+                onError: (error) => toast.error(error instanceof Error ? error.message : t('deploymentSecretFailed')),
+                onSuccess: () => toast.success(t('deploymentSecretRemoved')),
+            },
+        )
     }
 
     return (
-        <WidgetSection id="deployment-secret-title" title={labels.title} notice={labels.valueNotice} badge={secrets.length}>
-            {error ? (
-                <InlineAlert role="alert" tone="error">
-                    {error}
-                </InlineAlert>
-            ) : null}
+        <WidgetSection
+            id="deployment-secret-title"
+            title={t('deploymentSecretControl')}
+            notice={t('deploymentSecretValueNotice')}
+            badge={secrets.length}
+        >
             <form
-                className="grid gap-3 border-t border-background p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end"
+                className="grid gap-4 bg-surface-1 p-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end"
                 onSubmit={(event) => {
                     event.preventDefault()
-                    void save(event.currentTarget)
+                    save(event.currentTarget)
                 }}
             >
-                <div className="grid gap-1">
-                    <Label htmlFor="deployment-secret-reference">{labels.reference}</Label>
+                <div className="grid gap-2">
+                    <Label htmlFor="deployment-secret-reference">{t('deploymentSecretReference')}</Label>
                     <Input id="deployment-secret-reference" name="reference" placeholder="apps/my-service/token" required />
                 </div>
-                <div className="grid gap-1">
-                    <Label htmlFor="deployment-secret-value">{labels.value}</Label>
+                <div className="grid gap-2">
+                    <Label htmlFor="deployment-secret-value">{t('deploymentSecretValue')}</Label>
                     <Input id="deployment-secret-value" name="value" type="password" autoComplete="new-password" required />
                 </div>
-                <Button type="submit" variant="default" disabled={busy === 'save'}>
-                    {labels.save}
+                <Button type="submit" disabled={createSecret.isPending}>
+                    {t('deploymentSecretSave')}
                 </Button>
             </form>
-            {secrets.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{labels.empty}</p> : null}
+            {secretsQuery.isPending ? (
+                <div className="grid gap-2 p-4">
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                </div>
+            ) : null}
+            {!secretsQuery.isPending && secrets.length === 0 ? (
+                <Empty>
+                    <EmptyHeader>
+                        <EmptyTitle>{t('deploymentSecretEmpty')}</EmptyTitle>
+                        <EmptyDescription>{t('deploymentSecretEmptyDescription')}</EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
+            ) : null}
             <div className="grid gap-px bg-background xl:grid-cols-2">
                 {secrets.map((secret) => (
-                    <Card key={secret.id} className="min-w-0 gap-3 p-3">
-                        <div className="flex items-start justify-between gap-3">
-                            <p className="min-w-0 truncate font-mono text-sm">{secret.reference}</p>
-                            <Badge variant="muted">
-                                {labels.version} {secret.version}
-                            </Badge>
+                    <div key={secret.id} className="flex min-w-0 items-center justify-between gap-3 bg-surface-1 px-4 py-3">
+                        <div className="min-w-0">
+                            <p className="truncate font-mono text-sm text-text-strong">{secret.reference}</p>
+                            <p className="mt-1 text-xs text-text-subtle">
+                                {t('deploymentVersion')} {secret.version}
+                            </p>
                         </div>
-                        <form
-                            className="grid gap-1"
-                            onSubmit={(event) => {
-                                event.preventDefault()
-                                void remove(secret, String(new FormData(event.currentTarget).get('confirmation') ?? ''))
-                            }}
-                        >
-                            <Label htmlFor={`deployment-secret-confirm-${secret.id}`}>{labels.confirmation}</Label>
-                            <div className="flex min-w-0 gap-px">
-                                <Input id={`deployment-secret-confirm-${secret.id}`} name="confirmation" className="min-w-0" />
-                                <Button type="submit" variant="default" disabled={busy === secret.id}>
-                                    {labels.remove}
-                                </Button>
-                            </div>
-                        </form>
-                    </Card>
+                        <div className="flex shrink-0 items-center gap-2">
+                            <ConfirmActionDialog
+                                confirmLabel={t('remove')}
+                                confirmationHint={t('deploymentSecretConfirmation')}
+                                confirmationValue={secret.reference}
+                                description={t('deploymentSecretRemoveDescription')}
+                                onConfirm={() => remove(secret.id, secret.reference)}
+                                pending={removeSecret.isPending}
+                                target={secret.reference}
+                                title={t('deploymentSecretRemoveTitle')}
+                                trigger={
+                                    <Button type="button" variant="ghost" size="sm" disabled={removeSecret.isPending}>
+                                        {t('remove')}
+                                    </Button>
+                                }
+                            />
+                        </div>
+                    </div>
                 ))}
             </div>
         </WidgetSection>

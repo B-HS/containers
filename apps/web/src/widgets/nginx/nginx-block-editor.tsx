@@ -12,7 +12,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@s
 import { Button } from '@shared/ui/button'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
-import { NginxDirectiveEditor } from './nginx-directive-editor'
+import { NginxDirectiveEditor } from '@widgets/nginx/nginx-directive-editor'
 
 type NginxBlockEditorProps = {
     block: NginxBlock
@@ -68,13 +68,13 @@ export const NginxBlockEditor: FC<NginxBlockEditorProps> = ({ block, onChange, i
     }
 
     return (
-        <div className="grid gap-3">
-            <Accordion type="multiple" defaultValue={['nginx-group-basic']}>
+        <div className="grid gap-4">
+            <Accordion className="grid gap-px bg-background" type="multiple" defaultValue={['nginx-group-basic']}>
                 {DIRECTIVE_GROUPS.map((group) => (
-                    <AccordionItem key={group.id} value={`nginx-group-${group.id}`}>
+                    <AccordionItem className="bg-surface-1 px-3" key={group.id} value={`nginx-group-${group.id}`}>
                         <AccordionTrigger>{t(group.labelKey)}</AccordionTrigger>
                         <AccordionContent>
-                            <div className="grid gap-2">
+                            <div className="grid gap-3">
                                 {SERVER_DIRECTIVES.filter((entry) => entry.group === group.id).map((entry) => (
                                     <NginxDirectiveEditor
                                         key={entry.name}
@@ -88,40 +88,40 @@ export const NginxBlockEditor: FC<NginxBlockEditorProps> = ({ block, onChange, i
                         </AccordionContent>
                     </AccordionItem>
                 ))}
-                <AccordionItem value="nginx-group-other">
+                <AccordionItem className="bg-surface-1 px-3" value="nginx-group-other">
                     <AccordionTrigger>{t('nginxGui.otherDirectives')}</AccordionTrigger>
                     <AccordionContent>
                         <div className="grid gap-2">
                             {otherDirectives.map((node, index) => (
                                 <div key={`${node.raw}-${index}`} className="flex items-center gap-2">
-                                    <code className="shrink-0 font-mono text-sm text-foreground">{node.name}</code>
+                                    <code className="shrink-0 font-mono text-sm text-text-strong">{node.name}</code>
                                     <Input
-                                        className="h-7 font-mono text-xs"
+                                        className="h-8 font-mono text-xs"
                                         value={node.args.join(' ')}
                                         onChange={(event) => updateOther(node, event.target.value)}
                                         spellCheck={false}
                                     />
-                                    <Button className="h-7 px-2 text-xs" type="button" variant="ghost" onClick={() => removeOther(node)}>
+                                    <Button type="button" variant="ghost" size="xs" onClick={() => removeOther(node)}>
                                         {t('nginxGui.remove')}
                                     </Button>
                                 </div>
                             ))}
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 bg-overlay-subtle p-3">
                                 <Input
-                                    className="h-7 w-40 font-mono text-xs"
+                                    className="h-8 w-40 font-mono text-xs"
                                     placeholder={t('nginxGui.directiveName')}
                                     value={newName}
                                     onChange={(event) => setNewName(event.target.value)}
                                     spellCheck={false}
                                 />
                                 <Input
-                                    className="h-7 font-mono text-xs"
+                                    className="h-8 font-mono text-xs"
                                     placeholder={t('nginxGui.directiveValue')}
                                     value={newValue}
                                     onChange={(event) => setNewValue(event.target.value)}
                                     spellCheck={false}
                                 />
-                                <Button className="h-7 px-2 text-xs" type="button" variant="outline" onClick={addOtherDirective}>
+                                <Button type="button" variant="outline" size="xs" onClick={addOtherDirective}>
                                     {t('nginxGui.add')}
                                 </Button>
                             </div>
@@ -130,28 +130,28 @@ export const NginxBlockEditor: FC<NginxBlockEditorProps> = ({ block, onChange, i
                 </AccordionItem>
             </Accordion>
             {!isLocation && !hideLocations ? (
-                <div className="grid gap-2 border-t border-background pt-3">
+                <div className="grid gap-3">
                     <div className="flex items-center justify-between">
-                        <h4 className="text-sm font-semibold">location</h4>
-                        <Button className="h-7 px-2 text-xs" type="button" variant="outline" onClick={addLocation}>
+                        <h4 className="text-sm font-semibold text-text-strong">location</h4>
+                        <Button type="button" variant="outline" size="xs" onClick={addLocation}>
                             {t('nginxGui.addLocation')}
                         </Button>
                     </div>
-                    {locations.length === 0 ? <p className="text-xs text-muted-foreground">{t('nginxGui.noLocations')}</p> : null}
+                    {locations.length === 0 ? <p className="text-xs text-text-subtle">{t('nginxGui.noLocations')}</p> : null}
                     {locations.map((location, index) => (
-                        <div key={`${location.head}-${index}`} className="grid gap-2 rounded-md border border-border p-3">
+                        <div key={`${location.head}-${index}`} className="grid gap-3 bg-overlay-subtle p-4">
                             <div className="flex items-center gap-2">
                                 <Label className="shrink-0 text-xs" htmlFor={`location-path-${index}`}>
                                     {t('nginxGui.locationPath')}
                                 </Label>
                                 <Input
                                     id={`location-path-${index}`}
-                                    className="h-7 font-mono text-xs"
+                                    className="h-8 font-mono text-xs"
                                     value={location.args[0] ?? ''}
                                     onChange={(event) => updateLocationPath(location, event.target.value)}
                                     spellCheck={false}
                                 />
-                                <Button className="h-7 px-2 text-xs" type="button" variant="ghost" onClick={() => removeLocation(location)}>
+                                <Button type="button" variant="ghost" size="xs" onClick={() => removeLocation(location)}>
                                     {t('nginxGui.remove')}
                                 </Button>
                             </div>

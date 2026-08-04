@@ -2,10 +2,12 @@
 
 import type { FC, FormEvent } from 'react'
 import { useState } from 'react'
+import { Alert, AlertDescription } from '@shared/ui/alert'
 import { Button } from '@shared/ui/button'
-import { Card } from '@shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
+import { Spinner } from '@shared/ui/spinner'
 
 type AuthPanelLabels = {
     email: string
@@ -53,45 +55,48 @@ export const AuthPanel: FC<AuthPanelProps> = ({ labels, mode, onAuthenticate }) 
     }
 
     return (
-        <main className="grid min-h-screen place-items-center bg-background p-3 text-foreground">
-            <Card className="w-full max-w-md gap-6 p-6">
-                <header>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Containers</p>
-                    <h1 className="mt-4 text-2xl font-semibold tracking-tight">{isBootstrap ? labels.ownerTitle : labels.loginTitle}</h1>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{isBootstrap ? labels.ownerDescription : labels.loginDescription}</p>
-                </header>
-                <form className="grid gap-4" onSubmit={submit}>
-                    {isBootstrap ? (
+        <main className="grid min-h-screen place-items-center bg-background p-4 text-foreground">
+            <Card className="w-full max-w-md gap-6 py-8">
+                <CardHeader className="gap-3">
+                    <p className="text-xs font-medium tracking-[0.18em] text-text-subtle uppercase">Containers</p>
+                    <CardTitle className="text-2xl tracking-tight">{isBootstrap ? labels.ownerTitle : labels.loginTitle}</CardTitle>
+                    <CardDescription className="leading-6">{isBootstrap ? labels.ownerDescription : labels.loginDescription}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <form className="grid gap-5" onSubmit={submit}>
+                        {isBootstrap ? (
+                            <div className="grid gap-2">
+                                <Label htmlFor="name">{labels.name}</Label>
+                                <Input id="name" name="name" autoComplete="name" maxLength={100} required />
+                            </div>
+                        ) : null}
                         <div className="grid gap-2">
-                            <Label htmlFor="name">{labels.name}</Label>
-                            <Input id="name" name="name" autoComplete="name" maxLength={100} required />
+                            <Label htmlFor="email">{labels.email}</Label>
+                            <Input id="email" name="email" autoComplete="email" inputMode="email" type="email" required />
                         </div>
-                    ) : null}
-                    <div className="grid gap-2">
-                        <Label htmlFor="email">{labels.email}</Label>
-                        <Input id="email" name="email" autoComplete="email" inputMode="email" type="email" required />
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="password">{labels.password}</Label>
-                        <Input
-                            id="password"
-                            name="password"
-                            autoComplete={isBootstrap ? 'new-password' : 'current-password'}
-                            minLength={12}
-                            maxLength={128}
-                            type="password"
-                            required
-                        />
-                    </div>
-                    {error ? (
-                        <p className="bg-muted p-3 text-sm" role="alert">
-                            {error}
-                        </p>
-                    ) : null}
-                    <Button type="submit" variant="default" disabled={pending}>
-                        {pending ? labels.pending : isBootstrap ? labels.ownerAction : labels.loginAction}
-                    </Button>
-                </form>
+                        <div className="grid gap-2">
+                            <Label htmlFor="password">{labels.password}</Label>
+                            <Input
+                                id="password"
+                                name="password"
+                                autoComplete={isBootstrap ? 'new-password' : 'current-password'}
+                                minLength={12}
+                                maxLength={128}
+                                type="password"
+                                required
+                            />
+                        </div>
+                        {error ? (
+                            <Alert variant="destructive">
+                                <AlertDescription>{error}</AlertDescription>
+                            </Alert>
+                        ) : null}
+                        <Button type="submit" variant="default" disabled={pending}>
+                            {pending ? <Spinner /> : null}
+                            {pending ? labels.pending : isBootstrap ? labels.ownerAction : labels.loginAction}
+                        </Button>
+                    </form>
+                </CardContent>
             </Card>
         </main>
     )

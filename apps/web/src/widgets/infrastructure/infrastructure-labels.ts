@@ -1,0 +1,29 @@
+export type InfrastructureLabels = {
+    cancel: string
+    confirmation: string
+    confirmRemoveTitle: string
+    containers: string
+    create: string
+    created: string
+    driver: string
+    empty: string
+    failed: string
+    force: string
+    gateway: string
+    internal: string
+    networkCreate: string
+    networkName: string
+    networkRemoveImpact: string
+    networks: string
+    networksEmptyDescription: string
+    remove: string
+    removed: string
+    size: string
+    subnet: string
+    title: string
+    volumeCreate: string
+    volumeName: string
+    volumeRemoveImpact: string
+    volumes: string
+    volumesEmptyDescription: string
+}
