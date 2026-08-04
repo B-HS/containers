@@ -171,4 +171,15 @@ Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 act
 
 ### 보류 (승인 필요)
 
-nginx 보호 계약 검증이 substring·first-match 파싱이라 decoy server 블록으로 rate limit·CSP 계약을 우회할 여지가 있다(admin 권한 전제). 실제 파서로의 교체는 변경 폭이 커 [acknowledge/0029](./acknowledge/0029-monotone-design-system.md) §8에 보류로 기록했다.
+(해소 2026-08-04) nginx 보호 계약 검증의 substring·first-match 파싱 우회는 아래 §15.1 로 해결했다.
+
+### 15.1 nginx 보호 계약 파서화 (2026-08-04, §15 보류 해소)
+
+기존 검증은 `indexOf` 기반 substring·first-match 파싱이라 **앞쪽에 decoy `server_name panel.containers.local` 블록을 두면 그 블록만 검사받고 실제 요청을 처리하는 뒤쪽 블록은 rate limit·보안 헤더 없이 통과**할 수 있었다. `location /api/` 도 첫 매치만 봤다.
+
+- 웹 GUI 편집기가 쓰던 검증된 파서를 `packages/nginx-config` 공유 패키지로 승격했다. 서버·클라이언트가 **같은 파서**를 쓰므로 두 구현이 갈라져 생기는 우회를 구조적으로 막는다.
+- 검증을 AST 기반으로 재작성했다: `server_name` 을 토큰 단위로 분해해 대상 도메인을 포함하는 **모든** server 블록을 수집하고, 각 블록의 `location` 을 재귀로 전부 열거해 `/api/` 를 실제로 커버하는 location 과 sign-in 정규식 location 을 찾아 rate limit zone·burst 상한을 검사한다. 후보가 여러 개면 **전부 만족해야 통과**하고, 후보가 하나도 없어도 거부한다.
+- 파싱 무결성도 함께 검사한다: 널바이트 거부, `serialize(parse(x)) === x` 왕복 동일성, 블록 균형, http 블록 정확히 1개.
+- 회귀 테스트: 실제 `infra/nginx/nginx.conf` 통과, decoy 블록 거부, rate limit 없는 두 번째 `/api/` 거부, nested location 우회 거부, burst 상한 초과 거부.
+
+구현 중 파서 자체의 결함도 드러났다. `# 주석` 줄 바로 다음의 블록 헤드를 주석 노드가 삼켜 블록 계층이 무너졌고, 같은 파서를 쓰는 **웹 GUI 편집기가 주석 있는 config 를 손상시킬 수 있는 경로**였다. statement 가 주석으로 시작하면 줄 끝에서 종결하도록 고치고 패키지에 회귀 테스트를 추가했다.

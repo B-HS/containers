@@ -473,3 +473,15 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - E2E 계정: 기존 owner(`owner@containers.local`)의 비밀번호를 알 수 없어 better-auth `hashPassword`(1.6.25)로 새 해시를 만들어 api 컨테이너 안에서 `account.password`만 교체했다. 사용자·역할 행 미변경, control DB `integrity_check` `ok`. **비밀번호 값은 저장소·문서·로그에 기록하지 않는다.**
 - 확인 항목: 대시보드 요약 카드 SSR 즉시 렌더(스켈레톤 깜빡임 0), 컨테이너 삭제 AlertDialog(확인 문구 불일치 시 비활성·ESC 닫힘·포커스 복귀), 트래픽 Table zebra·라이브 테일, nginx raw 편집기 내부 가로 스크롤(페이지 가로 스크롤 0), 인프라 Tabs·MasterDetail, 모바일 390 드로어(Sheet) 열림·활성 표시
 - 다크 모드는 `dark:` 유틸 0건·토큰 전환만으로 동작함을 확인(라이트 토큰을 다크 값으로 치환해 실렌더 대조)
+
+## 작업: 보류 4건 구현 (2026-08-04)
+
+기준: 사용자 지시 — "보류 4건도 다 진행해". 대상은 [acknowledge/0029](./acknowledge/0029-monotone-design-system.md) §8 의 보류 목록이다.
+
+- [x] a. nginx 보호 계약 파서화 — 웹 파서를 `packages/nginx-config` 공유 패키지로 승격(파서 이중화가 곧 재발 원인이므로 단일화), engine-agent 검증을 AST 기반 all-must-pass 로 재작성. decoy server 블록·중복 `/api/` location·nested 우회·burst 상한 초과 거부를 테스트로 고정
+- [x] b. nginx route 순서 역전 — persist-then-apply + 실패 시 보상, 서비스 수준 직렬화, 부팅 `reconcileRoutes()` 자가치유
+- [x] c. access log 로테이션 — nginx 컨테이너 내부 크기 기반 회전(128 MiB·60초·2세대·무압축, `USR1` 재오픈), traffic-worker 에 체크포인트 inode 유실 관측 필드. 사이드카 logrotate 는 컨테이너 경계를 넘는 시그널이 불가해 배제, 압축은 old-inode drain 을 깨뜨려 배제
+- [x] d. 감사 로그 서버 필터 — actorEmail·targetId·operation·result·targetType·기간 필터와 페이지네이션, 인덱스·migration 0011, 웹 서버 필터 UI
+- [x] e. 실측에서 드러난 결함 2건 수정 — ① 공유 파서가 주석 줄 다음 블록 헤드를 삼켜 계층이 무너지던 버그(웹 GUI 편집기 손상 잠재 경로) ② 새 계약 검증이 닫는 중괄호 앞 주석을 불균형으로 판정해 **route 생성이 원천 불가**하던 회귀. 둘 다 정적 검사는 통과했고 Compose 실측에서만 드러났다
+- [x] f. Dockerfile 4종에 신규 workspace 패키지 COPY 추가 — 누락 시 이미지 빌드가 깨진다(에이전트 산출물에 없었고 메인 세션이 잡음)
+- [x] g. 검증 — typecheck 8/8·lint 0·test 230 pass·format:check·build 8/8, Compose 5개 healthy, route 생성→프록시 응답→삭제 후 SHA 원복, 로테이션 실회전(중복 0), 감사 필터·페이지네이션 실측, 브라우저 console error 0

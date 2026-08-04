@@ -154,6 +154,35 @@ button · input · textarea · label · card · badge 6종을 공식 소스 기�
 - 브라우저: 라이트·다크, 1440·390, console error **0건**. 파괴적 작업 다이얼로그의 확인 문구 잠금·ESC·포커스 복귀, 모바일 Sheet 드로어, 표 zebra, 편집기 내부 가로 스크롤(페이지 가로 스크롤 0) 확인.
 - 회귀 방지 grep: 앱 코드의 border 유틸·`rounded-*`(형태 예외 제외)·Tailwind 기본 팔레트 색·`window.location.reload`·템플릿 리터럴 className 전부 0건.
 
+### §8 보류 4건 — 2026-08-04 전부 구현 완료
+
+| 항목                   | 결과                                                                                                                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| nginx 보호 계약 파서화 | 웹의 검증된 파서를 `packages/nginx-config` 공유 패키지로 승격하고 engine-agent 검증을 AST 기반 all-must-pass 로 재작성. decoy server 블록·중복 `/api/` location·nested 우회·burst 상한 초과를 전부 거부 |
+| nginx route 순서 역전  | persist-then-apply + 실패 시 보상(생성=delete/수정=이전 값 복원/삭제=재삽입), 서비스 수준 직렬화, 부팅 시 `reconcileRoutes()` 자가치유                                                                  |
+| access log 로테이션    | nginx 컨테이너 내부 크기 기반 회전(128 MiB·60초·2세대·무압축) + `USR1` 재오픈, traffic-worker 에 체크포인트 inode 유실 관측 필드                                                                        |
+| 감사 로그 서버 필터    | actorEmail·targetId·operation·result·targetType·기간 서버 필터와 페이지네이션(`paginatedResponse`), 인덱스·migration 0011, 웹 서버 필터 UI                                                              |
+
+구현 중 실측으로 드러난 결함 2건을 함께 고쳤다.
+
+1. **공유 파서가 주석 줄 바로 다음의 블록 헤드를 주석에 삼켰다.** `# comment\nserver { ... }` 형태에서 `server {` 까지 주석 노드로 먹어 블록 계층이 무너지고, 그 결과 상위 블록이 조기에 닫혀 왕복 동일성도 깨졌다. **웹 GUI 편집기가 쓰던 파서와 같은 코드라 사용자가 주석이 있는 config 를 GUI 로 편집하면 손상될 수 있는 잠재 경로였다.** `scanStatementEnd` 가 주석으로 시작하는 statement 를 줄 끝에서 종결하도록 고치고 패키지에 회귀 테스트 5건을 추가했다.
+2. **새 계약 검증이 닫는 중괄호 앞 주석을 불균형으로 판정했다.** 우리 route 렌더러가 넣는 `# containers-routes:start|end` 마커가 http 블록 tail 에 들어가는데, 이를 거부해 **route 생성이 원천 불가**했고 부팅 reconcile 도 실패했다. tail 에서 주석을 제외하고 균형을 판정하도록 고쳤다.
+
+두 결함 모두 정적 검사(typecheck·테스트)는 통과했고 **Compose 실측에서만 드러났다.**
+
 ### 남은 것
 
 §8 의 보류 4건(nginx 보호 계약 파서화, nginx route apply-then-persist 순서, access log 로테이션, 감사 로그 서버 필터)은 그대로 미착수다. 대시보드는 요약 전용으로 줄이면서 여백이 넓어졌으므로, 이후 최근 작업·경고 요약 같은 카드를 추가할지는 별도 판단이 필요하다.
+
+## 11. 보류 4건 구현 실측 (2026-08-04)
+
+- 기계: typecheck 8/8, lint 0, **test 230 pass**, format:check, build 8/8.
+- nginx 보호 계약: 실제 `infra/nginx/nginx.conf` 통과, decoy·중복 location·nested·burst 초과 거부를 단위 테스트로 고정. 관리 마커 주석 포함 config 통과 회귀 테스트 추가.
+- route: 실제 생성(`e2e-route-check.local` → `poc1d`) → 프록시 응답 확인 → 삭제까지 수행했고 삭제 후 config SHA 가 생성 전 값(`1bf58eaa…`)으로 정확히 복귀했다. 부팅 reconcile 이 live config 를 DB 기준으로 자가치유하는 것도 확인했다.
+- 로테이션: 임시 override(64 KiB·5초)로 실제 회전 유도 — `.1`→`.2` 승격, `USR1` 재오픈 후 새 파일에 기록 재개, traffic DB 행 +257(생성 252 + 헬스체크), **중복 request_id 0**, 체크포인트가 새 inode 로 전환. 검증 후 기본값(128 MiB·60초·2세대)으로 복구했다.
+- 감사: `limit=3` 기준 `{page,limit,total,totalPages}` 봉투, page 2 offset, `result=success` 필터 일치, `from>to` 400, `limit=500` 400 을 실측했고 total 이 DB 실제 행 수와 일치했다.
+- 브라우저: 감사 로그 서버 필터 UI(검색·선택·기간·적용/초기화)와 표 렌더, console error 0건, 페이지 가로 스크롤 0.
+
+### 정책 판단이 필요한 잔여 1건
+
+감사 로그 열람 role 이 문서(`docs/llm.txt` 는 owner/admin)와 구현(owner·admin·viewer·auditor)에서 불일치한다. 이번 작업은 구현을 바꾸지 않고 유지했다. 문서를 구현에 맞출지, 구현을 좁힐지는 사용자 결정이 필요하다.
