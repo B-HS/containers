@@ -37,6 +37,14 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
         return { actorId: session.user.id, authMethod: 'session' as const }
     }
 
+    const authenticateRestore = async (headers: Headers) => {
+        if (headers.has('authorization')) {
+            throw createAppError('FORBIDDEN')
+        }
+        const session = await authService.requireRecentRole(headers, BACKUP_ROLES, RECENT_AUTH_MAX_AGE_MS)
+        return { actorId: session.user.id, authMethod: 'session' as const }
+    }
+
     return new Hono()
         .get(
             '/backups',
@@ -100,7 +108,7 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
                     targetId: 'backup',
                     targetType: 'backup' as const,
                 }
-                const principal = await authenticateWrite(context.req.raw.headers)
+                const principal = await authenticateRestore(context.req.raw.headers)
                 const backupId = (context.req.valid('param' as never) as z.infer<typeof backupIdParamSchema>).id
                 const payload = context.req.valid('json' as never) as z.infer<typeof backupRestoreSchema>
                 await auditService.record({ ...audit, ...principal, result: 'attempt' })

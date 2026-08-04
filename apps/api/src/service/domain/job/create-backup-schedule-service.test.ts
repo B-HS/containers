@@ -37,6 +37,12 @@ const createManifest = (createdAt: string) => ({
     trafficSha256: 'b'.repeat(64),
 })
 
+const listByStatus = (jobs: OperationJob[]) => async (input: unknown) => {
+    const query = input as { limit?: number; status?: string }
+    const filtered = query.status === undefined ? jobs : jobs.filter((job) => job.status === query.status)
+    return filtered.slice(0, query.limit ?? filtered.length)
+}
+
 describe('backup schedule 서비스', () => {
     test('최신 backup 시각에서 다음 실행을 유도하고 성공·실패 이력을 노출합니다', async () => {
         const service = createBackupScheduleService({
@@ -45,10 +51,10 @@ describe('backup schedule 서비스', () => {
             now: () => NOW,
             operationJobService: {
                 enqueue: async () => createJob({}),
-                list: async () => [
+                list: listByStatus([
                     createJob({ failureCode: 'BACKUP_CONTROL_INVALID', finishedAt: '2026-08-01T10:00:00.000Z', status: 'failed' }),
                     createJob({ finishedAt: '2026-08-01T06:00:01.000Z', status: 'succeeded' }),
-                ],
+                ]),
             },
         })
 
@@ -74,7 +80,7 @@ describe('backup schedule 서비스', () => {
                         enqueued.push(input.kind)
                         return createJob({ status: 'queued' })
                     },
-                    list: async () => [],
+                    list: listByStatus([]),
                 },
             })
 
@@ -82,5 +88,55 @@ describe('backup schedule 서비스', () => {
         expect(await buildService([createManifest('2026-08-01T10:00:00.000Z')]).enqueueIfDue()).toBe(true)
         expect((await buildService([createManifest('2026-08-01T10:00:00.000Z')]).getSchedule()).nextRunAt).toBe(NOW.toISOString())
         expect(enqueued).toEqual(['backup.create', 'backup.create'])
+    })
+
+    test('연속 실패는 지수 백오프로 재시도를 늦춥니다', async () => {
+        const enqueued: string[] = []
+        const buildService = (failures: OperationJob[]) =>
+            createBackupScheduleService({
+                backupService: { list: async () => [] },
+                intervalHours: 24,
+                now: () => NOW,
+                operationJobService: {
+                    enqueue: async (input) => {
+                        enqueued.push(input.kind)
+                        return createJob({ status: 'queued' })
+                    },
+                    list: listByStatus(failures),
+                },
+            })
+        const failedAt = (finishedAt: string) => createJob({ failureCode: 'BACKUP_FAILED', finishedAt, status: 'failed' })
+
+        expect((await buildService([failedAt('2026-08-01T11:58:00.000Z')]).getSchedule()).nextRunAt).toBe('2026-08-01T12:03:00.000Z')
+        expect(
+            (
+                await buildService([
+                    failedAt('2026-08-01T11:58:00.000Z'),
+                    failedAt('2026-08-01T11:50:00.000Z'),
+                    failedAt('2026-08-01T11:40:00.000Z'),
+                ]).getSchedule()
+            ).nextRunAt,
+        ).toBe('2026-08-01T12:18:00.000Z')
+        expect(await buildService([failedAt('2026-08-01T11:58:00.000Z')]).enqueueIfDue()).toBe(false)
+        expect(await buildService([failedAt('2026-08-01T11:40:00.000Z')]).enqueueIfDue()).toBe(true)
+        expect(enqueued).toEqual(['backup.create'])
+    })
+
+    test('마지막 성공 이전의 실패는 백오프에 반영하지 않습니다', async () => {
+        const service = createBackupScheduleService({
+            backupService: { list: async () => [] },
+            intervalHours: 24,
+            now: () => NOW,
+            operationJobService: {
+                enqueue: async () => createJob({ status: 'queued' }),
+                list: listByStatus([
+                    createJob({ finishedAt: '2026-08-01T11:59:00.000Z', status: 'succeeded' }),
+                    createJob({ failureCode: 'BACKUP_FAILED', finishedAt: '2026-08-01T11:58:00.000Z', status: 'failed' }),
+                ]),
+            },
+        })
+
+        expect((await service.getSchedule()).nextRunAt).toBe(NOW.toISOString())
+        expect(await service.enqueueIfDue()).toBe(true)
     })
 })

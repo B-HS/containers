@@ -1,6 +1,11 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { apiKeyCreateResultSchema, apiKeyCreateSchema, apiKeyListSchema, type ApiKeyScope } from '@containers/contracts/api-key'
+import { API_KEY_SCOPE, apiKeyCreateResultSchema, apiKeyCreateSchema, apiKeyListSchema, type ApiKeyScope } from '@containers/contracts/api-key'
+import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/error'
+
+const OWNER_ONLY_API_KEY_SCOPES: readonly ApiKeyScope[] = [API_KEY_SCOPE.BACKUP_WRITE, API_KEY_SCOPE.SECRET_WRITE]
+
+export const requiresOwnerApiKeyScope = (scopes: readonly ApiKeyScope[]) => scopes.some((scope) => OWNER_ONLY_API_KEY_SCOPES.includes(scope))
 
 type ApiKeyRow = {
     createdAt: Date
@@ -17,6 +22,7 @@ type ApiKeyRow = {
 
 type ApiKeyAuthRecord = {
     api_key: ApiKeyRow
+    user_role: { role: string }
 }
 
 type ApiKeyServiceDb = {
@@ -81,6 +87,9 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
             if (!scopes.includes(requiredScope)) {
                 throw createAppError('FORBIDDEN')
             }
+            if (requiresOwnerApiKeyScope([requiredScope]) && joined.user_role.role !== USER_ROLE.OWNER) {
+                throw createAppError('FORBIDDEN')
+            }
 
             const nowMilliseconds = currentTime.getTime()
             const rateWindow = rateWindows.get(record.id)
@@ -103,14 +112,17 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
             await db.touchLastUsed(record.id, currentTime)
             return { actorId: record.createdBy, apiKeyId: record.id, authMethod: 'api-key' as const }
         },
-        create: async (actorId: string, input: unknown) => {
+        create: async (actor: { id: string; role: string }, input: unknown) => {
             const payload = apiKeyCreateSchema.parse(input)
+            if (requiresOwnerApiKeyScope(payload.scopes) && actor.role !== USER_ROLE.OWNER) {
+                throw createAppError('FORBIDDEN')
+            }
             const token = `ctk_${randomBytes(32).toString('base64url')}`
             const createdAt = now()
             const expiresAt = payload.expiresInDays === null ? null : new Date(createdAt.getTime() + payload.expiresInDays * 24 * 60 * 60 * 1_000)
             const record = {
                 createdAt,
-                createdBy: actorId,
+                createdBy: actor.id,
                 expiresAt,
                 id: randomUUID(),
                 name: payload.name,

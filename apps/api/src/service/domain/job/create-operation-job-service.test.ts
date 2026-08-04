@@ -7,7 +7,7 @@ import { createControlDatabase } from '@containers/db-schema/database'
 import { operationJob } from '@containers/db-schema/schema'
 import { buildOperationJobServiceDb } from '../../../compose/compose-operation-job'
 import { createAppError } from '../../../lib/error'
-import { createJobError, createOperationJobService, type OperationJobHandler } from './create-operation-job-service'
+import { createJobError, createOperationJobService, STALL_THRESHOLD_MS, type OperationJobHandler } from './create-operation-job-service'
 
 const temporaryDirectories: string[] = []
 
@@ -238,5 +238,64 @@ describe('operation job 서비스', () => {
         await service.tick()
         expect(attempts.value).toBe(2)
         expect((await service.get(job.id)).status).toBe('failed')
+    })
+
+    test('heartbeat 이 끊긴 running job 을 스윕으로 재큐잉합니다', async () => {
+        const { clock, database, service } = await createTestContext(async () => null)
+        const job = await service.enqueue({ kind: 'backup.create', payload: {}, uniqueResourceKey: 'artifact-one' })
+        await database.db
+            .update(operationJob)
+            .set({ heartbeatAt: new Date(clock.value), startedAt: new Date(clock.value), status: 'running' })
+            .where(eq(operationJob.id, job.id))
+
+        clock.value += STALL_THRESHOLD_MS / 2
+        expect(await service.sweepStalled()).toBe(0)
+        expect((await service.get(job.id)).status).toBe('running')
+
+        clock.value += STALL_THRESHOLD_MS
+        expect(await service.sweepStalled()).toBe(1)
+        const requeued = await service.get(job.id)
+        expect(requeued.status).toBe('queued')
+        expect((await service.listEvents(job.id)).map((event) => event.event)).toContain('interrupted-requeued')
+
+        await service.tick()
+        expect((await service.get(job.id)).status).toBe('succeeded')
+    })
+
+    test('시도를 모두 쓴 stall job 은 실패로 확정하고 리소스 잠금을 해제합니다', async () => {
+        const { clock, database, service } = await createTestContext(async () => null)
+        const job = await service.enqueue({ kind: 'backup.create', maxAttempts: 1, payload: {}, uniqueResourceKey: 'artifact-one' })
+        await database.db
+            .update(operationJob)
+            .set({ attempt: 1, heartbeatAt: new Date(clock.value), startedAt: new Date(clock.value), status: 'running' })
+            .where(eq(operationJob.id, job.id))
+
+        clock.value += STALL_THRESHOLD_MS * 2
+        expect(await service.sweepStalled()).toBe(1)
+        const failed = await service.get(job.id)
+        expect(failed.status).toBe('failed')
+        expect(failed.failureCode).toBe('JOB_STALLED')
+
+        const next = await service.enqueue({ kind: 'backup.create', payload: {}, uniqueResourceKey: 'artifact-one' })
+        expect(next.id).not.toBe(job.id)
+    })
+
+    test('취소 요청된 job 은 핸들러가 성공해도 cancelled 로 마감합니다', async () => {
+        const pending: { id: string } = { id: '' }
+        const { service } = await createTestContext(async ({ job }) => {
+            pending.id = job.id
+            await service.requestCancel(job.id)
+            return { restored: true }
+        })
+        const job = await service.enqueue({ kind: 'backup.create', payload: {} })
+
+        await service.tick()
+
+        const finished = await service.get(job.id)
+        expect(pending.id).toBe(job.id)
+        expect(finished.status).toBe('cancelled')
+        expect(finished.result).toEqual({ restored: true })
+        expect(finished.failureCode).toBeNull()
+        expect((await service.listEvents(job.id)).map((event) => event.event)).toEqual(['queued', 'started', 'cancel-requested', 'cancelled'])
     })
 })

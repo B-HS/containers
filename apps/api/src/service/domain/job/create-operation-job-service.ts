@@ -15,6 +15,11 @@ const POLL_INTERVAL_MS = 1_000
 const HEARTBEAT_INTERVAL_MS = 30_000
 const RETRY_BACKOFF_MS = 60_000
 const FINISHED_RETENTION_MS = 14 * 24 * 60 * 60 * 1_000
+const STALL_HEARTBEAT_MULTIPLIER = 3
+const STALL_THRESHOLD_MS = HEARTBEAT_INTERVAL_MS * STALL_HEARTBEAT_MULTIPLIER
+const STALL_SWEEP_INTERVAL_MS = 60_000
+
+export { STALL_THRESHOLD_MS }
 
 export type OperationJobHandlerContext = {
     isCancelRequested: () => Promise<boolean>
@@ -122,6 +127,7 @@ type OperationJobServiceDb = {
     ) => Promise<OperationJobRow | undefined>
     update: (id: string, values: Partial<Omit<OperationJobRow, 'id'>> & { updatedAt: Date }) => Promise<void>
     listInterrupted: () => Promise<OperationJobRow[]>
+    listStalled: (heartbeatBefore: Date) => Promise<OperationJobRow[]>
     deleteFinishedBefore: (threshold: Date, statuses: string[]) => Promise<void>
 }
 
@@ -275,10 +281,22 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
                     await recordEvent(job.id, 'progress', { step, ...detail })
                 },
             })
+            const serialized = result === null ? null : JSON.stringify(result)
+            if ((await get(job.id)).status === 'cancelling') {
+                const cancelledJob = await update(job.id, {
+                    failureCode: null,
+                    finishedAt: now(),
+                    result: serialized,
+                    status: 'cancelled',
+                })
+                await recordEvent(job.id, 'cancelled', { completedBeforeCancel: true })
+                await notifyFinished(cancelledJob)
+                return
+            }
             const succeeded = await update(job.id, {
                 failureCode: null,
                 finishedAt: now(),
-                result: result === null ? null : JSON.stringify(result),
+                result: serialized,
                 status: 'succeeded',
             })
             await recordEvent(job.id, 'succeeded')
@@ -316,8 +334,10 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
             return stopWorker
         }
         const interval = setInterval(() => void tick().catch(() => undefined), POLL_INTERVAL_MS)
+        const sweepInterval = setInterval(() => void sweepStalled().catch(() => undefined), STALL_SWEEP_INTERVAL_MS)
         stopWorker = () => {
             clearInterval(interval)
+            clearInterval(sweepInterval)
             stopWorker = null
         }
         return stopWorker
@@ -341,25 +361,29 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
         throw createAppError('JOB_ALREADY_FINISHED')
     }
 
-    const reconcileInterrupted = async () => {
-        const interrupted = await db.listInterrupted()
-        for (const record of interrupted) {
+    const recoverAbandoned = async (records: OperationJobRow[], code: string) => {
+        for (const record of records) {
             const job = toJob(record)
             if (job.status === 'cancelling') {
-                await update(job.id, { failureCode: 'JOB_INTERRUPTED', finishedAt: now(), status: 'cancelled' })
-                await recordEvent(job.id, 'cancelled', { code: 'JOB_INTERRUPTED' })
+                await update(job.id, { failureCode: code, finishedAt: now(), status: 'cancelled' })
+                await recordEvent(job.id, 'cancelled', { code })
                 continue
             }
             if (job.attempt < job.maxAttempts) {
                 await update(job.id, { scheduledAt: now(), status: 'queued' })
-                await recordEvent(job.id, 'interrupted-requeued', { attempt: job.attempt })
+                await recordEvent(job.id, 'interrupted-requeued', { attempt: job.attempt, code })
                 continue
             }
-            await update(job.id, { failureCode: 'JOB_INTERRUPTED', finishedAt: now(), status: 'failed' })
-            await recordEvent(job.id, 'failed', { code: 'JOB_INTERRUPTED' })
+            const failedJob = await update(job.id, { failureCode: code, finishedAt: now(), status: 'failed' })
+            await recordEvent(job.id, 'failed', { code })
+            await notifyFinished(failedJob)
         }
-        return interrupted.length
+        return records.length
     }
+
+    const reconcileInterrupted = async () => recoverAbandoned(await db.listInterrupted(), 'JOB_INTERRUPTED')
+
+    const sweepStalled = async () => recoverAbandoned(await db.listStalled(new Date(now().getTime() - STALL_THRESHOLD_MS)), 'JOB_STALLED')
 
     const cleanupFinished = async () => {
         const threshold = new Date(now().getTime() - FINISHED_RETENTION_MS)
@@ -390,7 +414,7 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
         )
     }
 
-    return { cleanupFinished, enqueue, get, list, listEvents, reconcileInterrupted, requestCancel, start, tick }
+    return { cleanupFinished, enqueue, get, list, listEvents, reconcileInterrupted, requestCancel, start, sweepStalled, tick }
 }
 
 export type OperationJobService = ReturnType<typeof createOperationJobService>

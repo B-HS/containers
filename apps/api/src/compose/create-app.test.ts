@@ -1021,4 +1021,74 @@ describe('API 애플리케이션', () => {
         expect(response.status).toBe(401)
         expect(body.error.code).toBe('AUTH_REQUIRED')
     })
+
+    test('owner 전용 scope 의 API 키 발급은 admin 세션을 거부합니다', async () => {
+        const dependencies = createAppTestDependencies()
+        const requestedRoles: string[][] = []
+        const app = createApp({
+            ...dependencies,
+            apiKeyService: {
+                ...dependencies.apiKeyService,
+                create: async () => ({
+                    createdAt: '2026-08-01T00:00:00.000Z',
+                    expiresAt: null,
+                    id: '2b1f8a49-4a1f-4be1-9f14-1b6a9be3f2ad',
+                    lastUsedAt: null,
+                    name: 'automation',
+                    prefix: 'ctk_test',
+                    revokedAt: null,
+                    scopes: ['artifact:upload' as const],
+                    token: 'ctk_test_token',
+                }),
+            },
+            authService: {
+                ...dependencies.authService,
+                requireRecentRole: async (_headers: Headers, allowedRoles: string[]) => {
+                    requestedRoles.push(allowedRoles)
+                    if (!allowedRoles.includes('admin')) {
+                        throw createAppError('FORBIDDEN')
+                    }
+                    return dependencies.authService.requireRole()
+                },
+            },
+        })
+        const post = (scopes: string[]) =>
+            app.request('/api/api-keys', {
+                body: JSON.stringify({ expiresInDays: 30, name: 'automation', scopes }),
+                headers: { 'content-type': 'application/json' },
+                method: 'POST',
+            })
+
+        expect((await post(['artifact:upload'])).status).toBe(201)
+        expect((await post(['backup:write'])).status).toBe(403)
+        expect((await post(['secret:write'])).status).toBe(403)
+        expect(requestedRoles).toEqual([['owner', 'admin'], ['owner'], ['owner']])
+    })
+
+    test('백업 복원은 API key 경로를 거부하고 세션만 허용합니다', async () => {
+        const dependencies = createAppTestDependencies()
+        const backupId = '374f1798-c75f-4152-938d-be2d09d12d51'
+        const app = createApp({
+            ...dependencies,
+            authService: {
+                ...dependencies.authService,
+                requireRecentRole: async () => dependencies.authService.requireRole(),
+            },
+            operationJobService: {
+                ...dependencies.operationJobService,
+                enqueue: async (input) => ({ ...createQueuedJob('backup.restore', backupId), payload: input.payload }),
+            },
+        })
+        const restore = (headers: Record<string, string>) =>
+            app.request(`/api/backups/${backupId}/restore`, {
+                body: JSON.stringify({ confirmation: backupId }),
+                headers: { 'content-type': 'application/json', ...headers },
+                method: 'POST',
+            })
+
+        const denied = await restore({ authorization: 'Bearer ctk_test' })
+        expect(denied.status).toBe(403)
+        expect((await denied.json()).error.code).toBe('FORBIDDEN')
+        expect((await restore({})).status).toBe(202)
+    })
 })

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { operationJob, operationJobEvent } from '@containers/db-schema/schema'
 import type { OperationJob, OperationJobKind } from '@containers/contracts/operation-job'
@@ -80,6 +80,16 @@ export const buildOperationJobServiceDb = (db: ControlDatabase): OperationJobSer
             .select()
             .from(operationJob)
             .where(inArray(operationJob.status, ['running', 'cancelling'] as never)),
+    listStalled: async (heartbeatBefore) =>
+        db
+            .select()
+            .from(operationJob)
+            .where(
+                and(
+                    inArray(operationJob.status, ['running', 'cancelling'] as never),
+                    or(isNull(operationJob.heartbeatAt), lt(operationJob.heartbeatAt, heartbeatBefore)),
+                ),
+            ),
     deleteFinishedBefore: async (threshold, statuses) => {
         await db.delete(operationJob).where(and(inArray(operationJob.status, statuses as never), lt(operationJob.finishedAt, threshold)))
     },
