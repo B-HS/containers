@@ -9,7 +9,7 @@ export const QUERY_KEY = {
     },
     AUDIT: {
         ALL: ['audit'] as const,
-        LIST: ['audit', 'list'] as const,
+        LIST: (params: Record<string, string>) => ['audit', 'list', params] as const,
     },
     AUTH: {
         ALL: ['auth'] as const,

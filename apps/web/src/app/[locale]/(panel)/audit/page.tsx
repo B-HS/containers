@@ -1,6 +1,7 @@
 import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
+import { AUDIT_PAGE_SIZE_DEFAULT } from '@containers/contracts/audit'
 import { getTranslations } from 'next-intl/server'
-import { getAuditEvents } from '@entities/audit/audit.api'
+import { AUDIT_DEFAULT_FILTERS, getAuditEvents, toAuditSearchParams } from '@entities/audit/audit.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
@@ -14,10 +15,13 @@ const AuditPage = async () => {
         return null
     }
 
+    const params = toAuditSearchParams(AUDIT_DEFAULT_FILTERS)
+    const emptyPage = { data: [], pagination: { limit: AUDIT_PAGE_SIZE_DEFAULT, page: 1, total: 0, totalPages: 0 } }
     const queryClient = new QueryClient()
     await queryClient.prefetchQuery({
-        queryKey: QUERY_KEY.AUDIT.LIST,
-        queryFn: () => (session.canViewAudit ? getAuditEvents(API_INTERNAL_URL, session.cookie).catch(() => []) : Promise.resolve([])),
+        queryKey: QUERY_KEY.AUDIT.LIST(params),
+        queryFn: () =>
+            session.canViewAudit ? getAuditEvents(API_INTERNAL_URL, session.cookie, params).catch(() => emptyPage) : Promise.resolve(emptyPage),
     })
 
     return (

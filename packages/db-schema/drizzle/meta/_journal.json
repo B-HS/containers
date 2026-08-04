@@ -78,6 +78,13 @@
             "when": 1785581472434,
             "tag": "0010_secret_marvex",
             "breakpoints": true
+        },
+        {
+            "idx": 11,
+            "version": "6",
+            "when": 1785822581541,
+            "tag": "0011_magical_doctor_octopus",
+            "breakpoints": true
         }
     ]
 }

@@ -117,7 +117,14 @@ export const auditLog = sqliteTable(
         detail: text('detail'),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
     },
-    (table) => [index('audit_created_at_idx').on(table.createdAt), index('audit_actor_id_idx').on(table.actorId)],
+    (table) => [
+        index('audit_created_at_idx').on(table.createdAt),
+        index('audit_actor_id_idx').on(table.actorId),
+        index('audit_operation_created_at_idx').on(table.operation, table.createdAt),
+        index('audit_target_type_created_at_idx').on(table.targetType, table.createdAt),
+        index('audit_target_id_idx').on(table.targetId),
+        index('audit_result_created_at_idx').on(table.result, table.createdAt),
+    ],
 )
 
 export const apiKey = sqliteTable(

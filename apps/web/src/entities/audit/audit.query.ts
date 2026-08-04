@@ -1,15 +1,17 @@
 'use client'
 
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import { auditEventListSchema } from '@containers/contracts/audit'
-import { clientFetchData } from '@shared/lib/client-fetch'
+import { parseAuditPage, toAuditSearchParams, type AuditFilters } from '@entities/audit/audit.api'
+import { clientFetch } from '@shared/lib/client-fetch'
 import { QUERY_KEY } from '@shared/lib/query-key'
-import { z } from 'zod'
 
-export const auditQueryOptions = () =>
-    queryOptions({
-        queryKey: QUERY_KEY.AUDIT.LIST,
-        queryFn: () => clientFetchData<z.infer<typeof auditEventListSchema>>('/api/audit?limit=100'),
+export const auditQueryOptions = (filters: AuditFilters) => {
+    const params = toAuditSearchParams(filters)
+
+    return queryOptions({
+        queryKey: QUERY_KEY.AUDIT.LIST(params),
+        queryFn: async () => parseAuditPage(await clientFetch(`/api/audit?${new URLSearchParams(params).toString()}`)),
     })
+}
 
-export const useGetAuditEvents = () => useQuery(auditQueryOptions())
+export const useGetAuditEvents = (filters: AuditFilters) => useQuery(auditQueryOptions(filters))

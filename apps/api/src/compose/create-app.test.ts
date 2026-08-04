@@ -155,7 +155,7 @@ const createAppTestDependencies = () => ({
         revoke: async (id: string) => ({ id, revoked: true as const }),
     },
     auditService: {
-        list: async () => [],
+        list: async () => ({ data: [], pagination: { limit: 50, page: 1, total: 0, totalPages: 0 } }),
         record: async () => undefined,
     },
     backupService: {

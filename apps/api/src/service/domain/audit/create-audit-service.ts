@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto'
-import { auditEventListSchema, auditQuerySchema } from '@containers/contracts/audit'
+import { auditEventListSchema, auditQuerySchema, type AuditResult, type AuditTargetType } from '@containers/contracts/audit'
 
 type AuditListQuery = {
+    actorEmail?: string
+    from?: Date
     limit: number
+    offset: number
     operation?: string
     result?: string
+    targetId?: string
     targetType?: string
+    to?: Date
 }
 
 type AuditListRecord = {
@@ -37,8 +42,13 @@ type AuditInsertRecord = {
     targetType: string
 }
 
+type AuditListPage = {
+    records: AuditListRecord[]
+    total: number
+}
+
 type AuditServiceDb = {
-    list: (query: AuditListQuery) => Promise<AuditListRecord[]>
+    list: (query: AuditListQuery) => Promise<AuditListPage>
     record: (record: AuditInsertRecord) => Promise<void>
 }
 
@@ -48,28 +58,10 @@ type AuditRecord = {
     detail?: Record<string, unknown>
     operation: string
     requestId: string
-    result: 'attempt' | 'failure' | 'success'
+    result: AuditResult
     sourceIp: string | undefined
     targetId: string
-    targetType:
-        | 'artifact'
-        | 'backup'
-        | 'container'
-        | 'deployment-manifest'
-        | 'deployment-release'
-        | 'deployment-secret'
-        | 'image'
-        | 'invitation'
-        | 'job'
-        | 'maintenance'
-        | 'network'
-        | 'nginx-config'
-        | 'nginx-route'
-        | 'notification-destination'
-        | 'registry-credential'
-        | 'system'
-        | 'user'
-        | 'volume'
+    targetType: AuditTargetType
 }
 
 type AuditServiceDependencies = {
@@ -114,27 +106,47 @@ const parseDetail = (detail: string | null) => {
 export const createAuditService = ({ db, now }: AuditServiceDependencies) => ({
     list: async (input: unknown) => {
         const query = auditQuerySchema.parse(input)
-        const conditions: { operation?: string; result?: string; targetType?: string } = {}
+        const conditions: Omit<AuditListQuery, 'limit' | 'offset'> = {}
+        if (query.actorEmail) {
+            conditions.actorEmail = query.actorEmail
+        }
+        if (query.from) {
+            conditions.from = new Date(query.from)
+        }
         if (query.operation) {
             conditions.operation = query.operation
         }
         if (query.result) {
             conditions.result = query.result
         }
+        if (query.targetId) {
+            conditions.targetId = query.targetId
+        }
         if (query.targetType) {
             conditions.targetType = query.targetType
         }
+        if (query.to) {
+            conditions.to = new Date(query.to)
+        }
 
-        const records = await db.list({ ...conditions, limit: query.limit })
+        const page = await db.list({ ...conditions, limit: query.limit, offset: (query.page - 1) * query.limit })
 
-        return auditEventListSchema.parse(
-            records.map((record) => ({
-                ...record,
-                createdAt: record.createdAt.toISOString(),
-                detail: parseDetail(record.detail),
-                sourceIpMasked: maskIp(record.sourceIp),
-            })),
-        )
+        return {
+            data: auditEventListSchema.parse(
+                page.records.map((record) => ({
+                    ...record,
+                    createdAt: record.createdAt.toISOString(),
+                    detail: parseDetail(record.detail),
+                    sourceIpMasked: maskIp(record.sourceIp),
+                })),
+            ),
+            pagination: {
+                limit: query.limit,
+                page: query.page,
+                total: page.total,
+                totalPages: Math.ceil(page.total / query.limit),
+            },
+        }
     },
     record: async (record: AuditRecord) => {
         const detail = record.detail ? JSON.stringify(record.detail) : undefined

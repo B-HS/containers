@@ -3,7 +3,7 @@ import { describeRoute, validator } from 'hono-openapi'
 import { auditQuerySchema } from '@containers/contracts/audit'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
-import { successResponse } from '../../lib/response'
+import { paginatedResponse } from '../../lib/response'
 import { withErrorHandling } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -35,7 +35,8 @@ export const createAuditRoute = ({ auditService, authService }: AuditRouteDepend
         withErrorHandling(async (context) => {
             await authService.requireRole(context.req.raw.headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.VIEWER, USER_ROLE.AUDITOR])
             try {
-                return context.json(successResponse(await auditService.list(context.req.valid('query'))), 200)
+                const page = await auditService.list(context.req.valid('query'))
+                return context.json(paginatedResponse(page.data, page.pagination), 200)
             } catch (error) {
                 throw toUnavailable(error)
             }
