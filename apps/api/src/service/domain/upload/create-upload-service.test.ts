@@ -6,11 +6,13 @@ import { join, resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { ARTIFACT_MEDIA_TYPE } from '@containers/contracts/upload'
 import { createControlDatabase } from '@containers/db-schema/database'
-import { artifact, uploadSession, user } from '@containers/db-schema/schema'
+import { artifact, deployment, uploadSession, user } from '@containers/db-schema/schema'
 import { buildUploadServiceDb } from '../../../compose/compose-upload'
 import { toStreamChunks } from '../../../lib/stream-chunks'
 import { createUploadService } from './create-upload-service'
 
+const RETENTION_DAYS = 30
+const RETENTION_MINIMUM_COUNT = 2
 const temporaryDirectories: string[] = []
 
 afterEach(async () => {
@@ -40,6 +42,8 @@ const createTestService = async ({
     let availableBytes = initialAvailableBytes
     const service = createUploadService({
         artifactInspectionService: { inspect: async () => ({ entryCount: 3, uncompressedBytes: 20 }) },
+        artifactRetentionDays: RETENTION_DAYS,
+        artifactRetentionMinimumCount: RETENTION_MINIMUM_COUNT,
         artifactRoot: join(directory, 'artifacts'),
         db: buildUploadServiceDb(database.db),
         diskHardAvailableBytes: 10,
@@ -289,6 +293,59 @@ describe('업로드 서비스', () => {
         setAvailableBytes(bytes.byteLength + 9)
 
         await expect(service.appendChunk(actorId, session.id, 0, digest(bytes), bytes)).rejects.toThrow('DISK_HARD_WATERMARK')
+        sqlite.close()
+    })
+    test('배포가 참조하지 않는 artifact 만 삭제하고 참조 중이면 거부합니다', async () => {
+        const { actorId, db, directory, service, sqlite } = await createTestService()
+        const bytes = new TextEncoder().encode('docker-image-archive')
+        const session = await service.createSession(actorId, 'artifact-remove-0001', {
+            expectedSha256: digest(bytes),
+            expectedSizeBytes: bytes.byteLength,
+            fileName: 'image.tar',
+            mediaType: ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE,
+        })
+        await service.appendChunk(actorId, session.id, 0, digest(bytes), bytes)
+        const created = await service.finalizeSession(actorId, session.id)
+        const [record] = await db.select().from(artifact).where(eq(artifact.id, created.id))
+
+        await db.insert(deployment).values({
+            artifactId: created.id,
+            createdAt: new Date('2026-07-31T00:00:00.000Z'),
+            createdBy: actorId,
+            id: 'deployment-holding-artifact',
+            status: 'loaded',
+            updatedAt: new Date('2026-07-31T00:00:00.000Z'),
+        })
+        await expect(service.removeArtifact(created.id, { confirmation: created.id })).rejects.toThrow('ARTIFACT_IN_USE')
+
+        await db.delete(deployment).where(eq(deployment.id, 'deployment-holding-artifact'))
+        await expect(service.removeArtifact(created.id, { confirmation: session.id })).rejects.toThrow('CONFIRMATION_MISMATCH')
+        expect((await service.removeArtifact(created.id, { confirmation: created.id })).id).toBe(created.id)
+        expect(await Bun.file(record?.storagePath ?? join(directory, 'missing')).exists()).toBe(false)
+        expect(await service.listArtifacts()).toEqual([])
+        sqlite.close()
+    })
+    test('보존 기간이 지나고 참조되지 않는 artifact 만 정리하되 최소 보관 수는 남깁니다', async () => {
+        const { actorId, db, service, sqlite } = await createTestService()
+        const timestamps = ['2026-05-01T00:00:00.000Z', '2026-05-02T00:00:00.000Z', '2026-05-03T00:00:00.000Z', '2026-07-30T00:00:00.000Z']
+        for (const [index, createdAt] of timestamps.entries()) {
+            await db.insert(artifact).values({
+                createdAt: new Date(createdAt),
+                createdBy: actorId,
+                fileName: `old-${index}.tar`,
+                id: `00000000-0000-4000-8000-00000000000${index}`,
+                mediaType: ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE,
+                sha256: createHash('sha256').update(`old-${index}`).digest('hex'),
+                sizeBytes: 100,
+                status: 'ready',
+                storagePath: join('/nonexistent', `old-${index}.tar`),
+            })
+        }
+
+        const result = await service.cleanupExpiredArtifacts()
+
+        expect(result).toEqual({ removedArtifactCount: 2, removedByteSize: 200 })
+        expect((await service.listArtifacts()).map((record) => record.fileName).sort()).toEqual(['old-2.tar', 'old-3.tar'])
         sqlite.close()
     })
 })

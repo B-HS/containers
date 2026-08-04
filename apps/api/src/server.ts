@@ -21,6 +21,7 @@ const BACKUP_SCHEDULE_INTERVAL_MS = MINUTE_MS
 const CONTAINER_CLEANUP_INTERVAL_MS = HOUR_MS
 const JOB_CLEANUP_INTERVAL_MS = HOUR_MS
 const UPLOAD_SESSION_CLEANUP_INTERVAL_MS = 15 * MINUTE_MS
+const ARTIFACT_RETENTION_INTERVAL_MS = 6 * HOUR_MS
 const OPENAPI_SPEC_PATH = '/api/openapi.json'
 
 const envSchema = z
@@ -55,7 +56,9 @@ const envSchema = z
         TRAFFIC_EXPORT_ROOT: z.string().min(1).default('/backups/traffic-exports'),
         UPLOAD_DISK_HARD_AVAILABLE_BYTES: z.coerce.number().int().positive().default(17_179_869_184),
         UPLOAD_DISK_SOFT_AVAILABLE_BYTES: z.coerce.number().int().positive().default(34_359_738_368),
-        UPLOAD_TOTAL_QUOTA_BYTES: z.coerce.number().int().positive().default(322_122_547_200),
+        UPLOAD_TOTAL_QUOTA_BYTES: z.coerce.number().int().positive().default(34_359_738_368),
+        ARTIFACT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3_650).default(30),
+        ARTIFACT_RETENTION_MINIMUM_COUNT: z.coerce.number().int().min(1).max(1_000).default(5),
     })
     .refine((input) => input.UPLOAD_DISK_SOFT_AVAILABLE_BYTES > input.UPLOAD_DISK_HARD_AVAILABLE_BYTES, {
         message: 'soft disk watermark는 hard watermark보다 커야 합니다.',
@@ -109,6 +112,8 @@ const composed = compose({
         probeNetworkName: env.PROBE_NETWORK_NAME,
         protectedHostnames: ['api.containers.local', 'panel.containers.local', new URL(env.PANEL_PUBLIC_URL).hostname],
         trafficWorkerInternalUrl: env.TRAFFIC_WORKER_INTERNAL_URL,
+        artifactRetentionDays: env.ARTIFACT_RETENTION_DAYS,
+        artifactRetentionMinimumCount: env.ARTIFACT_RETENTION_MINIMUM_COUNT,
         uploadTotalQuotaBytes: env.UPLOAD_TOTAL_QUOTA_BYTES,
         apiKeyRateLimitPerMinute: env.API_KEY_RATE_LIMIT_PER_MINUTE,
     },
@@ -142,6 +147,7 @@ await runStartupTasks({
         { name: 'deployment-release-reconcile-interrupted', run: () => deploymentReleaseService.reconcileInterrupted() },
         { name: 'deployment-release-cleanup-expired-containers', run: () => deploymentReleaseService.cleanupExpiredContainers() },
         { name: 'upload-cleanup-expired-sessions', run: () => uploadService.cleanupExpiredSessions() },
+        { name: 'artifact-cleanup-expired', run: () => uploadService.cleanupExpiredArtifacts() },
         { name: 'operation-job-reconcile-interrupted', run: () => operationJobService.reconcileInterrupted() },
         { name: 'operation-job-start', run: async () => operationJobService.start() },
         { name: 'notification-delivery-reconcile-queued', run: () => notificationDeliveryService.reconcileQueued() },
@@ -159,6 +165,11 @@ startRecurringTask({
     intervalMs: UPLOAD_SESSION_CLEANUP_INTERVAL_MS,
     name: 'upload-cleanup-expired-sessions',
     run: () => uploadService.cleanupExpiredSessions(),
+})
+startRecurringTask({
+    intervalMs: ARTIFACT_RETENTION_INTERVAL_MS,
+    name: 'artifact-cleanup-expired',
+    run: () => uploadService.cleanupExpiredArtifacts(),
 })
 startRecurringTask({
     intervalMs: BACKUP_SCHEDULE_INTERVAL_MS,

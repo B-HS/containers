@@ -1,6 +1,6 @@
 import { and, count, eq, gt, lt, inArray } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
-import { artifact, uploadChunk, uploadSession } from '@containers/db-schema/schema'
+import { artifact, deployment, uploadChunk, uploadSession } from '@containers/db-schema/schema'
 import type { ArtifactInspectionService } from '../service/domain/upload/create-artifact-inspection-service'
 import type { EngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
 import { createUploadService, type UploadServiceDb } from '../service/domain/upload/create-upload-service'
@@ -8,6 +8,8 @@ import { createUploadService, type UploadServiceDb } from '../service/domain/upl
 type ComposeUploadDependencies = {
     db: ControlDatabase
     artifactInspectionService: Pick<ArtifactInspectionService, 'inspect'>
+    artifactRetentionDays: number
+    artifactRetentionMinimumCount: number
     artifactRoot: string
     diskHardAvailableBytes: number
     diskSoftAvailableBytes: number
@@ -114,11 +116,24 @@ export const buildUploadServiceDb = (db: ControlDatabase): UploadServiceDb => ({
         return record
     },
     listArtifacts: async () => db.select().from(artifact).orderBy(artifact.createdAt),
+    findArtifactById: async (id) => {
+        const [record] = await db.select().from(artifact).where(eq(artifact.id, id)).limit(1)
+        return record
+    },
+    countDeploymentsByArtifact: async (artifactId) => {
+        const [row] = await db.select({ value: count() }).from(deployment).where(eq(deployment.artifactId, artifactId))
+        return row?.value ?? 0
+    },
+    deleteArtifact: async (id) => {
+        await db.delete(artifact).where(eq(artifact.id, id))
+    },
 })
 
 export const composeUpload = ({
     db,
     artifactInspectionService,
+    artifactRetentionDays,
+    artifactRetentionMinimumCount,
     artifactRoot,
     diskHardAvailableBytes,
     diskSoftAvailableBytes,
@@ -127,6 +142,8 @@ export const composeUpload = ({
 }: ComposeUploadDependencies) => ({
     uploadService: createUploadService({
         artifactInspectionService,
+        artifactRetentionDays,
+        artifactRetentionMinimumCount,
         artifactRoot,
         db: buildUploadServiceDb(db),
         diskHardAvailableBytes,

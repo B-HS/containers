@@ -3,7 +3,9 @@ import { createReadStream } from 'node:fs'
 import { mkdir, open, readdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+    artifactDeleteSchema,
     artifactListSchema,
+    artifactRetentionResultSchema,
     artifactSchema,
     uploadChunkResultSchema,
     uploadSessionCreateSchema,
@@ -13,6 +15,7 @@ import type { ArtifactInspectionService } from './create-artifact-inspection-ser
 import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 
+const DAY_MS = 24 * 60 * 60 * 1_000
 const MAX_CHUNK_BYTES = 67_108_864
 const SESSION_TTL_MS = 24 * 60 * 60 * 1_000
 
@@ -72,10 +75,15 @@ type UploadServiceDb = {
     findArtifactByStoragePath: (storagePath: string) => Promise<ArtifactRow | undefined>
     findSessionByTemporaryPath: (temporaryPath: string) => Promise<UploadSessionRow | undefined>
     listArtifacts: () => Promise<ArtifactRow[]>
+    findArtifactById: (id: string) => Promise<ArtifactRow | undefined>
+    countDeploymentsByArtifact: (artifactId: string) => Promise<number>
+    deleteArtifact: (id: string) => Promise<void>
 }
 
 type UploadServiceDependencies = {
     artifactInspectionService: Pick<ArtifactInspectionService, 'inspect'>
+    artifactRetentionDays: number
+    artifactRetentionMinimumCount: number
     artifactRoot: string
     db: UploadServiceDb
     diskHardAvailableBytes: number
@@ -122,6 +130,8 @@ const toArtifact = (record: { createdAt: Date; fileName: string; id: string; med
 
 export const createUploadService = ({
     artifactInspectionService,
+    artifactRetentionDays,
+    artifactRetentionMinimumCount,
     artifactRoot,
     db,
     diskHardAvailableBytes,
@@ -395,6 +405,41 @@ export const createUploadService = ({
                 removed += 1
             }
             return removed
+        },
+        removeArtifact: async (id: string, input: unknown) => {
+            const request = artifactDeleteSchema.parse(input)
+            const record = await db.findArtifactById(id)
+            if (!record) {
+                throw createAppError('ARTIFACT_NOT_FOUND')
+            }
+            if (request.confirmation !== record.id) {
+                throw createAppError('CONFIRMATION_MISMATCH')
+            }
+            if ((await db.countDeploymentsByArtifact(id)) > 0) {
+                throw createAppError('ARTIFACT_IN_USE')
+            }
+            await db.deleteArtifact(id)
+            await rm(record.storagePath, { force: true }).catch(() => undefined)
+            return toArtifact(record)
+        },
+        cleanupExpiredArtifacts: async () => {
+            const expiresBefore = now().getTime() - artifactRetentionDays * DAY_MS
+            const records = (await db.listArtifacts()).sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+            let removedArtifactCount = 0
+            let removedByteSize = 0
+            for (const record of records.slice(artifactRetentionMinimumCount)) {
+                if (record.createdAt.getTime() >= expiresBefore) {
+                    continue
+                }
+                if ((await db.countDeploymentsByArtifact(record.id)) > 0) {
+                    continue
+                }
+                await db.deleteArtifact(record.id)
+                await rm(record.storagePath, { force: true }).catch(() => undefined)
+                removedArtifactCount += 1
+                removedByteSize += record.sizeBytes
+            }
+            return artifactRetentionResultSchema.parse({ removedArtifactCount, removedByteSize })
         },
         listArtifacts: async () =>
             artifactListSchema.parse(

@@ -42,6 +42,13 @@ export const artifactSchema = z.object({
 
 export const artifactListSchema = z.array(artifactSchema)
 
+export const artifactDeleteSchema = z.object({ confirmation: z.uuid() })
+
+export const artifactRetentionResultSchema = z.object({
+    removedArtifactCount: z.number().int().nonnegative(),
+    removedByteSize: z.number().int().nonnegative(),
+})
+
 export const imageLoadRequestSchema = z.object({
     artifactPath: z
         .string()

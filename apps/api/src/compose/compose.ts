@@ -44,6 +44,8 @@ type ComposeSecrets = {
 
 type ComposeEnv = {
     agentInternalUrl: string
+    artifactRetentionDays: number
+    artifactRetentionMinimumCount: number
     artifactRoot: string
     authBaseUrl: string
     authTrustedOrigins: string[]
@@ -182,6 +184,8 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
     const { uploadService } = composeUpload({
         db,
         artifactInspectionService: createArtifactInspectionService(),
+        artifactRetentionDays: env.artifactRetentionDays,
+        artifactRetentionMinimumCount: env.artifactRetentionMinimumCount,
         artifactRoot: env.artifactRoot,
         diskHardAvailableBytes: env.diskHardAvailableBytes,
         diskSoftAvailableBytes: env.diskSoftAvailableBytes,

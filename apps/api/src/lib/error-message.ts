@@ -16,6 +16,8 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.ARCHIVE_METADATA_MISSING]: '아카이브 메타데이터가 누락되었습니다.',
     [ERROR_CODE.ARCHIVE_PATH_INVALID]: '아카이브 경로가 올바르지 않습니다.',
     [ERROR_CODE.ARTIFACT_DIGEST_MISMATCH]: 'artifact digest가 일치하지 않습니다.',
+    [ERROR_CODE.ARTIFACT_IN_USE]: '배포가 참조 중인 artifact는 삭제할 수 없습니다.',
+    [ERROR_CODE.ARTIFACT_NOT_FOUND]: 'artifact를 찾을 수 없습니다.',
     [ERROR_CODE.ARTIFACT_LIST_FAILED]: 'artifact 목록을 조회할 수 없습니다.',
     [ERROR_CODE.ARTIFACT_MEDIA_TYPE_INVALID]: 'artifact media type이 올바르지 않습니다.',
     [ERROR_CODE.ARTIFACT_NOT_READY]: 'ready artifact를 찾을 수 없습니다.',

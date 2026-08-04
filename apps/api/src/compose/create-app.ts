@@ -85,7 +85,10 @@ type AppDependencies = {
     secretRotationService: Pick<SecretRotationService, 'getState'>
     trafficWorkerClient: Pick<TrafficWorkerClient, 'getAnalytics' | 'getSummary' | 'openLiveStream'>
     trafficExportRoot?: string
-    uploadService: Pick<UploadService, 'appendChunk' | 'cleanupExpiredSessions' | 'createSession' | 'getOwnedSession' | 'listArtifacts'>
+    uploadService: Pick<
+        UploadService,
+        'appendChunk' | 'cleanupExpiredSessions' | 'createSession' | 'getOwnedSession' | 'listArtifacts' | 'removeArtifact'
+    >
 }
 
 export const createApp = ({
@@ -128,7 +131,7 @@ export const createApp = ({
     const trafficRoute = createTrafficRoute({ auditService, authService, operationJobService, trafficExportRoot, trafficService })
     const nginxService = createNginxService({ engineAgentClient, nginxStatusClient })
     const nginxRoute = createNginxRoute({ auditService, authService, nginxProxyRouteService, nginxService })
-    const uploadRoute = createUploadRoute({ apiKeyService, authService, operationJobService, uploadService })
+    const uploadRoute = createUploadRoute({ apiKeyService, auditService, authService, operationJobService, uploadService })
     const deploymentRoute = createDeploymentRoute({ apiKeyService, auditService, authService, deploymentService, operationJobService })
     const deploymentManifestRoute = createDeploymentManifestRoute({ apiKeyService, auditService, authService, deploymentManifestService })
     const deploymentReleaseRoute = createDeploymentReleaseRoute({
