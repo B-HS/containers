@@ -124,7 +124,23 @@ Authorization, Cookie, request·response body, 전체 query string, API key를 �
 
 로그 rotation은 파일 rename 후 Nginx USR1 reopen을 사용한다. Worker는 old inode EOF까지 읽고 new inode로 전환한다. DB 장애 시 file offset을 advance하지 않는다.
 
-### 6.2 후속 목표
+### 6.2 access log rotation 정책
+
+로테이션은 nginx 컨테이너 안에서 수행한다. 사이드카 logrotate는 컨테이너 경계를 넘어 nginx master에 `USR1`을 보낼 수 없어 배제했다. `infra/nginx/entrypoint.sh`가 nginx를 `daemon off`로 백그라운드 실행하고, 같은 프로세스에서 회전 루프를 함께 돌린다. nginx가 종료되면 entrypoint도 동일한 종료 코드로 끝나므로 healthcheck와 재시작 정책이 그대로 동작하고, `TERM`·`INT`는 nginx master로 전달된다.
+
+| 항목        | 기본값         | 환경변수                             |
+| ----------- | -------------- | ------------------------------------ |
+| 검사 주기   | 60초           | `ACCESS_LOG_ROTATE_INTERVAL_SECONDS` |
+| 회전 임계값 | 128 MiB        | `ACCESS_LOG_MAX_BYTES`               |
+| 보존 세대   | 2 (`.1`, `.2`) | `ACCESS_LOG_KEEP`                    |
+
+기본값은 `compose.yaml`의 nginx service `environment`에 명시한다. 회전 절차는 `access.jsonl.2` 삭제 → `access.jsonl.1`을 `.2`로 rename → `access.jsonl`을 `.1`로 rename → nginx master에 `USR1` 전송(재오픈)이다. 크기 확인은 `wc -c`만 사용해 alpine busybox에서 동작하고, 쓰기 대상은 named volume인 `/var/log/nginx`뿐이라 `read_only: true` 컨테이너 제약을 지킨다.
+
+압축하지 않는다. gzip은 회전된 파일의 내용을 통째로 바꿔 traffic worker의 old inode drain을 깨뜨린다. 같은 이유로 회전 직후 파일을 즉시 삭제하지 않고 최소 한 세대를 남긴다. worker는 회전 주기(기본 60초)보다 훨씬 짧은 poll 주기로 `.1`을 EOF까지 비운 뒤 새 inode로 전환하므로, 2세대 보존이면 drain 여유가 최소 한 회전 주기 이상 확보된다.
+
+checkpoint가 가리키는 inode를 로그 디렉터리 어디에서도 찾지 못하면(회전이 너무 빨라 drain 전에 세대가 밀려난 경우 등) worker는 새 active inode로 checkpoint를 reset하고 그 사실을 `GET /traffic/ingestion`의 `checkpointInodeMissing`·`checkpointInodeMissingCount`·`checkpointInodeMissingAt`으로 노출한다. count가 증가하면 유실이 발생한 것이므로 임계값을 올리거나 보존 세대를 늘린다.
+
+### 6.3 후속 목표
 
 - minute/hour rollup과 route·status·latency histogram 갱신
 - ingest lag, invalid·duplicate·dropped line, disk usage의 Prometheus 형식 metric

@@ -4,6 +4,7 @@ import { describeRoute, validator } from 'hono-openapi'
 import {
     trafficAnalyticsQuerySchema,
     trafficExportJobParamSchema,
+    trafficIngestionStateSchema,
     trafficLiveQuerySchema,
     trafficSummaryQuerySchema,
 } from '@containers/contracts/traffic'
@@ -53,7 +54,7 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
         .get(
             '/ingestion',
             describeRoute({ summary: '트래픽 수집 상태 조회', tags: ['traffic'], responses: { 200: { description: '수집 상태' } } }),
-            withErrorHandling((context) => context.json(ingestionService.getState(), 200)),
+            withErrorHandling((context) => context.json(trafficIngestionStateSchema.parse(ingestionService.getState()), 200)),
         )
         .post(
             '/exports/:jobId',

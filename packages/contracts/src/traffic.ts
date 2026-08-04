@@ -70,6 +70,19 @@ export const trafficLiveEventSchema = z.object({
     uriPath: z.string().startsWith('/'),
 })
 
+export const trafficIngestionStateSchema = z.object({
+    checkpointInodeMissing: z.boolean(),
+    checkpointInodeMissingAt: z.iso.datetime().nullable(),
+    checkpointInodeMissingCount: z.number().int().nonnegative(),
+    device: z.string().nullable(),
+    discardingOversizedLine: z.boolean(),
+    duplicateLineCount: z.number().int().nonnegative(),
+    inode: z.string().nullable(),
+    ingestedEventCount: z.number().int().nonnegative(),
+    invalidLineCount: z.number().int().nonnegative(),
+    offset: z.number().int().nonnegative(),
+})
+
 export const trafficExportResultSchema = z.object({
     bytes: z.number().int().nonnegative(),
     fileName: z.string().regex(/^traffic-[0-9a-f-]{36}\.(csv|ndjson)$/),
@@ -108,6 +121,7 @@ export type NginxAccessEvent = z.infer<typeof nginxAccessEventSchema>
 export type TrafficAnalytics = z.infer<typeof trafficAnalyticsSchema>
 export type TrafficAnalyticsQuery = z.infer<typeof trafficAnalyticsQuerySchema>
 export type TrafficExportJobParam = z.infer<typeof trafficExportJobParamSchema>
+export type TrafficIngestionState = z.infer<typeof trafficIngestionStateSchema>
 export type TrafficLiveEvent = z.infer<typeof trafficLiveEventSchema>
 export type TrafficLiveQuery = z.infer<typeof trafficLiveQuerySchema>
 export type TrafficSummaryQuery = z.infer<typeof trafficSummaryQuerySchema>

@@ -160,8 +160,68 @@ describe('트래픽 수집', () => {
         await ingestion.poll()
         await ingestion.poll()
         await ingestion.poll()
+        const analytics = createTrafficQueryService({ database: fixture.database, now: () => fixture.now }).getAnalytics({
+            limit: 10,
+            statusClass: 'all',
+            windowMinutes: 1,
+        })
+
         expect(fixture.database.getSummary(0)?.requestCount).toBe(3)
+        expect(analytics.events.map((event) => event.requestId).sort()).toEqual(['request-1', 'request-2', 'request-3'])
         expect(ingestion.getState().duplicateLineCount).toBe(0)
+        expect(ingestion.getState().invalidLineCount).toBe(0)
+        expect(ingestion.getState().checkpointInodeMissing).toBe(false)
+        expect(ingestion.getState().checkpointInodeMissingCount).toBe(0)
+        fixture.database.close()
+    })
+
+    test('2세대를 넘겨 회전이 반복돼도 남은 라인을 중복 없이 모두 수집합니다', async () => {
+        const fixture = await createFixture()
+        const rotate = async (generation: number) => {
+            await rename(fixture.accessLogPath, `${fixture.accessLogPath}.${generation}`)
+            await writeFile(fixture.accessLogPath, '')
+        }
+        await writeFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-1'))}\n`)
+        const ingestion = fixture.createIngestion()
+        await ingestion.poll()
+
+        await appendFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-2'))}\n`)
+        await rotate(1)
+        await appendFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-3'))}\n`)
+        await ingestion.poll()
+        await ingestion.poll()
+
+        await rename(`${fixture.accessLogPath}.1`, `${fixture.accessLogPath}.2`)
+        await appendFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-4'))}\n`)
+        await ingestion.poll()
+        await ingestion.poll()
+
+        expect(fixture.database.getSummary(0)?.requestCount).toBe(4)
+        expect(ingestion.getState().duplicateLineCount).toBe(0)
+        expect(ingestion.getState().checkpointInodeMissingCount).toBe(0)
+        fixture.database.close()
+    })
+
+    test('체크포인트가 가리키는 파일이 사라지면 유실을 관측 필드로 노출합니다', async () => {
+        const fixture = await createFixture()
+        await writeFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-1'))}\n`)
+        const ingestion = fixture.createIngestion()
+        await ingestion.poll()
+        expect(ingestion.getState().checkpointInodeMissing).toBe(false)
+
+        await rm(fixture.accessLogPath)
+        await writeFile(fixture.accessLogPath, `${JSON.stringify(createAccessEvent('request-2'))}\n`)
+        await ingestion.poll()
+
+        expect(ingestion.getState().checkpointInodeMissing).toBe(true)
+        expect(ingestion.getState().checkpointInodeMissingCount).toBe(1)
+        expect(ingestion.getState().checkpointInodeMissingAt).toBe(new Date(fixture.now).toISOString())
+        expect(ingestion.getState().offset).toBe(0)
+
+        await ingestion.poll()
+        expect(fixture.database.getSummary(0)?.requestCount).toBe(2)
+        expect(ingestion.getState().checkpointInodeMissing).toBe(false)
+        expect(ingestion.getState().checkpointInodeMissingCount).toBe(1)
         fixture.database.close()
     })
 

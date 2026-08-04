@@ -52,6 +52,9 @@ const sameIdentity = (left: Pick<Checkpoint, 'device' | 'inode'>, right: Pick<Ch
 
 export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, database, now, retentionMs }: TrafficIngestionServiceDependencies) => {
     let checkpoint: Checkpoint | undefined
+    let checkpointInodeMissing = false
+    let checkpointInodeMissingAt: string | null = null
+    let checkpointInodeMissingCount = 0
     let duplicateLineCount = 0
     let invalidLineCount = 0
     let ingestedEventCount = 0
@@ -191,9 +194,13 @@ export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, d
                 }
                 await persistCheckpoint(reset)
                 checkpoint = reset
+                checkpointInodeMissing = true
+                checkpointInodeMissingAt = reset.updatedAt
+                checkpointInodeMissingCount += 1
                 return
             }
 
+            checkpointInodeMissing = false
             const source = await getIdentity(sourcePath)
             const truncated = source.size < current.offset
             const offset = truncated ? 0 : current.offset
@@ -245,6 +252,9 @@ export const createTrafficIngestionService = ({ accessLogPath, checkpointPath, d
 
     return {
         getState: () => ({
+            checkpointInodeMissing,
+            checkpointInodeMissingAt,
+            checkpointInodeMissingCount,
             device: checkpoint?.device ?? null,
             discardingOversizedLine: checkpoint?.discardingOversizedLine ?? false,
             duplicateLineCount,

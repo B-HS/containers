@@ -17,6 +17,10 @@ services:
                 condition: service_healthy
             web:
                 condition: service_healthy
+        environment:
+            ACCESS_LOG_KEEP: '2'
+            ACCESS_LOG_MAX_BYTES: '134217728'
+            ACCESS_LOG_ROTATE_INTERVAL_SECONDS: '60'
         healthcheck:
             test:
                 - CMD
