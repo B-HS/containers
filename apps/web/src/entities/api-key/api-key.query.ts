@@ -28,7 +28,7 @@ export const useCreateApiKey = () => {
                 }),
             ).data,
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.API_KEY.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.API_KEY.ALL })
         },
     })
 }
@@ -38,7 +38,7 @@ export const useRevokeApiKey = () => {
     return useMutation({
         mutationFn: (id: string) => clientFetchData<unknown>(`/api/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.API_KEY.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.API_KEY.ALL })
         },
     })
 }

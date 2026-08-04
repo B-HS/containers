@@ -70,10 +70,8 @@ export const useCancelJob = () => {
         mutationFn: (jobId: string) =>
             clientFetchData<z.infer<typeof jobResponseSchema>['data']>(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }),
         onSuccess: (job) => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.JOB.LIST })
-            if (job.status !== OPERATION_JOB_STATUS.SUCCEEDED && job.status !== OPERATION_JOB_STATUS.CANCELLED) {
-                queryClient.setQueryData(['job', 'current'], job)
-            }
+            queryClient.setQueryData(QUERY_KEY.JOB.DETAIL(job.id), job)
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.JOB.ALL })
         },
     })
 }

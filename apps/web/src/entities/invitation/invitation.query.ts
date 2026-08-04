@@ -14,7 +14,7 @@ export const useCreateInvitation = () => {
                 method: 'POST',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.INVITATION.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.INVITATION.ALL })
         },
     })
 }

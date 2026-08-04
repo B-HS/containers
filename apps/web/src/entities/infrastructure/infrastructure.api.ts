@@ -1,6 +1,5 @@
 import type { AppType } from '@containers/api/app'
 import { networkSummaryListSchema, prunePreviewSchema, volumeSummaryListSchema } from '@containers/contracts/engine-control'
-import { registryCredentialListSchema } from '@containers/contracts/registry-credential'
 import { hc } from 'hono/client'
 import { z } from 'zod'
 
@@ -31,11 +30,4 @@ export const getPrunePreview = async (baseUrl: string, cookie: string) => {
     }
     const body: unknown = await response.json()
     return prunePreviewSchema.parse(body && typeof body === 'object' && 'data' in body ? body.data : undefined)
-}
-
-export const getRegistryCredentials = async (baseUrl: string, cookie: string) => {
-    const response = await fetch(`${baseUrl}/api/registry-credentials`, { headers: { cookie } })
-    if (!response.ok) throw new Error('Registry credential 조회 실패')
-    const body: unknown = await response.json()
-    return registryCredentialListSchema.parse(body && typeof body === 'object' && 'data' in body ? body.data : undefined)
 }

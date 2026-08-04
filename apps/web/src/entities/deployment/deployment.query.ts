@@ -7,6 +7,9 @@ import { clientFetchData } from '@shared/lib/client-fetch'
 import { QUERY_KEY } from '@shared/lib/query-key'
 import { z } from 'zod'
 
+const ACTIVE_RELEASE_STATUSES: string[] = ['creating', 'observing', 'probing', 'rolling-back', 'switching']
+const ACTIVE_RELEASE_POLL_MS = 2_000
+
 export const deploymentManifestQueryOptions = () =>
     queryOptions({
         queryKey: QUERY_KEY.DEPLOYMENT.MANIFEST.LIST,
@@ -21,7 +24,14 @@ export const deploymentReleaseQueryOptions = () =>
 
 export const useGetDeploymentManifests = () => useQuery(deploymentManifestQueryOptions())
 
-export const useGetDeploymentReleases = () => useQuery(deploymentReleaseQueryOptions())
+export const useGetDeploymentReleases = (pollWhileActive = false) =>
+    useQuery({
+        ...deploymentReleaseQueryOptions(),
+        refetchInterval: (query) =>
+            pollWhileActive && (query.state.data ?? []).some((release) => ACTIVE_RELEASE_STATUSES.includes(release.status))
+                ? ACTIVE_RELEASE_POLL_MS
+                : false,
+    })
 
 export const useCreateDeploymentManifest = () => {
     const queryClient = useQueryClient()
@@ -33,8 +43,7 @@ export const useCreateDeploymentManifest = () => {
                 method: 'POST',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.MANIFEST.LIST })
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.RELEASE.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.ALL })
         },
     })
 }
@@ -48,7 +57,7 @@ export const useCreateDeploymentRelease = () => {
                 { method: 'POST' },
             ),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.RELEASE.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.ALL })
         },
     })
 }
@@ -62,7 +71,7 @@ export const useRollbackDeploymentRelease = () => {
                 { method: 'POST' },
             ),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.RELEASE.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.ALL })
         },
     })
 }

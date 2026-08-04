@@ -24,7 +24,7 @@ export const useUpdateUser = () => {
                 method: 'PATCH',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.USER.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.USER.ALL })
         },
     })
 }

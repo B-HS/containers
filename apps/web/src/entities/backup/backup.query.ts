@@ -28,7 +28,7 @@ export const useCreateBackup = () => {
                 }),
             ).data,
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.BACKUP.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.BACKUP.ALL })
         },
     })
 }
@@ -43,7 +43,7 @@ export const useRemoveBackup = () => {
                 method: 'DELETE',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.BACKUP.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.BACKUP.ALL })
         },
     })
 }
@@ -58,7 +58,7 @@ export const useRestoreBackup = () => {
                 method: 'POST',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.BACKUP.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.BACKUP.ALL })
         },
     })
 }

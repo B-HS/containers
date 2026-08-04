@@ -40,8 +40,13 @@ export const QUERY_KEY = {
     },
     ENGINE: {
         ALL: ['engine'] as const,
-        DASHBOARD: ['engine', 'dashboard'] as const,
         OVERVIEW: ['engine', 'overview'] as const,
+        CONTAINER: {
+            ALL: ['engine', 'container'] as const,
+            LIST: ['engine', 'container', 'list'] as const,
+            DETAIL: (containerId: string) => ['engine', 'container', 'detail', containerId] as const,
+            LOG: (containerId: string) => ['engine', 'container', 'log', containerId] as const,
+        },
     },
     HEALTH: {
         ALL: ['health'] as const,
@@ -53,6 +58,7 @@ export const QUERY_KEY = {
     },
     INFRASTRUCTURE: {
         ALL: ['infrastructure'] as const,
+        OVERVIEW: ['infrastructure', 'overview'] as const,
         NETWORK: {
             ALL: ['infrastructure', 'network'] as const,
             LIST: ['infrastructure', 'network', 'list'] as const,
@@ -61,10 +67,9 @@ export const QUERY_KEY = {
             ALL: ['infrastructure', 'volume'] as const,
             LIST: ['infrastructure', 'volume', 'list'] as const,
         },
-        PRUNE_PREVIEW: ['infrastructure', 'prune-preview'] as const,
-        REGISTRY: {
-            ALL: ['infrastructure', 'registry'] as const,
-            LIST: ['infrastructure', 'registry', 'list'] as const,
+        PRUNE_PREVIEW: {
+            ALL: ['infrastructure', 'prune-preview'] as const,
+            DETAIL: (includeVolumes: boolean) => ['infrastructure', 'prune-preview', includeVolumes] as const,
         },
     },
     INVITATION: {
@@ -93,6 +98,10 @@ export const QUERY_KEY = {
     NOTIFICATION: {
         ALL: ['notification'] as const,
         LIST: ['notification', 'list'] as const,
+    },
+    REGISTRY: {
+        ALL: ['registry'] as const,
+        LIST: ['registry', 'list'] as const,
     },
     TRAFFIC: {
         ALL: ['traffic'] as const,

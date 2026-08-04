@@ -28,7 +28,7 @@ export const useCreateDeploymentSecret = () => {
                 }),
             ).data,
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.SECRET.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.SECRET.ALL })
         },
     })
 }
@@ -43,7 +43,7 @@ export const useRemoveDeploymentSecret = () => {
                 method: 'DELETE',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.SECRET.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.DEPLOYMENT.SECRET.ALL })
         },
     })
 }

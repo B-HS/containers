@@ -6,8 +6,6 @@ import { clientFetchData } from '@shared/lib/client-fetch'
 import { QUERY_KEY } from '@shared/lib/query-key'
 import { z } from 'zod'
 
-const CONTAINER_QUERY_KEY = ['engine', 'container'] as const
-
 export const engineOverviewQueryOptions = () =>
     queryOptions({
         queryKey: QUERY_KEY.ENGINE.OVERVIEW,
@@ -19,7 +17,7 @@ export const useGetEngineOverview = () => useQuery(engineOverviewQueryOptions())
 
 export const containerListQueryOptions = () =>
     queryOptions({
-        queryKey: ['engine', 'container', 'list'] as const,
+        queryKey: QUERY_KEY.ENGINE.CONTAINER.LIST,
         queryFn: () => clientFetchData<z.infer<typeof containerSummaryListSchema>>('/api/containers'),
     })
 
@@ -27,7 +25,7 @@ export const useGetContainerList = () => useQuery(containerListQueryOptions())
 
 export const containerDetailQueryOptions = (containerId: string) =>
     queryOptions({
-        queryKey: ['engine', 'container', 'detail', containerId] as const,
+        queryKey: QUERY_KEY.ENGINE.CONTAINER.DETAIL(containerId),
         queryFn: () => clientFetchData<z.infer<typeof containerDetailSchema>>(`/api/containers/${encodeURIComponent(containerId)}`),
         enabled: containerId.length > 0,
     })
@@ -36,7 +34,7 @@ export const useGetContainerDetail = (containerId: string) => useQuery(container
 
 export const containerLogQueryOptions = (containerId: string) =>
     queryOptions({
-        queryKey: ['engine', 'container', 'log', containerId] as const,
+        queryKey: QUERY_KEY.ENGINE.CONTAINER.LOG(containerId),
         queryFn: () => clientFetchData<z.infer<typeof containerLogResultSchema>>(`/api/containers/${encodeURIComponent(containerId)}/logs?tail=200`),
         enabled: containerId.length > 0,
     })
@@ -58,7 +56,7 @@ export const usePerformContainerAction = () => {
                 method: 'POST',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: CONTAINER_QUERY_KEY })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.ENGINE.ALL })
         },
     })
 }
@@ -73,7 +71,7 @@ export const useRemoveContainer = () => {
                 method: 'POST',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: CONTAINER_QUERY_KEY })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.ENGINE.ALL })
         },
     })
 }
@@ -88,7 +86,7 @@ export const useExecuteContainerCommand = () => {
                 method: 'POST',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: CONTAINER_QUERY_KEY })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.ENGINE.ALL })
         },
     })
 }
@@ -103,7 +101,7 @@ export const useCreateContainer = () => {
                 method: 'POST',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: CONTAINER_QUERY_KEY })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.ENGINE.ALL })
         },
     })
 }
@@ -123,7 +121,7 @@ export const useCreateExecTicket = () => {
                 method: 'POST',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: CONTAINER_QUERY_KEY })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.ENGINE.ALL })
         },
     })
 }

@@ -24,7 +24,7 @@ export const useRemoveImage = () => {
                 method: 'DELETE',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.IMAGE.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.IMAGE.ALL })
         },
     })
 }

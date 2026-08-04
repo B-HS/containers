@@ -28,7 +28,7 @@ export const useSaveNotificationDestination = () => {
                 }),
             ).data,
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.NOTIFICATION.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.NOTIFICATION.ALL })
         },
     })
 }
@@ -45,7 +45,7 @@ export const useToggleNotificationDestination = () => {
                 }),
             ).data,
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.NOTIFICATION.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.NOTIFICATION.ALL })
         },
     })
 }
@@ -56,7 +56,7 @@ export const useTestNotificationDestination = () => {
         mutationFn: (id: string) =>
             clientFetchData<Record<string, unknown>>(`/api/notification-destinations/${encodeURIComponent(id)}/test`, { method: 'POST' }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.NOTIFICATION.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.NOTIFICATION.ALL })
         },
     })
 }
@@ -71,7 +71,7 @@ export const useRemoveNotificationDestination = () => {
                 method: 'DELETE',
             }),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.NOTIFICATION.LIST })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.NOTIFICATION.ALL })
         },
     })
 }
