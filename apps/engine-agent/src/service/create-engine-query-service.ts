@@ -12,7 +12,7 @@ import {
     containerWaitResultSchema,
 } from '@containers/contracts/engine-control'
 import type { DockerEngineClient } from '../docker/create-docker-engine-client'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
 const MANAGEMENT_LABEL = 'managed-by'

@@ -3,7 +3,7 @@ import { appendFile, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTrafficDatabase, type TrafficDatabase } from '../database/create-traffic-database'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '@/lib/error'
 import { createTrafficIngestionService } from './create-traffic-ingestion-service'
 import { createTrafficQueryService } from './create-traffic-query-service'
 

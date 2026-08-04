@@ -8,7 +8,7 @@ import {
     type EngineStreamEvent,
 } from '@containers/contracts/engine-stream'
 import type { createDockerEngineClient } from '../docker/create-docker-engine-client'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 import { createLineParser, createMultiplexFrameParser } from './create-stream-parsers'
 
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'

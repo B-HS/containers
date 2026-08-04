@@ -9,7 +9,7 @@ import {
     type TrafficLiveEvent,
 } from '@containers/contracts/traffic'
 import type { TrafficDatabase } from '../database/create-traffic-database'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '@/lib/error'
 
 const READ_CHUNK_BYTES = 4_194_304
 const MAX_SUBSCRIBERS = 64

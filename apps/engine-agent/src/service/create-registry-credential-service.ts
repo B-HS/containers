@@ -8,7 +8,7 @@ import {
     registryCredentialSchema,
     registryCredentialUpsertSchema,
 } from '@containers/contracts/registry-credential'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 
 const encryptedRegistryCredentialSchema = z.object({
     authenticationTag: z.string().min(1),

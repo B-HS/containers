@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite'
 import type { NginxAccessEvent } from '@containers/contracts/traffic'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '@/lib/error'
 
 type TrafficDatabaseDependencies = {
     filePath: string

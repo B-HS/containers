@@ -3,7 +3,7 @@ import { mkdir, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import { backupIdSchema, backupSnapshotResultSchema } from '@containers/contracts/backup'
 import type { TrafficDatabase } from '../database/create-traffic-database'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '@/lib/error'
 
 type TrafficBackupServiceDependencies = {
     backupRoot: string

@@ -30,7 +30,7 @@ import {
 } from '@containers/contracts/engine-control'
 import { imageLoadRequestSchema, imageLoadResultSchema } from '@containers/contracts/upload'
 import type { DockerEngineClient } from '../docker/create-docker-engine-client'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 import type { RegistryCredentialService } from './create-registry-credential-service'
 
 type EngineControlServiceDependencies = {

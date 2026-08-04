@@ -12,7 +12,7 @@ import type {
     NetworkCreateRequest,
     VolumeCreateRequest,
 } from '@containers/contracts/engine-control'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 
 const DOCKER_REQUEST_TIMEOUT_MS = 5_000
 const DOCKER_MAX_JSON_BYTES = 33_554_432

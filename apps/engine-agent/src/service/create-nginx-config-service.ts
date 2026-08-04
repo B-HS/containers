@@ -3,7 +3,7 @@ import { access, copyFile, readFile, readdir, rename, rm, stat, writeFile } from
 import { join } from 'node:path'
 import { nginxConfigApplyResultSchema, nginxConfigApplySchema, nginxConfigRevisionSchema, nginxConfigStateSchema } from '@containers/contracts/nginx'
 import type { DockerEngineClient } from '../docker/create-docker-engine-client'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
 const MANAGEMENT_LABEL = 'managed-by'

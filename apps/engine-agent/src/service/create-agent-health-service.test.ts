@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { SERVICE_STATUS } from '@containers/contracts/health'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 import { createAgentHealthService } from './create-agent-health-service'
 
 describe('Engine Agent 상태', () => {
