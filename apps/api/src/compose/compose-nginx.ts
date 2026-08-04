@@ -1,7 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { nginxRoute } from '@containers/db-schema/schema'
-import type { EngineAgentClient } from '../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
 import { createNginxProxyRouteService, type NginxProxyRouteServiceDb } from '../service/domain/nginx/create-nginx-proxy-route-service'
 
 type ComposeNginxProxyRouteDependencies = {

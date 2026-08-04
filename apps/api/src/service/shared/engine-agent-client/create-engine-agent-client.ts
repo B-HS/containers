@@ -47,7 +47,7 @@ import {
 } from '@containers/contracts/registry-credential'
 import { imageLoadRequestSchema, imageLoadResultSchema } from '@containers/contracts/upload'
 import { z } from 'zod'
-import { createAppError } from '../lib/error'
+import { createAppError } from '../../../lib/error'
 
 const AGENT_REQUEST_TIMEOUT_MS = 8_000
 const AGENT_IMAGE_PULL_TIMEOUT_MS = 30 * 60 * 1_000

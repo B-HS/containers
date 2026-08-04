@@ -9,7 +9,7 @@ import {
     trafficExportJobPayloadSchema,
     uploadFinalizeJobPayloadSchema,
 } from '@containers/contracts/operation-job'
-import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
 import type { BackupService } from '../backup/create-backup-service'
 import type { DeploymentReleaseService } from '../deployment/create-deployment-release-service'
 import type { DeploymentService } from '../deployment/create-deployment-service'
@@ -17,7 +17,7 @@ import type { MaintenanceService } from '../maintenance/create-maintenance-servi
 import type { NotificationDeliveryService } from '../notification/create-notification-delivery-service'
 import type { OperationJobHandler } from './create-operation-job-service'
 import { createAppError } from '../../../lib/error'
-import type { TrafficWorkerClient } from '../../../traffic/create-traffic-worker-client'
+import type { TrafficWorkerClient } from '../../../service/shared/traffic-worker-client/create-traffic-worker-client'
 import type { UploadService } from '../upload/create-upload-service'
 import { createJobError } from './create-operation-job-service'
 

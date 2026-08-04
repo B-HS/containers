@@ -1,4 +1,4 @@
-import type { TrafficWorkerClient } from '../../../traffic/create-traffic-worker-client'
+import type { TrafficWorkerClient } from '../../../service/shared/traffic-worker-client/create-traffic-worker-client'
 
 type TrafficServiceDependencies = {
     trafficWorkerClient: Pick<TrafficWorkerClient, 'getAnalytics' | 'getSummary' | 'openLiveStream'>

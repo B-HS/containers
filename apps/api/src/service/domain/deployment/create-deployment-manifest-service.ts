@@ -5,7 +5,7 @@ import {
     deploymentManifestSchema,
     type DeploymentManifestInput,
 } from '@containers/contracts/deployment'
-import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 
 type ManifestRow = {

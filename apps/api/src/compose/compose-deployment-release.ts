@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { deploymentManifest, deploymentRelease } from '@containers/db-schema/schema'
-import type { EngineAgentClient } from '../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
 import type { NginxProxyRouteService } from '../service/domain/nginx/create-nginx-proxy-route-service'
 import type { DeploymentManifestService } from '../service/domain/deployment/create-deployment-manifest-service'
 import type { DeploymentSecretService } from '../service/domain/deployment/create-deployment-secret-service'

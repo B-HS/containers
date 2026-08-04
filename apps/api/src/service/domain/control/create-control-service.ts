@@ -10,7 +10,7 @@ import {
     prunePreviewRequestSchema,
     volumeCreateRequestSchema,
 } from '@containers/contracts/engine-control'
-import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 import { registryCredentialDeleteSchema, registryCredentialUpsertSchema } from '@containers/contracts/registry-credential'
 

@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import { requestId } from 'hono/request-id'
-import type { EngineAgentClient } from '../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
 import type { Auth } from '../auth/create-auth'
 import { errorResponse } from '../lib/response'
-import type { NginxStatusClient } from '../nginx/create-nginx-status-client'
+import type { NginxStatusClient } from '../service/shared/nginx/create-nginx-status-client'
 import { createAuditRoute } from '../route/audit/create-audit-route'
 import { createApiKeyRoute } from '../route/api-key/create-api-key-route'
 import { createBackupRoute } from '../route/backup/create-backup-route'
@@ -44,7 +44,7 @@ import type { NotificationDestinationService } from '../service/domain/notificat
 import { createNginxService } from '../service/domain/nginx/create-nginx-service'
 import type { NginxProxyRouteService } from '../service/domain/nginx/create-nginx-proxy-route-service'
 import { createTrafficService } from '../service/domain/traffic/create-traffic-service'
-import type { TrafficWorkerClient } from '../traffic/create-traffic-worker-client'
+import type { TrafficWorkerClient } from '../service/shared/traffic-worker-client/create-traffic-worker-client'
 import type { UploadService } from '../service/domain/upload/create-upload-service'
 
 type AppDependencies = {

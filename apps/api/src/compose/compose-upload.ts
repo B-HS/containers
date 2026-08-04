@@ -2,7 +2,7 @@ import { and, count, eq, gt, lt, inArray } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { artifact, uploadChunk, uploadSession } from '@containers/db-schema/schema'
 import type { ArtifactInspectionService } from '../service/domain/upload/create-artifact-inspection-service'
-import type { EngineAgentClient } from '../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
 import { createUploadService, type UploadServiceDb } from '../service/domain/upload/create-upload-service'
 
 type ComposeUploadDependencies = {

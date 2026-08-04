@@ -11,7 +11,7 @@ import {
     type BackupManifest,
 } from '@containers/contracts/backup'
 import { createAppError } from '../../../lib/error'
-import type { TrafficWorkerClient } from '../../../traffic/create-traffic-worker-client'
+import type { TrafficWorkerClient } from '../../../service/shared/traffic-worker-client/create-traffic-worker-client'
 
 type BackupServiceDependencies = {
     backupRoot: string

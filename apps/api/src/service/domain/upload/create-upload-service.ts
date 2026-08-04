@@ -10,7 +10,7 @@ import {
     uploadSessionSchema,
 } from '@containers/contracts/upload'
 import type { ArtifactInspectionService } from './create-artifact-inspection-service'
-import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 
 const MAX_CHUNK_BYTES = 67_108_864

@@ -1,7 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { deploymentManifest } from '@containers/db-schema/schema'
-import type { EngineAgentClient } from '../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
 import { createDeploymentManifestService, type DeploymentManifestServiceDb } from '../service/domain/deployment/create-deployment-manifest-service'
 
 type ComposeDeploymentManifestDependencies = {

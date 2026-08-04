@@ -1,5 +1,5 @@
-import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
-import type { NginxStatusClient } from '../../../nginx/create-nginx-status-client'
+import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
+import type { NginxStatusClient } from '../../../service/shared/nginx/create-nginx-status-client'
 
 type NginxServiceDependencies = {
     engineAgentClient: Pick<EngineAgentClient, 'applyNginxConfig' | 'getNginxConfig'>

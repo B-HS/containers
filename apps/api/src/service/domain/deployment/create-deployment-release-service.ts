@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { deploymentReleaseListSchema, deploymentReleaseSchema, type DeploymentManifest } from '@containers/contracts/deployment'
-import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 import type { NginxProxyRouteService } from '../nginx/create-nginx-proxy-route-service'
 import type { DeploymentManifestService } from './create-deployment-manifest-service'

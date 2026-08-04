@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { containerLogStreamQuerySchema } from '@containers/contracts/engine-stream'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { withErrorHandling } from '../../lib/with-error-handling'
-import type { EngineAgentClient } from '../../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../../service/shared/engine-agent-client/create-engine-agent-client'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]

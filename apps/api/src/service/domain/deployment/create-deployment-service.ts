@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { deploymentSchema } from '@containers/contracts/upload'
-import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
+import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 
 const DEPLOYMENT_REUSE_STATUS_PRIORITY = ['loaded', 'loading', 'failed'] as const
