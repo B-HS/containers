@@ -5,6 +5,7 @@ import { trafficLiveEventSchema, type TrafficLiveEvent } from '@containers/contr
 import { Button } from '@shared/ui/button'
 
 type TrafficLiveTailProps = {
+    createLiveStream: () => EventSource
     initialEvents: TrafficLiveEvent[]
     labels: {
         latency: string
@@ -18,13 +19,13 @@ type TrafficLiveTailProps = {
 
 const MAX_EVENTS = 25
 
-export const TrafficLiveTail: FC<TrafficLiveTailProps> = ({ initialEvents, labels }) => {
+export const TrafficLiveTail: FC<TrafficLiveTailProps> = ({ createLiveStream, initialEvents, labels }) => {
     const [events, setEvents] = useState(initialEvents)
     const [paused, setPaused] = useState(false)
     const pausedRef = useRef(false)
 
     useEffect(() => {
-        const source = new EventSource('/api/traffic/live?statusClass=all')
+        const source = createLiveStream()
         source.onmessage = (message) => {
             const parsed = trafficLiveEventSchema.safeParse(
                 (() => {
@@ -40,7 +41,7 @@ export const TrafficLiveTail: FC<TrafficLiveTailProps> = ({ initialEvents, label
             setEvents((current) => [parsed.data, ...current.filter((event) => event.requestId !== parsed.data.requestId)].slice(0, MAX_EVENTS))
         }
         return () => source.close()
-    }, [])
+    }, [createLiveStream])
 
     return (
         <div>

@@ -15,6 +15,7 @@ type InteractiveTerminalProps = {
     createExecTicket: (input: { columns: number; command: string[]; containerId: string; environment: string[]; rows: number }) => Promise<{
         websocketPath: string
     }>
+    createSocket: (websocketPath: string) => WebSocket
     labels: {
         close: string
         command: string
@@ -25,7 +26,7 @@ type InteractiveTerminalProps = {
     }
 }
 
-export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId, containerName, createExecTicket, labels }) => {
+export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId, containerName, createExecTicket, createSocket, labels }) => {
     const hostRef = useRef<HTMLDivElement>(null)
     const socketRef = useRef<WebSocket | null>(null)
     const [command, setCommand] = useState<string[]>()
@@ -62,7 +63,7 @@ export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId,
                     environment: [],
                     rows: terminal.rows,
                 })
-                const websocket = new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${websocketPath}`)
+                const websocket = createSocket(websocketPath)
                 socketRef.current = websocket
                 websocket.addEventListener('open', () => {
                     heartbeatTimer = setInterval(() => {
@@ -128,7 +129,7 @@ export const InteractiveTerminal: FC<InteractiveTerminalProps> = ({ containerId,
             socketRef.current = null
             terminal.dispose()
         }
-    }, [command, containerId, createExecTicket, labels.disconnected, labels.failed, open])
+    }, [command, containerId, createExecTicket, createSocket, labels.disconnected, labels.failed, open])
 
     return (
         <>

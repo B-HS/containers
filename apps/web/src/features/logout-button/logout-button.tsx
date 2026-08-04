@@ -2,22 +2,21 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import { useSignOut } from '@entities/auth/auth.query'
 import { Button } from '@shared/ui/button'
 
 type LogoutButtonProps = {
     label: string
+    onSignOut: () => Promise<void>
 }
 
-export const LogoutButton: FC<LogoutButtonProps> = ({ label }) => {
+export const LogoutButton: FC<LogoutButtonProps> = ({ label, onSignOut }) => {
     const [pending, setPending] = useState(false)
-    const signOut = useSignOut()
 
     const logout = async () => {
         setPending(true)
 
         try {
-            await signOut.mutateAsync()
+            await onSignOut()
             window.location.reload()
         } finally {
             setPending(false)

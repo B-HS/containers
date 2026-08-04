@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { getTranslations } from 'next-intl/server'
-import { AuthPanel } from '@features/auth-panel/auth-panel'
+import { AuthPanelWidget } from '@widgets/auth/auth-panel-widget'
 import { getNavigationSections } from '@shared/lib/navigation'
 import { getSession } from '@shared/lib/session'
 import { PanelShell } from '@widgets/panel-shell/panel-shell'
@@ -14,7 +14,7 @@ const PanelLayout = async ({ children }: PanelLayoutProps) => {
 
     if (session.mode !== 'authenticated') {
         return (
-            <AuthPanel
+            <AuthPanelWidget
                 mode={session.mode}
                 labels={{
                     email: authTranslations('email'),

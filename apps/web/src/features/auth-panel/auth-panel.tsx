@@ -2,35 +2,37 @@
 
 import type { FC, FormEvent } from 'react'
 import { useState } from 'react'
-import { useBootstrapOwner, useSignInEmail } from '@entities/auth/auth.query'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
 
-type AuthPanelProps = {
-    labels: {
-        email: string
-        loginAction: string
-        loginDescription: string
-        loginTitle: string
-        name: string
-        ownerAction: string
-        ownerDescription: string
-        ownerTitle: string
-        password: string
-        pending: string
-        unknownError: string
-    }
-    mode: 'bootstrap' | 'login'
+type AuthPanelLabels = {
+    email: string
+    loginAction: string
+    loginDescription: string
+    loginTitle: string
+    name: string
+    ownerAction: string
+    ownerDescription: string
+    ownerTitle: string
+    password: string
+    pending: string
+    unknownError: string
 }
 
-export const AuthPanel: FC<AuthPanelProps> = ({ labels, mode }) => {
+type AuthPanelProps = {
+    labels: AuthPanelLabels
+    mode: 'bootstrap' | 'login'
+    onAuthenticate: (input: { email: string; mode: 'bootstrap' | 'login'; name?: string | undefined; password: string }) => Promise<void>
+}
+
+export type { AuthPanelLabels }
+
+export const AuthPanel: FC<AuthPanelProps> = ({ labels, mode, onAuthenticate }) => {
     const [error, setError] = useState<string>()
     const [pending, setPending] = useState(false)
     const isBootstrap = mode === 'bootstrap'
-    const signInEmail = useSignInEmail()
-    const bootstrapOwner = useBootstrapOwner()
 
     const submit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
@@ -39,14 +41,10 @@ export const AuthPanel: FC<AuthPanelProps> = ({ labels, mode }) => {
         const formData = new FormData(event.currentTarget)
         const email = String(formData.get('email') ?? '')
         const password = String(formData.get('password') ?? '')
+        const name = isBootstrap ? String(formData.get('name') ?? '') : undefined
 
         try {
-            if (mode === 'bootstrap') {
-                await bootstrapOwner.mutateAsync({ email, name: String(formData.get('name') ?? ''), password })
-            } else {
-                await signInEmail.mutateAsync({ email, password })
-            }
-            window.location.reload()
+            await onAuthenticate({ email, mode, name, password })
         } catch {
             setError(labels.unknownError)
         } finally {

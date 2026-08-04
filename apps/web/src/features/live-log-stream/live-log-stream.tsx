@@ -5,11 +5,11 @@ import { useEffect, useRef, useState } from 'react'
 import { containerLogStreamChunkSchema } from '@containers/contracts/engine-stream'
 import { Button } from '@shared/ui/button'
 
-const LIVE_LOG_TAIL = 100
 const MAX_BUFFER_CHARS = 200_000
 
 type LiveLogStreamProps = {
     containerId: string
+    createLogStream: (containerId: string) => EventSource
     labels: {
         failed: string
         start: string
@@ -18,7 +18,7 @@ type LiveLogStreamProps = {
     }
 }
 
-export const LiveLogStream: FC<LiveLogStreamProps> = ({ containerId, labels }) => {
+export const LiveLogStream: FC<LiveLogStreamProps> = ({ containerId, createLogStream, labels }) => {
     const outputRef = useRef<HTMLPreElement>(null)
     const sourceRef = useRef<EventSource | null>(null)
 
@@ -36,7 +36,7 @@ export const LiveLogStream: FC<LiveLogStreamProps> = ({ containerId, labels }) =
         setError(undefined)
         setBuffer('')
         setIsFollowing(true)
-        const source = new EventSource(`/api/stream/containers/${encodeURIComponent(containerId)}/logs?tail=${LIVE_LOG_TAIL}`)
+        const source = createLogStream(containerId)
         sourceRef.current = source
         source.onmessage = (event) => {
             let parsed: unknown

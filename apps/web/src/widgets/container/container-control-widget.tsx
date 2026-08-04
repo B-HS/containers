@@ -65,6 +65,8 @@ type ContainerDetailCardProps = {
     createExecTicket: (input: { columns: number; command: string[]; containerId: string; environment: string[]; rows: number }) => Promise<{
         websocketPath: string
     }>
+    createLogStream: (containerId: string) => EventSource
+    createSocket: (websocketPath: string) => WebSocket
     error: string | undefined
     execOutput: Record<string, string>
     inspectionOutput: Record<string, string>
@@ -82,6 +84,8 @@ const ContainerDetailCard: FC<ContainerDetailCardProps> = ({
     canRemove,
     container,
     createExecTicket,
+    createLogStream,
+    createSocket,
     error,
     execOutput,
     inspectionOutput,
@@ -153,6 +157,7 @@ const ContainerDetailCard: FC<ContainerDetailCardProps> = ({
             ) : null}
             <LiveLogStream
                 containerId={container.id}
+                createLogStream={createLogStream}
                 labels={{
                     failed: labels.liveLogsFailed,
                     start: labels.liveLogsStart,
@@ -184,6 +189,7 @@ const ContainerDetailCard: FC<ContainerDetailCardProps> = ({
                         containerId={container.id}
                         containerName={name}
                         createExecTicket={createExecTicket}
+                        createSocket={createSocket}
                         labels={{
                             close: labels.close,
                             command: labels.command,
@@ -304,6 +310,11 @@ export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ contai
         }
     }
 
+    const createSocket = (websocketPath: string) =>
+        new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}${websocketPath}`)
+
+    const createLogStream = (containerId: string) => new EventSource(`/api/stream/containers/${encodeURIComponent(containerId)}/logs?tail=100`)
+
     return (
         <WidgetSection id="container-control-title" title={labels.title} badge={containers.length}>
             {error ? (
@@ -335,6 +346,8 @@ export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ contai
                         canRemove={canRemove}
                         container={selectedItem}
                         createExecTicket={createExecTicket.mutateAsync}
+                        createLogStream={createLogStream}
+                        createSocket={createSocket}
                         error={error}
                         execOutput={execOutput}
                         inspectionOutput={inspectionOutput}

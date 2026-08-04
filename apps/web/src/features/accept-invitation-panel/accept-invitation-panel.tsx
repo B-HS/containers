@@ -2,30 +2,33 @@
 
 import type { FC, FormEvent } from 'react'
 import { useState } from 'react'
-import { useAcceptInvitation } from '@entities/auth/auth.query'
 import { Button } from '@shared/ui/button'
 import { Card } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
 
+type AcceptInvitationPanelLabels = {
+    action: string
+    description: string
+    failed: string
+    name: string
+    password: string
+    pending: string
+    title: string
+}
+
 type AcceptInvitationPanelProps = {
-    labels: {
-        action: string
-        description: string
-        failed: string
-        name: string
-        password: string
-        pending: string
-        title: string
-    }
+    labels: AcceptInvitationPanelLabels
     locale: string
+    onAccept: (input: { name: string; password: string; token: string }) => Promise<void>
     token: string
 }
 
-export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, locale, token }) => {
+export type { AcceptInvitationPanelLabels }
+
+export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, locale, onAccept, token }) => {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string>()
-    const acceptInvitation = useAcceptInvitation()
 
     const submit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
@@ -34,7 +37,7 @@ export const AcceptInvitationPanel: FC<AcceptInvitationPanelProps> = ({ labels, 
         const form = new FormData(event.currentTarget)
 
         try {
-            await acceptInvitation.mutateAsync({
+            await onAccept({
                 name: String(form.get('name') ?? ''),
                 password: String(form.get('password') ?? ''),
                 token,

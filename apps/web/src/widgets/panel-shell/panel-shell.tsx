@@ -27,7 +27,8 @@ import {
     X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { EngineInfo } from '@entities/engine/engine-info'
+import { useSignOut } from '@entities/auth/auth.query'
+import { EngineInfo } from '@widgets/engine/engine-info'
 import { LogoutButton } from '@features/logout-button/logout-button'
 import { Link, usePathname } from '../../i18n/navigation'
 
@@ -113,6 +114,11 @@ export const PanelShell: FC<PanelShellProps> = ({ children, engineInfoLabels, la
     const pathname = usePathname()
     const [open, setOpen] = useState(false)
     const activeItemKey = getActiveItemKey(pathname, navigation)
+    const signOut = useSignOut()
+
+    const signOutHandler = async () => {
+        await signOut.mutateAsync()
+    }
 
     return (
         <div className="grid min-h-screen grid-cols-1 bg-background text-foreground lg:grid-cols-[256px_minmax(0,1fr)]">
@@ -149,7 +155,7 @@ export const PanelShell: FC<PanelShellProps> = ({ children, engineInfoLabels, la
                     </div>
                     <p className="px-2 text-sm font-medium">{sessionName}</p>
                     <p className="px-2 text-xs text-muted-foreground">{sessionRole}</p>
-                    <LogoutButton label={labels.logout} />
+                    <LogoutButton label={labels.logout} onSignOut={signOutHandler} />
                 </div>
             </aside>
             <div className="flex min-h-screen min-w-0 flex-col lg:hidden">
@@ -206,7 +212,7 @@ export const PanelShell: FC<PanelShellProps> = ({ children, engineInfoLabels, la
                                 </div>
                                 <p className="px-2 text-sm font-medium">{sessionName}</p>
                                 <p className="px-2 text-xs text-muted-foreground">{sessionRole}</p>
-                                <LogoutButton label={labels.logout} />
+                                <LogoutButton label={labels.logout} onSignOut={signOutHandler} />
                             </div>
                         </div>
                     </div>

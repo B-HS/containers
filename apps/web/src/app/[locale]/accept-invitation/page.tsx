@@ -1,5 +1,5 @@
 import { getTranslations } from 'next-intl/server'
-import { AcceptInvitationPanel } from '@features/accept-invitation-panel/accept-invitation-panel'
+import { AcceptInvitationWidget } from '@widgets/auth/accept-invitation-widget'
 
 type AcceptInvitationPageProps = {
     params: Promise<{ locale: string }>
@@ -10,7 +10,7 @@ const AcceptInvitationPage = async ({ params, searchParams }: AcceptInvitationPa
     const [{ locale }, { token = '' }, translations] = await Promise.all([params, searchParams, getTranslations('Invitation')])
 
     return (
-        <AcceptInvitationPanel
+        <AcceptInvitationWidget
             locale={locale}
             token={token}
             labels={{
