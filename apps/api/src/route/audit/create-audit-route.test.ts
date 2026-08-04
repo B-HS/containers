@@ -86,7 +86,12 @@ const createTestApp = (db: ControlDatabase, allowed: boolean) =>
         .route(
             '/api',
             createAuditRoute({
-                auditService: createAuditService({ db: buildAuditServiceDb(db), now: () => new Date(BASE_TIME_MS) }),
+                auditService: createAuditService({
+                    archiveRoot: join(tmpdir(), 'containers-audit-archive-test'),
+                    db: buildAuditServiceDb(db),
+                    now: () => new Date(BASE_TIME_MS),
+                    retentionDays: 365,
+                }),
                 authService: {
                     requireRole: async () => {
                         if (!allowed) {

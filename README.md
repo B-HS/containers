@@ -59,6 +59,7 @@ Customization goes in `compose.override.yaml`. The defaults below come from `com
 | Artifact retention days   | `api`            | `ARTIFACT_RETENTION_DAYS`                                   | `30`             |
 | Artifacts always kept     | `api`            | `ARTIFACT_RETENTION_MINIMUM_COUNT`                          | `5`              |
 | Upload storage quota      | `api`            | `UPLOAD_TOTAL_QUOTA_BYTES`                                  | `34359738368`    |
+| Audit retention days      | `api`            | `AUDIT_RETENTION_DAYS`                                      | `365`            |
 
 If you change the panel port, host, or scheme, change the public origin **and** the trusted origin list together — otherwise the stack comes up healthy and every sign-in fails with `403 INVALID_ORIGIN`. Serving the panel over HTTPS automatically switches session cookies to `Secure`, so an HTTPS public origin behind an HTTP-only edge will not keep a session.
 

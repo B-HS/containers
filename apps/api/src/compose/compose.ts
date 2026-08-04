@@ -45,6 +45,8 @@ type ComposeSecrets = {
 type ComposeEnv = {
     agentInternalUrl: string
     artifactRetentionDays: number
+    auditArchiveRoot: string
+    auditRetentionDays: number
     artifactRetentionMinimumCount: number
     artifactRoot: string
     authBaseUrl: string
@@ -112,7 +114,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         db,
         ...(env.apiKeyRateLimitPerMinute === undefined ? {} : { rateLimitPerMinute: env.apiKeyRateLimitPerMinute }),
     })
-    const { auditService } = composeAudit({ db })
+    const { auditService } = composeAudit({ archiveRoot: env.auditArchiveRoot, db, retentionDays: env.auditRetentionDays })
     const { authService } = composeAuth({ auth, db, invitationBaseUrl: env.invitationBaseUrl })
     const { deploymentService } = composeDeployment({ db, engineAgentClient: clients.engineAgentClient })
     const { deploymentManifestService } = composeDeploymentManifest({

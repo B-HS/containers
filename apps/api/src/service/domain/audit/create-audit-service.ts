@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { mkdir, open } from 'node:fs/promises'
+import { join } from 'node:path'
 import { auditEventListSchema, auditQuerySchema, type AuditResult, type AuditTargetType } from '@containers/contracts/audit'
 
 type AuditListQuery = {
@@ -47,8 +49,12 @@ type AuditListPage = {
     total: number
 }
 
+type AuditArchiveRecord = Omit<AuditListRecord, 'actorEmail'>
+
 type AuditServiceDb = {
     list: (query: AuditListQuery) => Promise<AuditListPage>
+    listBefore: (threshold: Date, limit: number) => Promise<AuditArchiveRecord[]>
+    deleteByIds: (ids: string[]) => Promise<void>
     record: (record: AuditInsertRecord) => Promise<void>
 }
 
@@ -65,11 +71,17 @@ type AuditRecord = {
 }
 
 type AuditServiceDependencies = {
+    archiveRoot: string
     db: AuditServiceDb
     now: () => Date
+    retentionDays: number
 }
 
 export type { AuditServiceDb }
+
+const ARCHIVE_BATCH_SIZE = 1_000
+const ARCHIVE_FILE_MODE = 0o600
+const DAY_MS = 24 * 60 * 60 * 1_000
 
 const maskIp = (sourceIp: string | null) => {
     if (!sourceIp) {
@@ -103,7 +115,31 @@ const parseDetail = (detail: string | null) => {
     }
 }
 
-export const createAuditService = ({ db, now }: AuditServiceDependencies) => ({
+export const createAuditService = ({ archiveRoot, db, now, retentionDays }: AuditServiceDependencies) => ({
+    archiveExpired: async () => {
+        const threshold = new Date(now().getTime() - retentionDays * DAY_MS)
+        let archivedCount = 0
+        for (;;) {
+            const records = await db.listBefore(threshold, ARCHIVE_BATCH_SIZE)
+            if (records.length === 0) {
+                break
+            }
+            await mkdir(archiveRoot, { recursive: true })
+            const filePath = join(archiveRoot, `audit-${threshold.toISOString().slice(0, 10)}.jsonl`)
+            const handle = await open(filePath, 'a', ARCHIVE_FILE_MODE)
+            try {
+                await handle.write(records.map((record) => `${JSON.stringify({ ...record, createdAt: record.createdAt.toISOString() })}\n`).join(''))
+            } finally {
+                await handle.close()
+            }
+            await db.deleteByIds(records.map((record) => record.id))
+            archivedCount += records.length
+            if (records.length < ARCHIVE_BATCH_SIZE) {
+                break
+            }
+        }
+        return archivedCount
+    },
     list: async (input: unknown) => {
         const query = auditQuerySchema.parse(input)
         const conditions: Omit<AuditListQuery, 'limit' | 'offset'> = {}

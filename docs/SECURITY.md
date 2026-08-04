@@ -48,6 +48,12 @@ API 키에는 root-equivalent scope를 기본 발급하지 않는다. owner가 �
 
 Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 actor context를 받아 정책을 재확인한다. Agent는 API의 판정을 맹신하지 않고 operation별 허용 DTO와 internal service credential을 검증한다.
 
+### 5.2 감사 로그 보존과 정렬 (2026-08-05)
+
+- 보존 기간은 `AUDIT_RETENTION_DAYS`(기본 365일)다. 12시간마다 기간이 지난 행을 **먼저 `/backups/audit-archives/audit-<날짜>.jsonl` 로 append 한 뒤 DB 에서 지운다**(1,000행 배치, 파일 모드 `0600`). 백업 volume 안이므로 볼륨 오프사이트 복사 절차가 아카이브도 함께 가져간다. 감사 기록을 조용히 소멸시키지 않는 것이 목적이다.
+- 목록 정렬 tie-break 를 UUID 에서 **rowid** 로 바꿨다. `created_at` 이 초 단위라 같은 초에 쌓인 이벤트가 랜덤 UUID 순서로 뒤섞였고, offset 페이지네이션에서 중복·누락이 생길 수 있었다. rowid 는 단조 증가하므로 동일 초 내 삽입 순서가 그대로 복원된다.
+- control DB 는 초 단위, traffic DB 는 밀리초 단위 저장이라는 차이는 남아 있다. 전 컬럼 해상도 전환은 migration 비용이 커서 하지 않았고, 실제 증상(동일 초 정렬 불안정)은 rowid tie-break 로 해소했다.
+
 ### 5.1 감사 로그 열람 role (구현 기준, 2026-08-04 확정)
 
 `GET /api/audit`은 **`owner`·`admin`·`viewer`·`auditor` 네 role**이 조회할 수 있다(`create-audit-route.ts`). 설계 문서에 한때 owner/admin으로 적혀 있었으나 구현을 정본으로 삼아 문서를 맞춘다 — 감사 로그는 읽기 전용 관측 수단이고 `viewer`·`auditor`는 정의상 읽기 role이기 때문이다.

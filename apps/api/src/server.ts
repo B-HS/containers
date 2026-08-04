@@ -23,6 +23,7 @@ const CONTAINER_CLEANUP_INTERVAL_MS = HOUR_MS
 const JOB_CLEANUP_INTERVAL_MS = HOUR_MS
 const UPLOAD_SESSION_CLEANUP_INTERVAL_MS = 15 * MINUTE_MS
 const ARTIFACT_RETENTION_INTERVAL_MS = 6 * HOUR_MS
+const AUDIT_ARCHIVE_INTERVAL_MS = 12 * HOUR_MS
 const OPENAPI_SPEC_PATH = '/api/openapi.json'
 
 const envSchema = z
@@ -59,6 +60,8 @@ const envSchema = z
         UPLOAD_DISK_SOFT_AVAILABLE_BYTES: z.coerce.number().int().positive().default(34_359_738_368),
         UPLOAD_TOTAL_QUOTA_BYTES: z.coerce.number().int().positive().default(34_359_738_368),
         ARTIFACT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3_650).default(30),
+        AUDIT_ARCHIVE_ROOT: z.string().min(1).default('/backups/audit-archives'),
+        AUDIT_RETENTION_DAYS: z.coerce.number().int().min(30).max(3_650).default(365),
         ARTIFACT_RETENTION_MINIMUM_COUNT: z.coerce.number().int().min(1).max(1_000).default(5),
     })
     .refine((input) => input.UPLOAD_DISK_SOFT_AVAILABLE_BYTES > input.UPLOAD_DISK_HARD_AVAILABLE_BYTES, {
@@ -114,6 +117,8 @@ const composed = compose({
         protectedHostnames: ['api.containers.local', 'panel.containers.local', new URL(env.PANEL_PUBLIC_URL).hostname],
         trafficWorkerInternalUrl: env.TRAFFIC_WORKER_INTERNAL_URL,
         artifactRetentionDays: env.ARTIFACT_RETENTION_DAYS,
+        auditArchiveRoot: env.AUDIT_ARCHIVE_ROOT,
+        auditRetentionDays: env.AUDIT_RETENTION_DAYS,
         artifactRetentionMinimumCount: env.ARTIFACT_RETENTION_MINIMUM_COUNT,
         uploadTotalQuotaBytes: env.UPLOAD_TOTAL_QUOTA_BYTES,
         workerId: randomUUID(),
@@ -172,6 +177,11 @@ startRecurringTask({
     intervalMs: ARTIFACT_RETENTION_INTERVAL_MS,
     name: 'artifact-cleanup-expired',
     run: () => uploadService.cleanupExpiredArtifacts(),
+})
+startRecurringTask({
+    intervalMs: AUDIT_ARCHIVE_INTERVAL_MS,
+    name: 'audit-archive-expired',
+    run: () => auditService.archiveExpired(),
 })
 startRecurringTask({
     intervalMs: BACKUP_SCHEDULE_INTERVAL_MS,
