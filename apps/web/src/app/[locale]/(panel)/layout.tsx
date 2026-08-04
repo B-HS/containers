@@ -1,7 +1,11 @@
 import type { ReactNode } from 'react'
+import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
 import { getTranslations } from 'next-intl/server'
 import { AuthPanelWidget } from '@widgets/auth/auth-panel-widget'
+import { getEngineOverview } from '@entities/engine/engine.api'
+import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { getNavigationSections } from '@shared/lib/navigation'
+import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
 import { PanelShell } from '@widgets/panel-shell/panel-shell'
 
@@ -34,56 +38,64 @@ const PanelLayout = async ({ children }: PanelLayoutProps) => {
     }
 
     const navigation = getNavigationSections(session)
+    const queryClient = new QueryClient()
+    const engineOverview = await getEngineOverview(API_INTERNAL_URL, session.cookie).catch(() => undefined)
+
+    if (engineOverview) {
+        queryClient.setQueryData(QUERY_KEY.ENGINE.OVERVIEW, engineOverview)
+    }
 
     return (
-        <PanelShell
-            engineInfoLabels={{
-                cpu: translations('engineCpu'),
-                engine: translations('engine'),
-                memory: translations('engineMemory'),
-                refresh: translations('engineRefresh'),
-                storage: translations('engineStorage'),
-            }}
-            labels={{
-                brand: translations('brand'),
-                logout: authTranslations('logout'),
-                menu: translations('menu'),
-                items: Object.fromEntries(
-                    [
-                        'apiKeys',
-                        'artifacts',
-                        'audit',
-                        'backups',
-                        'containers',
-                        'controlPlane',
-                        'deploymentSecrets',
-                        'deployments',
-                        'images',
-                        'infrastructure',
-                        'invitations',
-                        'jobs',
-                        'nginx',
-                        'nginxRoutes',
-                        'notifications',
-                        'overview',
-                        'registry',
-                        'traffic',
-                        'users',
-                    ].map((key) => [key, translations(`items.${key}`)]),
-                ),
-                sections: Object.fromEntries(
-                    ['administration', 'containers', 'dashboard', 'deployments', 'images', 'infrastructure', 'nginx', 'operations'].map((key) => [
-                        key,
-                        translations(`sections.${key}`),
-                    ]),
-                ),
-            }}
-            navigation={navigation}
-            sessionName={session.session.user.name}
-            sessionRole={session.session.role}
-        >
-            {children}
-        </PanelShell>
+        <HydrationBoundary state={dehydrate(queryClient)}>
+            <PanelShell
+                engineInfoLabels={{
+                    cpu: translations('engineCpu'),
+                    engine: translations('engine'),
+                    memory: translations('engineMemory'),
+                    refresh: translations('engineRefresh'),
+                    storage: translations('engineStorage'),
+                }}
+                labels={{
+                    brand: translations('brand'),
+                    logout: authTranslations('logout'),
+                    menu: translations('menu'),
+                    items: Object.fromEntries(
+                        [
+                            'apiKeys',
+                            'artifacts',
+                            'audit',
+                            'backups',
+                            'containers',
+                            'controlPlane',
+                            'deploymentSecrets',
+                            'deployments',
+                            'images',
+                            'infrastructure',
+                            'invitations',
+                            'jobs',
+                            'nginx',
+                            'nginxRoutes',
+                            'notifications',
+                            'overview',
+                            'registry',
+                            'traffic',
+                            'users',
+                        ].map((key) => [key, translations(`items.${key}`)]),
+                    ),
+                    sections: Object.fromEntries(
+                        ['administration', 'containers', 'dashboard', 'deployments', 'images', 'infrastructure', 'nginx', 'operations'].map((key) => [
+                            key,
+                            translations(`sections.${key}`),
+                        ]),
+                    ),
+                }}
+                navigation={navigation}
+                sessionName={session.session.user.name}
+                sessionRole={session.session.role}
+            >
+                {children}
+            </PanelShell>
+        </HydrationBoundary>
     )
 }
 

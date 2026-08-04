@@ -5,22 +5,24 @@ import { z } from 'zod'
 
 const successResponseSchema = z.object({ data: z.unknown(), success: z.literal(true) })
 
-export const getEngineDashboard = async (baseUrl: string, cookie: string) => {
+export const getEngineOverview = async (baseUrl: string, cookie: string) => {
     const client = hc<AppType>(baseUrl)
-    const overviewResponse = await client.api.system.engine.$get({}, { headers: { cookie } })
-    const containersResponse = await client.api.containers.$get({}, { headers: { cookie } })
+    const response = await client.api.system.engine.$get({}, { headers: { cookie } })
 
-    if (!overviewResponse.ok || !containersResponse.ok) {
+    if (!response.ok) {
         throw new Error('Engine 상태 조회 실패')
     }
 
-    const [overviewBody, containersBody] = await Promise.all([overviewResponse.json(), containersResponse.json()])
+    return engineOverviewSchema.parse(successResponseSchema.parse(await response.json()).data)
+}
 
-    const overview = successResponseSchema.parse(overviewBody).data
-    const containers = successResponseSchema.parse(containersBody).data
+export const getContainerList = async (baseUrl: string, cookie: string) => {
+    const client = hc<AppType>(baseUrl)
+    const response = await client.api.containers.$get({}, { headers: { cookie } })
 
-    return {
-        containers: containerSummaryListSchema.parse(containers),
-        overview: engineOverviewSchema.parse(overview),
+    if (!response.ok) {
+        throw new Error('컨테이너 목록 조회 실패')
     }
+
+    return containerSummaryListSchema.parse(successResponseSchema.parse(await response.json()).data)
 }

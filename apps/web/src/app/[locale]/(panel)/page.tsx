@@ -1,7 +1,7 @@
 import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
 import { getTranslations } from 'next-intl/server'
 import { getApiHealth } from '@entities/health/health.api'
-import { getEngineDashboard } from '@entities/engine/engine.api'
+import { getContainerList } from '@entities/engine/engine.api'
 import { getNginxStatus } from '@entities/nginx/nginx.api'
 import { getTrafficSummary, getTrafficAnalytics } from '@entities/traffic/traffic.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
@@ -20,9 +20,9 @@ const OverviewPage = async () => {
 
     const cookie = session.cookie
     const queryClient = new QueryClient()
-    const [apiHealth, engineDashboard, trafficSummary, trafficAnalytics, nginxStatus] = await Promise.all([
+    const [apiHealth, containers, trafficSummary, trafficAnalytics, nginxStatus] = await Promise.all([
         getApiHealth(API_INTERNAL_URL).catch(() => undefined),
-        getEngineDashboard(API_INTERNAL_URL, cookie).catch(() => undefined),
+        getContainerList(API_INTERNAL_URL, cookie).catch(() => undefined),
         getTrafficSummary(API_INTERNAL_URL, cookie).catch(() => undefined),
         getTrafficAnalytics(API_INTERNAL_URL, cookie).catch(() => undefined),
         getNginxStatus(API_INTERNAL_URL, cookie).catch(() => undefined),
@@ -30,9 +30,8 @@ const OverviewPage = async () => {
     if (apiHealth) {
         queryClient.setQueryData(QUERY_KEY.HEALTH.API, apiHealth)
     }
-    if (engineDashboard) {
-        queryClient.setQueryData(QUERY_KEY.ENGINE.OVERVIEW, engineDashboard.overview)
-        queryClient.setQueryData(QUERY_KEY.ENGINE.CONTAINER.LIST, engineDashboard.containers)
+    if (containers) {
+        queryClient.setQueryData(QUERY_KEY.ENGINE.CONTAINER.LIST, containers)
     }
     if (trafficSummary) {
         queryClient.setQueryData(QUERY_KEY.TRAFFIC.SUMMARY, trafficSummary)

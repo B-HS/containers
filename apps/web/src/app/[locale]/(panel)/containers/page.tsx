@@ -2,7 +2,7 @@ import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query
 import { getTranslations } from 'next-intl/server'
 import { Rocket } from 'lucide-react'
 import { Button } from '@shared/ui/button'
-import { getEngineDashboard } from '@entities/engine/engine.api'
+import { getContainerList } from '@entities/engine/engine.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
@@ -17,11 +17,10 @@ const ContainersPage = async () => {
         return null
     }
 
-    const engineDashboard = await getEngineDashboard(API_INTERNAL_URL, session.cookie).catch(() => undefined)
+    const containers = await getContainerList(API_INTERNAL_URL, session.cookie).catch(() => undefined)
     const queryClient = new QueryClient()
-    if (engineDashboard) {
-        queryClient.setQueryData(QUERY_KEY.ENGINE.OVERVIEW, engineDashboard.overview)
-        queryClient.setQueryData(QUERY_KEY.ENGINE.CONTAINER.LIST, engineDashboard.containers)
+    if (containers) {
+        queryClient.setQueryData(QUERY_KEY.ENGINE.CONTAINER.LIST, containers)
     }
 
     return (

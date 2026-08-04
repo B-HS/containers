@@ -1,6 +1,6 @@
 import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
 import { getTranslations } from 'next-intl/server'
-import { getEngineDashboard } from '@entities/engine/engine.api'
+import { getContainerList } from '@entities/engine/engine.api'
 import { getNginxRoutes } from '@entities/nginx/nginx.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { QUERY_KEY } from '@shared/lib/query-key'
@@ -16,16 +16,15 @@ const NginxRoutesPage = async () => {
     }
 
     const queryClient = new QueryClient()
-    const [engineDashboard] = await Promise.all([
-        getEngineDashboard(API_INTERNAL_URL, session.cookie).catch(() => undefined),
+    const [containers] = await Promise.all([
+        getContainerList(API_INTERNAL_URL, session.cookie).catch(() => undefined),
         queryClient.prefetchQuery({
             queryKey: QUERY_KEY.NGINX.ROUTE.LIST,
             queryFn: () => getNginxRoutes(API_INTERNAL_URL, session.cookie).catch(() => []),
         }),
     ])
-    if (engineDashboard) {
-        queryClient.setQueryData(QUERY_KEY.ENGINE.OVERVIEW, engineDashboard.overview)
-        queryClient.setQueryData(QUERY_KEY.ENGINE.CONTAINER.LIST, engineDashboard.containers)
+    if (containers) {
+        queryClient.setQueryData(QUERY_KEY.ENGINE.CONTAINER.LIST, containers)
     }
 
     return (
@@ -33,9 +32,7 @@ const NginxRoutesPage = async () => {
             <div className="grid gap-px">
                 <PageHeader description={navTranslations('subtitles.nginxRoutes')} title={navTranslations('items.nginxRoutes')} />
                 <NginxRouteControlWidget
-                    containers={
-                        engineDashboard?.containers.map((container) => container.names[0]?.replace(/^\//, '') ?? container.id.slice(0, 12)) ?? []
-                    }
+                    containers={containers?.map((container) => container.names[0]?.replace(/^\//, '') ?? container.id.slice(0, 12)) ?? []}
                     role={session.session.role}
                     labels={{
                         actions: translations('actions'),
