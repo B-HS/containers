@@ -486,3 +486,17 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] f. Dockerfile 4종에 신규 workspace 패키지 COPY 추가 — 누락 시 이미지 빌드가 깨진다(에이전트 산출물에 없었고 메인 세션이 잡음)
 - [x] g. 검증 — typecheck 8/8·lint 0·test 230 pass·format:check·build 8/8, Compose 5개 healthy, route 생성→프록시 응답→삭제 후 SHA 원복, 로테이션 실회전(중복 0), 감사 필터·페이지네이션 실측, 브라우저 console error 0
 - [x] h. 감사 로그 열람 role 문서 정합 — 사용자 결정에 따라 구현(owner·admin·viewer·auditor)을 정본으로 두고 `docs/llm.txt` 를 정정, `docs/SECURITY.md` §5.1 신설(열람 role·노출 필드·원본 IP 미노출 근거). 겸해 llm.txt 의 API key owner 전용 scope 이중 강제와 backup restore session-only 도 실제 구현에 맞춰 갱신
+
+## 작업: 실운영·CI API 운용 준비도 전면 검토 (2026-08-04)
+
+기준: 사용자 지시 — "이제 실운영 + api로 github action으로 api운용까지 전부 다 가능한지 전면검토 시작해봐".
+
+- [x] a. 5개 영역 병렬 read-only 검토 — 설치·부팅·업그레이드 / 외부 노출·인증 경계 / GitHub Actions API 운용 / 운영 관측·장애 복구 / 데이터 안전성·확장 한계 (findings 68건)
+- [x] b. 종합 판정과 로드맵 확정 — 리포트: [quality-assurance/2026-08-04-production-readiness.md](./quality-assurance/2026-08-04-production-readiness.md)
+- [x] c. blocker 핵심 4건 메인 세션 재확인 — ① `compose.yaml` restart 정책 0건(실측 5개 컨테이너 `restart=no`) ② `PRESERVED_TABLES`에 `__drizzle_migrations` 부재 + `deployment.artifactId`가 보존 대상 `artifact`를 `onDelete: restrict` 참조 ③ `infra/nginx/nginx.conf`에 `real_ip` 설정 없음 ④ 백업 세트가 `control.sqlite`·`traffic.sqlite`·`manifest.json` 3개뿐이고 `/data`의 암호화 키 2종 미포함
+- [x] d. CI 운용 관문 확인 — 업로드·image load·manifest·release·rollback은 API key 경로가 있으나 `create-job-route.ts`는 `apiKeyService` 의존성이 없어 **job 성패 판정이 세션 전용**. `API_KEY_SCOPE` 9종에 job 계열 scope 부재
+- [ ] e. 1단계(실운영 개시 전 필수) 구현 — 사용자 승인 대기
+- [ ] f. 2단계(무인 운용·무음 실패 제거) 구현 — 사용자 승인 대기
+- [ ] g. 3단계(장기 운영 안정화) 구현 — 사용자 승인 대기
+
+판정: 실운영 **no-go**(조건 충족 전), CI API 운용 **부분 가능**(시작은 되나 성패 판정·검증·교착 해소 불가).
