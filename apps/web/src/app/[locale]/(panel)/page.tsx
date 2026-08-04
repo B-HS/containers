@@ -1,13 +1,11 @@
 import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
 import { getTranslations } from 'next-intl/server'
 import { getApiHealth } from '@entities/health/health.api'
-import { apiHealthQueryOptions } from '@entities/health/health.query'
 import { getEngineDashboard } from '@entities/engine/engine.api'
 import { getNginxStatus } from '@entities/nginx/nginx.api'
-import { nginxStatusQueryOptions } from '@entities/nginx/nginx.query'
 import { getTrafficSummary, getTrafficAnalytics } from '@entities/traffic/traffic.api'
-import { trafficAnalyticsQueryOptions, trafficSummaryQueryOptions } from '@entities/traffic/traffic.query'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
+import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { OverviewWidget } from '@widgets/overview/overview-widget'
@@ -29,7 +27,7 @@ const OverviewPage = async () => {
     const [apiAvailable, engineDashboard, trafficSummary, trafficAnalytics, nginxStatus] = await Promise.all([
         getApiHealth(API_INTERNAL_URL).then(
             () => {
-                queryClient.setQueryData(apiHealthQueryOptions().queryKey, { status: 'ok' })
+                queryClient.setQueryData(QUERY_KEY.HEALTH.API, { status: 'ok' })
                 return true
             },
             () => false,
@@ -44,13 +42,13 @@ const OverviewPage = async () => {
         queryClient.setQueryData(['engine', 'container', 'list'], engineDashboard.containers)
     }
     if (trafficSummary) {
-        queryClient.setQueryData(trafficSummaryQueryOptions().queryKey, trafficSummary)
+        queryClient.setQueryData(QUERY_KEY.TRAFFIC.SUMMARY, trafficSummary)
     }
     if (trafficAnalytics) {
-        queryClient.setQueryData(trafficAnalyticsQueryOptions().queryKey, trafficAnalytics)
+        queryClient.setQueryData(QUERY_KEY.TRAFFIC.ANALYTICS, trafficAnalytics)
     }
     if (nginxStatus) {
-        queryClient.setQueryData(nginxStatusQueryOptions().queryKey, nginxStatus)
+        queryClient.setQueryData(QUERY_KEY.NGINX.STATUS, nginxStatus)
     }
     const diskValue = engineDashboard
         ? `${formatGib(engineDashboard.overview.disk.usedBytes)} / ${formatGib(engineDashboard.overview.disk.capacityBytes)}`
