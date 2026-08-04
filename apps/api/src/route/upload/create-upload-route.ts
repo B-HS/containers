@@ -7,6 +7,7 @@ import { uploadSessionCreateSchema } from '@containers/contracts/upload'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
+import { toStreamChunks } from '../../lib/stream-chunks'
 import { withErrorHandling } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -90,8 +91,13 @@ export const createUploadRoute = ({ apiKeyService, authService, operationJobServ
                 const sessionId = (context.req.valid('param' as never) as z.infer<typeof sessionIdParamSchema>).sessionId
                 const { offset } = context.req.valid('query' as never) as z.infer<typeof chunkQuerySchema>
                 const { 'x-chunk-sha256': chunkSha256 } = context.req.valid('header' as never) as z.infer<typeof chunkSha256Schema>
-                const bytes = new Uint8Array(await context.req.arrayBuffer())
-                return context.json(successResponse(await uploadService.appendChunk(actorId, sessionId, offset, chunkSha256, bytes)), 200)
+                const body = context.req.raw.body
+                const declaredBytes = Number(context.req.header('content-length'))
+                const chunk = body === null ? new Uint8Array(await context.req.arrayBuffer()) : toStreamChunks(body)
+                const result = Number.isSafeInteger(declaredBytes)
+                    ? await uploadService.appendChunk(actorId, sessionId, offset, chunkSha256, chunk, declaredBytes)
+                    : await uploadService.appendChunk(actorId, sessionId, offset, chunkSha256, chunk)
+                return context.json(successResponse(result), 200)
             }),
         )
         .post(

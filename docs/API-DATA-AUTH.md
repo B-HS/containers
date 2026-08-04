@@ -145,6 +145,7 @@ snapshot은 짧게 보존하고 현재 판단에 사용하지 않는다.
 
 - `upload`: type, originalName, byteSize, digest, state, owner, expiresAt
 - `upload_chunk`: uploadId, index, byteSize, digest, receivedAt
+- chunk 본문은 요청 스트림을 그대로 파일 offset 에 이어 쓰고 sha256 을 증분 계산한다. 최대 64 MiB chunk 를 통째로 메모리에 올리지 않으며, digest 가 어긋나면 `receivedBytes` 를 전진시키지 않아 같은 offset 재전송이 덮어쓴다. finalize 가 파일 전체 sha256 을 다시 검증하므로 실패한 chunk 의 잔여 바이트는 결과에 영향을 주지 않는다.
 - `artifact_scan`: uploadId, scanner, policyVersion, result, findingsSummary
 - `deployment`: name, currentVersionId, routeId, status
 - `deployment_version`: deploymentId, artifactId, imageDigest, containerId, manifestJson, status

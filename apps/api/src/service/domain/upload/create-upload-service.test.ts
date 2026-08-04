@@ -8,6 +8,7 @@ import { ARTIFACT_MEDIA_TYPE } from '@containers/contracts/upload'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { artifact, uploadSession, user } from '@containers/db-schema/schema'
 import { buildUploadServiceDb } from '../../../compose/compose-upload'
+import { toStreamChunks } from '../../../lib/stream-chunks'
 import { createUploadService } from './create-upload-service'
 
 const temporaryDirectories: string[] = []
@@ -105,6 +106,56 @@ describe('업로드 서비스', () => {
         expect(record?.storagePath.startsWith(join(directory, 'artifacts', 'ready'))).toBe(true)
         expect(await readFile(record?.storagePath ?? '', 'utf8')).toBe('docker-image-archive')
         expect((await stat(record?.storagePath ?? '')).mode & 0o777).toBe(0o600)
+        sqlite.close()
+    })
+
+    test('스트림으로 들어온 chunk 를 이어 써서 같은 artifact 를 만듭니다', async () => {
+        const { actorId, db, service, sqlite } = await createTestService()
+        const bytes = new TextEncoder().encode('docker-image-archive')
+        const session = await service.createSession(actorId, 'upload-stream-0001', {
+            expectedSha256: digest(bytes),
+            expectedSizeBytes: bytes.byteLength,
+            fileName: 'image.tar',
+            mediaType: ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE,
+        })
+        const stream = new ReadableStream<Uint8Array>({
+            start: (controller) => {
+                controller.enqueue(bytes.slice(0, 6))
+                controller.enqueue(bytes.slice(6))
+                controller.close()
+            },
+        })
+
+        const appended = await service.appendChunk(actorId, session.id, 0, digest(bytes), toStreamChunks(stream), bytes.byteLength)
+        const result = await service.finalizeSession(actorId, session.id)
+        const [record] = await db.select().from(artifact).where(eq(artifact.id, result.id))
+
+        expect(appended.receivedBytes).toBe(bytes.byteLength)
+        expect(result.status).toBe('ready')
+        expect(await readFile(record?.storagePath ?? '', 'utf8')).toBe('docker-image-archive')
+        sqlite.close()
+    })
+
+    test('스트림 chunk 의 digest 가 어긋나면 receivedBytes 를 전진시키지 않습니다', async () => {
+        const { actorId, service, sqlite } = await createTestService()
+        const bytes = new TextEncoder().encode('docker-image-archive')
+        const session = await service.createSession(actorId, 'upload-stream-0002', {
+            expectedSha256: digest(bytes),
+            expectedSizeBytes: bytes.byteLength,
+            fileName: 'image.tar',
+            mediaType: ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE,
+        })
+        const stream = new ReadableStream<Uint8Array>({
+            start: (controller) => {
+                controller.enqueue(bytes)
+                controller.close()
+            },
+        })
+
+        await expect(service.appendChunk(actorId, session.id, 0, 'a'.repeat(64), toStreamChunks(stream), bytes.byteLength)).rejects.toThrow(
+            'CHUNK_DIGEST_MISMATCH',
+        )
+        expect((await service.getOwnedSession(actorId, session.id))?.receivedBytes).toBe(0)
         sqlite.close()
     })
 

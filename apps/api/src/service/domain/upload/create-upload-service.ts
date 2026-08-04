@@ -160,33 +160,62 @@ export const createUploadService = ({
     }
 
     return {
-        appendChunk: async (actorId: string, sessionId: string, offsetBytes: number, chunkSha256: string, bytes: Uint8Array) => {
+        appendChunk: async (
+            actorId: string,
+            sessionId: string,
+            offsetBytes: number,
+            chunkSha256: string,
+            source: AsyncIterable<Uint8Array> | Uint8Array,
+            declaredBytes?: number,
+        ) => {
             const session = await db.findBySessionWithFilters(sessionId, actorId, 'uploading', now())
 
             if (!session) {
                 throw createAppError('UPLOAD_SESSION_INVALID')
             }
-            if (bytes.byteLength === 0 || bytes.byteLength > MAX_CHUNK_BYTES) {
-                throw createAppError('CHUNK_SIZE_INVALID')
-            }
             if (offsetBytes !== session.receivedBytes) {
                 throw createAppError('OFFSET_MISMATCH')
             }
-            if (offsetBytes + bytes.byteLength > session.expectedSizeBytes) {
+
+            const remainingBytes = session.expectedSizeBytes - offsetBytes
+            const reservedBytes = source instanceof Uint8Array ? source.byteLength : (declaredBytes ?? Math.min(MAX_CHUNK_BYTES, remainingBytes))
+            if (reservedBytes === 0 || reservedBytes > MAX_CHUNK_BYTES) {
+                throw createAppError('CHUNK_SIZE_INVALID')
+            }
+            if (reservedBytes > remainingBytes) {
                 throw createAppError('UPLOAD_SIZE_EXCEEDED')
             }
-            if (createHash('sha256').update(bytes).digest('hex') !== chunkSha256) {
-                throw createAppError('CHUNK_DIGEST_MISMATCH')
-            }
-            if ((await getAvailableBytes()) - bytes.byteLength < diskHardAvailableBytes) {
+            if ((await getAvailableBytes()) - reservedBytes < diskHardAvailableBytes) {
                 throw createAppError('DISK_HARD_WATERMARK')
             }
 
+            const hash = createHash('sha256')
             const file = await open(session.temporaryPath, 'r+')
-            await file.write(bytes, 0, bytes.byteLength, offsetBytes)
-            await file.sync()
-            await file.close()
-            const receivedBytes = offsetBytes + bytes.byteLength
+            let writtenBytes = 0
+            try {
+                for await (const chunk of source instanceof Uint8Array ? [source] : source) {
+                    if (writtenBytes + chunk.byteLength > MAX_CHUNK_BYTES) {
+                        throw createAppError('CHUNK_SIZE_INVALID')
+                    }
+                    if (writtenBytes + chunk.byteLength > remainingBytes) {
+                        throw createAppError('UPLOAD_SIZE_EXCEEDED')
+                    }
+                    hash.update(chunk)
+                    await file.write(chunk, 0, chunk.byteLength, offsetBytes + writtenBytes)
+                    writtenBytes += chunk.byteLength
+                }
+                if (writtenBytes === 0) {
+                    throw createAppError('CHUNK_SIZE_INVALID')
+                }
+                if (hash.digest('hex') !== chunkSha256) {
+                    throw createAppError('CHUNK_DIGEST_MISMATCH')
+                }
+                await file.sync()
+            } finally {
+                await file.close()
+            }
+
+            const receivedBytes = offsetBytes + writtenBytes
             const createdAt = now()
 
             await db.appendChunk({
@@ -196,7 +225,7 @@ export const createUploadService = ({
                 receivedBytes,
                 sessionId,
                 sha256: chunkSha256,
-                sizeBytes: bytes.byteLength,
+                sizeBytes: writtenBytes,
                 updatedAt: createdAt,
             })
 
