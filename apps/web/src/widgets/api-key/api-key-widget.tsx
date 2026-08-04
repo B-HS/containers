@@ -4,7 +4,7 @@ import type { FC } from 'react'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { API_KEY_SCOPE } from '@containers/contracts/api-key'
+import { API_KEY_SCOPE_VALUES, type ApiKeyScope } from '@containers/contracts/api-key'
 import { useCreateApiKey, useGetApiKeys, useRevokeApiKey } from '@entities/api-key/api-key.query'
 import { ApiKeyTokenNotice } from '@features/api-key-token-notice/api-key-token-notice'
 import { ConfirmActionDialog } from '@features/confirm-action-dialog/confirm-action-dialog'
@@ -17,28 +17,16 @@ import { Label } from '@shared/ui/label'
 import { Skeleton } from '@shared/ui/skeleton'
 import { WidgetSection } from '@shared/common/widget-section'
 
-const API_KEY_SCOPES = [
-    API_KEY_SCOPE.ARTIFACT_READ,
-    API_KEY_SCOPE.ARTIFACT_UPLOAD,
-    API_KEY_SCOPE.BACKUP_READ,
-    API_KEY_SCOPE.BACKUP_WRITE,
-    API_KEY_SCOPE.DEPLOYMENT_READ,
-    API_KEY_SCOPE.DEPLOYMENT_WRITE,
-    API_KEY_SCOPE.IMAGE_LOAD,
-    API_KEY_SCOPE.SECRET_READ,
-    API_KEY_SCOPE.SECRET_WRITE,
-]
-
 export const ApiKeyWidget: FC = () => {
     const [createdToken, setCreatedToken] = useState<string>()
-    const [scopes, setScopes] = useState<Set<string>>(() => new Set(API_KEY_SCOPES))
+    const [scopes, setScopes] = useState<Set<ApiKeyScope>>(() => new Set(API_KEY_SCOPE_VALUES))
     const t = useTranslations('Dashboard')
     const apiKeysQuery = useGetApiKeys()
     const apiKeys = apiKeysQuery.data ?? []
     const createApiKey = useCreateApiKey()
     const revokeApiKey = useRevokeApiKey()
 
-    const toggleScope = (scope: string, checked: boolean) => {
+    const toggleScope = (scope: ApiKeyScope, checked: boolean) => {
         setScopes((current) => {
             const next = new Set(current)
             if (checked) {
@@ -57,7 +45,7 @@ export const ApiKeyWidget: FC = () => {
             {
                 expiresInDays: Number(formData.get('expiresInDays')),
                 name: String(formData.get('name')),
-                scopes: API_KEY_SCOPES.filter((scope) => scopes.has(scope)),
+                scopes: API_KEY_SCOPE_VALUES.filter((scope) => scopes.has(scope)),
             },
             {
                 onError: (error) => toast.error(error instanceof Error ? error.message : t('apiKeyFailed')),
@@ -100,7 +88,7 @@ export const ApiKeyWidget: FC = () => {
                 <fieldset className="grid gap-3">
                     <legend className="pb-2 text-xs font-medium tracking-wide text-text-subtle uppercase">{t('scopes')}</legend>
                     <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
-                        {API_KEY_SCOPES.map((scope) => (
+                        {API_KEY_SCOPE_VALUES.map((scope) => (
                             <div key={scope} className="flex items-center gap-2">
                                 <Checkbox
                                     id={`api-key-scope-${scope}`}
