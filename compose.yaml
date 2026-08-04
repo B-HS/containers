@@ -2,6 +2,16 @@ name: containers
 
 services:
     nginx:
+        restart: unless-stopped
+        logging:
+            driver: json-file
+            options:
+                max-size: '10m'
+                max-file: '3'
+        deploy:
+            resources:
+                limits:
+                    memory: 256M
         build:
             context: ./infra/nginx
             dockerfile: Dockerfile
@@ -18,9 +28,9 @@ services:
             web:
                 condition: service_healthy
         environment:
-            ACCESS_LOG_KEEP: '2'
-            ACCESS_LOG_MAX_BYTES: '134217728'
-            ACCESS_LOG_ROTATE_INTERVAL_SECONDS: '60'
+            ACCESS_LOG_KEEP: ${ACCESS_LOG_KEEP:-2}
+            ACCESS_LOG_MAX_BYTES: ${ACCESS_LOG_MAX_BYTES:-134217728}
+            ACCESS_LOG_ROTATE_INTERVAL_SECONDS: ${ACCESS_LOG_ROTATE_INTERVAL_SECONDS:-60}
         healthcheck:
             test:
                 - CMD
@@ -33,7 +43,7 @@ services:
             timeout: 3s
             retries: 5
         ports:
-            - 127.0.0.1:8080:8080
+            - ${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-8080}:8080
         read_only: true
         security_opt:
             - no-new-privileges:true
@@ -49,7 +59,53 @@ services:
             - edge
             - ingress
 
+    # opt-in 외부 노출 경로: docker compose --profile cloudflared up -d
+    # 토큰은 저장소에 두지 않고 CLOUDFLARE_TUNNEL_TOKEN 환경변수로만 주입한다.
+    cloudflared:
+        profiles:
+            - cloudflared
+        restart: unless-stopped
+        logging:
+            driver: json-file
+            options:
+                max-size: '10m'
+                max-file: '3'
+        deploy:
+            resources:
+                limits:
+                    memory: 256M
+        image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.7.3}
+        command:
+            - tunnel
+            - --no-autoupdate
+            - run
+        depends_on:
+            nginx:
+                condition: service_healthy
+        environment:
+            TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+        cap_drop:
+            - ALL
+        read_only: true
+        security_opt:
+            - no-new-privileges:true
+        tmpfs:
+            - /tmp
+        networks:
+            edge:
+                ipv4_address: ${CLOUDFLARED_ADDRESS:-10.89.0.10}
+
     web:
+        restart: unless-stopped
+        logging:
+            driver: json-file
+            options:
+                max-size: '10m'
+                max-file: '3'
+        deploy:
+            resources:
+                limits:
+                    memory: 1G
         build:
             context: .
             dockerfile: apps/web/Dockerfile
@@ -73,6 +129,16 @@ services:
             - ingress
 
     api:
+        restart: unless-stopped
+        logging:
+            driver: json-file
+            options:
+                max-size: '10m'
+                max-file: '3'
+        deploy:
+            resources:
+                limits:
+                    memory: 2G
         build:
             context: .
             dockerfile: apps/api/Dockerfile
@@ -82,15 +148,15 @@ services:
             ARTIFACT_ROOT: /artifacts
             BACKUP_ROOT: /backups
             API_PORT: 3001
-            AUTH_BASE_URL: http://127.0.0.1:8080
+            AUTH_BASE_URL: ${PANEL_PUBLIC_ORIGIN:-http://127.0.0.1:8080}
             AUTH_SECRET_FILE: /data/auth-secret
-            AUTH_TRUSTED_ORIGINS: http://127.0.0.1:8080,http://localhost:8080
+            AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080}
             CONTROL_DB_PATH: /data/control.sqlite
             CONTROL_MIGRATIONS_PATH: /app/drizzle
             PROBE_NETWORK_NAME: containers_probe
             NGINX_STATUS_URL: http://nginx:8081/status
             NOTIFICATION_SECRET_KEY_FILE: /data/notification-secret-key
-            PANEL_PUBLIC_URL: http://127.0.0.1:8080
+            PANEL_PUBLIC_URL: ${PANEL_PUBLIC_ORIGIN:-http://127.0.0.1:8080}
             TRAFFIC_WORKER_INTERNAL_URL: http://traffic-worker:3003
             TRAFFIC_WORKER_SHARED_SECRET_FILE: /traffic-credentials/traffic-secret
             TRAFFIC_EXPORT_ROOT: /backups/traffic-exports
@@ -119,11 +185,21 @@ services:
             - ingress
             - control
     engine-agent:
+        restart: unless-stopped
+        logging:
+            driver: json-file
+            options:
+                max-size: '10m'
+                max-file: '3'
+        deploy:
+            resources:
+                limits:
+                    memory: 1G
         build:
             context: .
             dockerfile: apps/engine-agent/Dockerfile
         group_add:
-            - '0'
+            - '${DOCKER_GID:-0}'
         environment:
             AGENT_PORT: 3002
             AGENT_SHARED_SECRET_FILE: /credentials/agent-secret
@@ -158,6 +234,16 @@ services:
             - probe
 
     traffic-worker:
+        restart: unless-stopped
+        logging:
+            driver: json-file
+            options:
+                max-size: '10m'
+                max-file: '3'
+        deploy:
+            resources:
+                limits:
+                    memory: 1G
         build:
             context: .
             dockerfile: apps/traffic-worker/Dockerfile
@@ -196,7 +282,12 @@ services:
 networks:
     control:
         internal: true
+    # nginx real_ip 신뢰 대역이 이 subnet 의 cloudflared 고정 IP 하나뿐이다.
+    # subnet 을 바꾸면 infra/nginx/nginx.conf 의 set_real_ip_from 도 함께 바꾼다.
     edge:
+        ipam:
+            config:
+                - subnet: ${EDGE_SUBNET:-10.89.0.0/24}
     probe:
         internal: true
     ingress:
