@@ -23,6 +23,16 @@ The recommended way is the interactive setup script (macOS and Linux):
 
 It checks the environment, detects the docker socket group id on Linux, verifies the Compose file, optionally builds, starts the stack, and runs a smoke test — including a sign-in call with a real `Origin` header so a mismatched public origin fails here instead of at first login. It creates a `compose.override.yaml` for customization (panel bind address/port, public origin, backup interval/retention, traffic retention).
 
+For CI and unattended provisioning it also runs without prompts. Non-interactive mode is implied when stdin is not a TTY, and every prompt falls back to a flag or an environment variable of the same name (`scripts/setup.sh --help` lists them):
+
+```bash
+./scripts/setup.sh --non-interactive --write-override \
+    --port 9090 --public-origin https://panel.example.com \
+    --start-mode build
+```
+
+`--start-mode` picks `build` (build then start, the default), `up` (start without building) or `skip` (checks only). An existing `compose.override.yaml` is kept as is unless you pass `--replace-override`, which backs it up to `compose.override.yaml.bak` first.
+
 To run manually:
 
 ```bash

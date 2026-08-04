@@ -34,12 +34,130 @@ else
 fi
 
 OS_NAME="$(uname -s)"
-PANEL_BIND_ADDRESS=$DEFAULT_PANEL_BIND_ADDRESS
-PANEL_PORT=$DEFAULT_PANEL_PORT
-PANEL_PUBLIC_ORIGIN=""
-DOCKER_GID=$DEFAULT_DOCKER_GID
+PANEL_BIND_ADDRESS="${PANEL_BIND_ADDRESS:-$DEFAULT_PANEL_BIND_ADDRESS}"
+PANEL_PORT="${PANEL_PORT:-$DEFAULT_PANEL_PORT}"
+PANEL_PUBLIC_ORIGIN="${PANEL_PUBLIC_ORIGIN:-}"
+EXTRA_TRUSTED_ORIGINS="${EXTRA_TRUSTED_ORIGINS:-}"
+BACKUP_INTERVAL_HOURS="${BACKUP_INTERVAL_HOURS:-$DEFAULT_BACKUP_INTERVAL_HOURS}"
+BACKUP_RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-$DEFAULT_BACKUP_RETENTION_COUNT}"
+TRAFFIC_RAW_RETENTION_DAYS="${TRAFFIC_RAW_RETENTION_DAYS:-$DEFAULT_TRAFFIC_RAW_RETENTION_DAYS}"
+DOCKER_GID="${DOCKER_GID:-$DEFAULT_DOCKER_GID}"
+DOCKER_GID_FROM_ENV=0
+[ -n "${DOCKER_GID:-}" ] && [ "$DOCKER_GID" != "$DEFAULT_DOCKER_GID" ] && DOCKER_GID_FROM_ENV=1
+NON_INTERACTIVE=0
+[ -t 0 ] || NON_INTERACTIVE=1
+WRITE_OVERRIDE_REQUESTED=0
+REPLACE_OVERRIDE=0
+START_MODE=build
 FAIL_COUNT=0
 WARN_COUNT=0
+
+usage() {
+    cat <<'USAGE'
+사용법: scripts/setup.sh [옵션]
+
+옵션
+  --non-interactive               질문 없이 기본값·플래그·환경변수로만 진행한다(stdin 이 TTY 가 아니면 자동 적용).
+  --write-override                compose.override.yaml 을 생성한다.
+  --replace-override              기존 override 를 .bak 으로 옮기고 새로 만든다(--write-override 포함).
+  --start-mode <build|up|skip>    빌드·기동 방식. 기본 build.
+  --bind-address <addr>           패널 바인딩 주소. 기본 127.0.0.1
+  --port <port>                   패널 포트. 기본 8080
+  --public-origin <origin>        패널 공개 origin(인증 origin 검사 기준).
+  --trusted-origins <list>        추가 신뢰 origin(쉼표 구분).
+  --backup-interval-hours <n>     백업 주기(시간).
+  --backup-retention-count <n>    백업 보존 개수.
+  --traffic-retention-days <n>    트래픽 원본 로그 보존 일수.
+  --docker-gid <gid>              engine-agent 에 부여할 docker 소켓 그룹 GID(Linux).
+  -h, --help                      이 도움말.
+
+같은 이름의 환경변수(PANEL_BIND_ADDRESS·PANEL_PORT·PANEL_PUBLIC_ORIGIN·EXTRA_TRUSTED_ORIGINS·
+BACKUP_INTERVAL_HOURS·BACKUP_RETENTION_COUNT·TRAFFIC_RAW_RETENTION_DAYS·DOCKER_GID)로도 값을 줄 수 있고,
+플래그가 환경변수보다 우선한다.
+USAGE
+}
+
+require_value() {
+    if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        printf '%s 옵션에 값이 필요합니다.\n' "$1" >&2
+        exit 2
+    fi
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --non-interactive) NON_INTERACTIVE=1 ;;
+        --write-override) WRITE_OVERRIDE_REQUESTED=1 ;;
+        --replace-override)
+            WRITE_OVERRIDE_REQUESTED=1
+            REPLACE_OVERRIDE=1
+            ;;
+        --start-mode)
+            require_value "$1" "${2:-}"
+            START_MODE="$2"
+            shift
+            ;;
+        --bind-address)
+            require_value "$1" "${2:-}"
+            PANEL_BIND_ADDRESS="$2"
+            shift
+            ;;
+        --port)
+            require_value "$1" "${2:-}"
+            PANEL_PORT="$2"
+            shift
+            ;;
+        --public-origin)
+            require_value "$1" "${2:-}"
+            PANEL_PUBLIC_ORIGIN="$2"
+            shift
+            ;;
+        --trusted-origins)
+            require_value "$1" "${2:-}"
+            EXTRA_TRUSTED_ORIGINS="$2"
+            shift
+            ;;
+        --backup-interval-hours)
+            require_value "$1" "${2:-}"
+            BACKUP_INTERVAL_HOURS="$2"
+            shift
+            ;;
+        --backup-retention-count)
+            require_value "$1" "${2:-}"
+            BACKUP_RETENTION_COUNT="$2"
+            shift
+            ;;
+        --traffic-retention-days)
+            require_value "$1" "${2:-}"
+            TRAFFIC_RAW_RETENTION_DAYS="$2"
+            shift
+            ;;
+        --docker-gid)
+            require_value "$1" "${2:-}"
+            DOCKER_GID="$2"
+            DOCKER_GID_FROM_ENV=1
+            shift
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *)
+            printf '알 수 없는 옵션입니다: %s\n\n' "$1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+case "$START_MODE" in
+    build | up | skip) ;;
+    *)
+        printf '%s\n' "--start-mode 는 build|up|skip 중 하나여야 합니다: $START_MODE" >&2
+        exit 2
+        ;;
+esac
 
 section() {
     printf '\n%s%s[%s]%s %s%s%s\n' "$BOLD" "$CYAN" "$1" "$RESET" "$BOLD" "$2" "$RESET"
@@ -59,6 +177,10 @@ info() { printf '  %s.%s %s\n' "$DIM" "$RESET" "$1"; }
 
 ask() {
     local prompt="$1" default="$2" answer
+    if [ "$NON_INTERACTIVE" -eq 1 ]; then
+        printf '%s' "$default"
+        return
+    fi
     printf '  %s?%s %s %s[%s]%s ' "$BOLD" "$RESET" "$prompt" "$DIM" "$default" "$RESET" >&2
     read -r answer || { answer="" && printf '\n' >&2; }
     printf '%s' "${answer:-$default}"
@@ -110,6 +232,9 @@ port_in_use() {
 
 printf '\n%s%sContainers 패널 셋업%s\n' "$BOLD" "$CYAN" "$RESET"
 printf '%s대상: %s%s\n' "$DIM" "$REPO_ROOT" "$RESET"
+if [ "$NON_INTERACTIVE" -eq 1 ]; then
+    printf '%s비대화식 모드: 질문 없이 기본값·플래그·환경변수로 진행합니다 (기동 방식 %s).%s\n' "$DIM" "$START_MODE" "$RESET"
+fi
 
 section "1/4" "사용 환경 확인"
 
@@ -122,7 +247,7 @@ case "$OS_NAME" in
         ;;
     Linux)
         ok "Linux ($(uname -m))"
-        DOCKER_GID="$(detect_docker_gid)"
+        [ "$DOCKER_GID_FROM_ENV" -eq 1 ] || DOCKER_GID="$(detect_docker_gid)"
         if [ -S "$DOCKER_SOCKET_PATH" ] && [ "$DOCKER_GID" != "$DEFAULT_DOCKER_GID" ]; then
             ok "docker 소켓 그룹 GID $DOCKER_GID 탐지 ($DOCKER_SOCKET_PATH)"
         elif [ -S "$DOCKER_SOCKET_PATH" ]; then
@@ -204,7 +329,7 @@ WRITE_OVERRIDE=1
 
 if [ -f "$OVERRIDE_FILE" ]; then
     warn "기존 compose.override.yaml 이 있습니다."
-    if ask_yn "기존 override 를 유지할까요?" "y"; then
+    if ask_yn "기존 override 를 유지할까요?" "$([ "$REPLACE_OVERRIDE" -eq 1 ] && printf n || printf y)"; then
         WRITE_OVERRIDE=0
         EXISTING_PORTS_LINE="$(sed -n 's/^[[:space:]]*-[[:space:]]*\([^:]*\):\([0-9][0-9]*\):8080[[:space:]]*$/\1 \2/p' "$OVERRIDE_FILE" | head -1)"
         if [ -n "$EXISTING_PORTS_LINE" ]; then
@@ -220,14 +345,14 @@ if [ -f "$OVERRIDE_FILE" ]; then
     fi
 fi
 
-if [ "$WRITE_OVERRIDE" -eq 1 ] && ask_yn "기본값을 바꿔 compose.override.yaml 을 생성할까요? (아니면 기본값 그대로 진행)" "n"; then
-    PANEL_BIND_ADDRESS="$(ask "패널 바인딩 주소 (외부 공개 시 0.0.0.0)" "$DEFAULT_PANEL_BIND_ADDRESS")"
-    PANEL_PORT="$(ask "패널 포트" "$DEFAULT_PANEL_PORT")"
-    PANEL_PUBLIC_ORIGIN="$(ask "패널 공개 origin (브라우저 주소창 기준, 인증 origin 검사에 사용)" "http://$(smoke_host):$PANEL_PORT")"
-    EXTRA_TRUSTED_ORIGINS="$(ask "추가 신뢰 origin (쉼표 구분, 없으면 비워 두기)" "")"
-    BACKUP_INTERVAL_HOURS="$(ask "백업 주기(시간, 1-168)" "$DEFAULT_BACKUP_INTERVAL_HOURS")"
-    BACKUP_RETENTION_COUNT="$(ask "백업 보존 개수(2-90)" "$DEFAULT_BACKUP_RETENTION_COUNT")"
-    TRAFFIC_RAW_RETENTION_DAYS="$(ask "트래픽 원본 로그 보존 일수" "$DEFAULT_TRAFFIC_RAW_RETENTION_DAYS")"
+if [ "$WRITE_OVERRIDE" -eq 1 ] && ask_yn "기본값을 바꿔 compose.override.yaml 을 생성할까요? (아니면 기본값 그대로 진행)" "$([ "$WRITE_OVERRIDE_REQUESTED" -eq 1 ] && printf y || printf n)"; then
+    PANEL_BIND_ADDRESS="$(ask "패널 바인딩 주소 (외부 공개 시 0.0.0.0)" "$PANEL_BIND_ADDRESS")"
+    PANEL_PORT="$(ask "패널 포트" "$PANEL_PORT")"
+    PANEL_PUBLIC_ORIGIN="$(ask "패널 공개 origin (브라우저 주소창 기준, 인증 origin 검사에 사용)" "${PANEL_PUBLIC_ORIGIN:-http://$(smoke_host):$PANEL_PORT}")"
+    EXTRA_TRUSTED_ORIGINS="$(ask "추가 신뢰 origin (쉼표 구분, 없으면 비워 두기)" "$EXTRA_TRUSTED_ORIGINS")"
+    BACKUP_INTERVAL_HOURS="$(ask "백업 주기(시간, 1-168)" "$BACKUP_INTERVAL_HOURS")"
+    BACKUP_RETENTION_COUNT="$(ask "백업 보존 개수(2-90)" "$BACKUP_RETENTION_COUNT")"
+    TRAFFIC_RAW_RETENTION_DAYS="$(ask "트래픽 원본 로그 보존 일수" "$TRAFFIC_RAW_RETENTION_DAYS")"
 
     TRUSTED_ORIGINS="$PANEL_PUBLIC_ORIGIN"
     if [ -n "$EXTRA_TRUSTED_ORIGINS" ]; then
@@ -281,10 +406,16 @@ ok "compose 설정 검증 통과"
 
 section "3/4" "빌드·기동"
 
+case "$START_MODE" in
+    build) START_CHOICE_DEFAULT=1 ;;
+    up) START_CHOICE_DEFAULT=2 ;;
+    *) START_CHOICE_DEFAULT=3 ;;
+esac
+
 printf '  %s1%s) 이미지 빌드 후 기동 (docker compose build && up -d --wait)\n' "$BOLD" "$RESET"
 printf '  %s2%s) 빌드 없이 기동 (docker compose up -d --wait)\n' "$BOLD" "$RESET"
 printf '  %s3%s) 건너뛰기 (수동으로 실행)\n' "$BOLD" "$RESET"
-UP_CHOICE="$(ask "선택" "1")"
+UP_CHOICE="$(ask "선택" "$START_CHOICE_DEFAULT")"
 
 case "$UP_CHOICE" in
     1)
