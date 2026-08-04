@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { hasLocale, NextIntlClientProvider } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
+import { TanstackQueryProvider } from '@shared/lib/query-provider'
 import { routing } from '../../i18n/routing'
 import '../globals.css'
 
@@ -24,7 +25,9 @@ const LocaleLayout = async ({ children, params }: LocaleLayoutProps) => {
     return (
         <html lang={locale}>
             <body>
-                <NextIntlClientProvider>{children}</NextIntlClientProvider>
+                <TanstackQueryProvider>
+                    <NextIntlClientProvider>{children}</NextIntlClientProvider>
+                </TanstackQueryProvider>
             </body>
         </html>
     )
