@@ -1,11 +1,35 @@
 'use client'
 
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { OPERATION_JOB_STATUS, type OperationJob, type OperationJobStatus } from '@containers/contracts/operation-job'
+import { OPERATION_JOB_STATUS, backupScheduleSchema, operationJobListSchema, type OperationJob } from '@containers/contracts/operation-job'
 import { ACTIVE_JOB_STATUSES, jobResponseSchema } from '@entities/job/job.api'
-import { parseApiError } from '@shared/lib/parse-api-error'
+import { clientFetch, clientFetchData } from '@shared/lib/client-fetch'
+import { QUERY_KEY } from '@shared/lib/query-key'
+import { z } from 'zod'
+
+const backupScheduleResponseSchema = z.object({ data: backupScheduleSchema, success: z.literal(true) })
 
 const POLL_INTERVAL_MS = 1_000
+
+export const jobListQueryOptions = () =>
+    queryOptions({
+        queryKey: QUERY_KEY.JOB.LIST,
+        queryFn: () => clientFetchData<z.infer<typeof operationJobListSchema>>('/api/jobs'),
+    })
+
+export const backupScheduleQueryOptions = () =>
+    queryOptions({
+        queryKey: QUERY_KEY.JOB.BACKUP_SCHEDULE,
+        queryFn: async () => backupScheduleResponseSchema.parse(await clientFetch('/api/jobs/backup-schedule')).data,
+    })
+
+const operationJobDetailQueryOptions = (jobId: string) =>
+    queryOptions({
+        queryKey: QUERY_KEY.JOB.DETAIL(jobId),
+        queryFn: () => clientFetchData<OperationJob>(`/api/jobs/${encodeURIComponent(jobId)}`),
+        enabled: jobId.length > 0,
+    })
 
 type UseOperationJobPollingParams = {
     failureLabel: string
@@ -13,37 +37,43 @@ type UseOperationJobPollingParams = {
 }
 
 export const useOperationJobPolling = ({ failureLabel, onSucceeded }: UseOperationJobPollingParams) => {
-    const [error, setError] = useState<string>()
     const [jobId, setJobId] = useState<string>()
-    const [status, setStatus] = useState<OperationJobStatus>()
+    const query = useQuery({
+        ...operationJobDetailQueryOptions(jobId ?? ''),
+        refetchInterval: POLL_INTERVAL_MS,
+    })
 
+    const status = query.data?.status
     const isJobActive = jobId !== undefined && status !== undefined && ACTIVE_JOB_STATUSES.includes(status)
 
+    useEffect(() => {
+        if (status !== OPERATION_JOB_STATUS.SUCCEEDED) return
+        void onSucceeded?.()
+    }, [onSucceeded, status])
+
     const trackJob = (job: OperationJob) => {
-        setError(undefined)
         setJobId(job.id)
-        setStatus(job.status)
     }
 
-    useEffect(() => {
-        if (jobId === undefined || status === undefined || !ACTIVE_JOB_STATUSES.includes(status)) return
-        const interval = setInterval(() => {
-            void fetch(`/api/jobs/${encodeURIComponent(jobId)}`)
-                .then(async (response) => {
-                    const body: unknown = await response.json()
-                    if (!response.ok) throw new Error(parseApiError(body, failureLabel))
-                    const job = jobResponseSchema.parse(body).data
-                    setStatus(job.status)
-                    if (job.status === OPERATION_JOB_STATUS.SUCCEEDED) {
-                        await onSucceeded?.()
-                    } else if (job.status === OPERATION_JOB_STATUS.FAILED || job.status === OPERATION_JOB_STATUS.CANCELLED) {
-                        setError(job.failureCode ?? failureLabel)
-                    }
-                })
-                .catch((pollError) => setError(pollError instanceof Error ? pollError.message : failureLabel))
-        }, POLL_INTERVAL_MS)
-        return () => clearInterval(interval)
-    }, [failureLabel, jobId, onSucceeded, status])
+    const error = query.isError ? failureLabel : undefined
 
     return { error, isJobActive, jobId, status, trackJob }
+}
+
+export const useGetJobs = () => useQuery(jobListQueryOptions())
+
+export const useGetBackupSchedule = () => useQuery(backupScheduleQueryOptions())
+
+export const useCancelJob = () => {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: (jobId: string) =>
+            clientFetchData<z.infer<typeof jobResponseSchema>['data']>(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }),
+        onSuccess: (job) => {
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.JOB.LIST })
+            if (job.status !== OPERATION_JOB_STATUS.SUCCEEDED && job.status !== OPERATION_JOB_STATUS.CANCELLED) {
+                queryClient.setQueryData(['job', 'current'], job)
+            }
+        },
+    })
 }
