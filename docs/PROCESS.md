@@ -454,3 +454,16 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] g. 금지 패턴 grep 확정 — useCallback/useMemo 0, raw SQL(프로덕션 service) 0, barrel(`apps/web/src` index.ts) 0, 역방향 import(`@widgets/`·`@features/` from entities/shared/features) 0, process.env(앱 src, 단일 상수 모듈 제외) 0
 - [x] h. 잔존 예외 판정 — ① `api/with-error-handling.ts` Hono `Handler` 공식 제네릭 기본값(`Env = any` 등, eslint-disable+사유 주석) — Hono 타입 시그니처 준수 위해 유지 ② `nginx-directives.ts` `'any'`는 Nginx `satisfy` 지시어 공식 옵션 문자열 리터럴(false positive) ③ raw SQL 4건은 `.test.ts` 픽스처(PRAGMA FK 제어·`__drizzle_migrations` 시딩)만
 - [x] i. 검증 후 재확인 — 상수 이관·JSDoc 문구 수정(`traffic-worker with-error-handling.ts` "any other error"→"an unexpected error") 후 typecheck·lint·format:check·test(166 pass)·build 재통과
+
+## 작업: 웹 패널 UI/UX 전면 개편 + 백엔드 정합성·보안 감사 (2026-08-04 시작)
+
+기준: 사용자 지시 — "웹패널의 UIUX 개선 / border·radius 없이 모노톤 모던·심플·미니멀 / opacity로 고급스러운 위계 / shadcn 제대로 활용 / nginx·api·engine-agent·traffic-worker 로직 정합성·보안 검토 / 조사→방향→구현 workflow 병렬".
+브랜치: `feat/web-ui-refresh`. 확정 결정(질의 응답): ① 구분은 배경 elevation + opacity만(border 전면 제거·radius 0) ② shadcn 필요한 것 전부 공식 추가 ③ 새 브랜치 커밋·푸시 ④ 백엔드 감사에서 명백한 버그·보안은 즉시 수정, 애매·파괴적은 문서화 후 승인.
+
+- [x] a. 조사 — 6개 영역 병렬 감사(UX·정보구조 25 / shadcn 23 / 디자인 토큰 20 / web 컨벤션·Query 25 / 백엔드 로직 22 / 보안 17 = findings 132건) + 교차검증(중복 병합·심각도 재평가·쟁점 8건 확정). 리포트: [quality-assurance/2026-08-04-ui-backend-audit.md](./quality-assurance/2026-08-04-ui-backend-audit.md). critical 4건(panel-shell children 이중 렌더 / traffic-worker 빈 배열 insert로 수집 영구 정지 / api createAppError가 code·statusCode 미부착 / engine-agent tagImage 관리 plane 보호 부재)은 메인 세션에서 코드로 직접 재확인
+- [x] b. 방향 — 토큰 체계(surface 3단·overlay 3단·텍스트 3단·shadcn 표준 토큰 보강·의미색 3쌍), 컴포넌트 정책(기존 6종 공식 교체 + 14종 신규 도입 + border/shadow→elevation 치환 규칙), 정보구조 재설계(Sidebar 단일 main·대시보드 요약화·데이터 경로 단일화), 백엔드 즉시 수정 10건과 보류 4건을 [acknowledge/0029](./acknowledge/0029-monotone-design-system.md) 로 확정
+- [ ] c. 구현 1 — 토큰·globals.css·shared/ui primitive 재작성(공식 shadcn 기준 + 신규 컴포넌트 도입)
+- [ ] d. 구현 2 — 위젯·features·페이지를 신규 디자인 시스템으로 병렬 이관(도메인별 분할)
+- [ ] e. 백엔드 — 감사에서 확정된 로직 오류·보안 결함 수정과 테스트 보강
+- [ ] f. 검증 — typecheck→lint→format:check→test→build 전체 gate, Compose 재빌드, 브라우저 E2E(라이트·다크, 데스크톱·모바일, console error 0)
+- [ ] g. 문서 — PROCESS·HANDOFF-STATUS·UI-UX·SHADCN-COMPONENTS·SECURITY·acknowledge 갱신, 단계별 커밋·푸시
