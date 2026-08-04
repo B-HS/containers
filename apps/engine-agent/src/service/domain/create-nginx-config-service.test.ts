@@ -209,6 +209,75 @@ describe('Nginx 설정 서비스', () => {
         await expect(service.apply({ config: withNestedBypass, expectedSha256: digest(currentConfig) })).rejects.toThrow('NGINX_PROTECTED_CONTRACT')
     })
 
+    test('직접 TLS 예시 설정도 보호 계약을 통과합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const tlsExample = await readFile(resolve(process.cwd(), 'infra/nginx/nginx-tls.conf.example'), 'utf8')
+
+        const result = await service.apply({ config: tlsExample, expectedSha256: digest(currentConfig) })
+
+        expect(result.sha256).toBe(digest(tlsExample))
+    })
+
+    test('catch-all default server를 제거하면 거부합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const withoutCatchAll = currentConfig.replace(
+            `    server {
+        listen 8080 default_server;
+        server_name _;
+
+        return 444;
+    }
+
+`,
+            '',
+        )
+
+        expect(withoutCatchAll).not.toBe(currentConfig)
+        await expect(service.apply({ config: withoutCatchAll, expectedSha256: digest(currentConfig) })).rejects.toThrow('NGINX_PROTECTED_CONTRACT')
+    })
+
+    test('catch-all을 upstream으로 프록시하도록 바꾸면 거부합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const withProxyingCatchAll = currentConfig.replace(
+            `        server_name _;
+
+        return 444;`,
+            `        server_name _;
+
+        location / {
+            proxy_pass http://containers_web;
+        }`,
+        )
+
+        expect(withProxyingCatchAll).not.toBe(currentConfig)
+        await expect(service.apply({ config: withProxyingCatchAll, expectedSha256: digest(currentConfig) })).rejects.toThrow(
+            'NGINX_PROTECTED_CONTRACT',
+        )
+    })
+
+    test('real_ip 신뢰 대역을 제거하거나 전체 대역으로 넓히면 거부합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const withoutTrustedSource = currentConfig.replace('    set_real_ip_from 10.89.0.10/32;\n', '')
+        const withUnboundedSource = currentConfig.replace('set_real_ip_from 10.89.0.10/32;', 'set_real_ip_from 0.0.0.0/0;')
+
+        expect(withoutTrustedSource).not.toBe(currentConfig)
+        await expect(service.apply({ config: withoutTrustedSource, expectedSha256: digest(currentConfig) })).rejects.toThrow(
+            'NGINX_PROTECTED_CONTRACT',
+        )
+        await expect(service.apply({ config: withUnboundedSource, expectedSha256: digest(currentConfig) })).rejects.toThrow(
+            'NGINX_PROTECTED_CONTRACT',
+        )
+    })
+
+    test('신뢰 대역을 다른 CIDR로 바꾸는 것은 허용합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const withOtherSource = currentConfig.replace('set_real_ip_from 10.89.0.10/32;', 'set_real_ip_from 10.90.0.0/24;')
+
+        const result = await service.apply({ config: withOtherSource, expectedSha256: digest(currentConfig) })
+
+        expect(result.sha256).toBe(digest(withOtherSource))
+    })
+
     test('burst 상한을 넘긴 /api/ rate limit을 거부합니다', async () => {
         const { currentConfig, service } = await createTestContext()
         const withExcessiveBurst = currentConfig.replace(

@@ -34,6 +34,11 @@ const API_BURST_LIMIT = 1_000
 const AUTH_BURST_LIMIT = 100
 const CLIENT_IP_MAP_SOURCE = '$remote_addr'
 const CLIENT_IP_MAP_TARGET = '$containers_client_ip'
+const REAL_IP_SOURCE_DIRECTIVE = 'set_real_ip_from'
+const UNBOUNDED_REAL_IP_SOURCES = ['0.0.0.0/0', '::/0', 'any', '0.0.0.0', '::']
+const CATCH_ALL_LISTEN_ARGUMENT = 'default_server'
+const CATCH_ALL_SERVER_NAME = '_'
+const CATCH_ALL_RETURN_STATUSES = ['444', '404']
 const PANEL_REQUIRED_HEADERS = ['Content-Security-Policy', 'X-Content-Type-Options', 'X-Frame-Options']
 const API_REQUIRED_HEADERS = ['X-Content-Type-Options', 'X-Frame-Options']
 const SIGN_IN_LOCATION_PATTERN = /^\^\/api\/auth\/sign-in\/email/
@@ -46,6 +51,8 @@ const REQUIRED_HTTP_DIRECTIVES = [
     { args: [CLIENT_IP_MAP_TARGET, `zone=${API_RATE_ZONE}:10m`, 'rate=300r/m'], name: 'limit_req_zone' },
     { args: [CLIENT_IP_MAP_TARGET, `zone=${AUTH_RATE_ZONE}:10m`, 'rate=5r/m'], name: 'limit_req_zone' },
     { args: ['429'], name: 'limit_req_status' },
+    { args: [], name: REAL_IP_SOURCE_DIRECTIVE },
+    { args: [], name: 'real_ip_header' },
 ]
 
 const PROBE_MAX_ATTEMPTS = 5
@@ -195,6 +202,24 @@ const hasStatusServer = (http: NginxBlock) =>
         )
     })
 
+const hasUnboundedRealIpSource = (root: NginxBlock) =>
+    collectDirectivesDeep(root, REAL_IP_SOURCE_DIRECTIVE).some((directive) =>
+        directive.args.some((argument) => UNBOUNDED_REAL_IP_SOURCES.includes(argument)),
+    )
+
+const hasCatchAllServer = (http: NginxBlock) =>
+    collectBlocks(http, 'server').some((server) => {
+        if (!hasDirective(server, 'listen', [PANEL_LISTEN_PORT, CATCH_ALL_LISTEN_ARGUMENT])) {
+            return false
+        }
+        if (!hasDirective(server, 'server_name', [CATCH_ALL_SERVER_NAME]) || collectDirectivesDeep(server, 'proxy_pass').length > 0) {
+            return false
+        }
+        return collectDirectives(server, 'return').some(
+            (directive) => directive.args.length === 1 && CATCH_ALL_RETURN_STATUSES.includes(directive.args[0] ?? ''),
+        )
+    })
+
 const hasUpstream = (http: NginxBlock, name: string, target: string) =>
     collectBlocks(http, 'upstream').some((upstream) => upstream.args.includes(name) && hasDirective(upstream, 'server', [target]))
 
@@ -217,8 +242,12 @@ const verifyProtectedContract = (config: string) => {
     ) {
         throw createAppError('NGINX_PROTECTED_CONTRACT')
     }
+    if (hasUnboundedRealIpSource(root)) {
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
+    }
     if (
         !hasClientIpMap(http) ||
+        !hasCatchAllServer(http) ||
         !hasStatusServer(http) ||
         !hasUpstream(http, API_UPSTREAM_NAME, API_UPSTREAM_SERVER) ||
         !hasUpstream(http, WEB_UPSTREAM_NAME, WEB_UPSTREAM_SERVER)

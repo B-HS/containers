@@ -23,6 +23,22 @@ Nginx는 요청의 최초 애플리케이션 계층 진입점이며 다음만 �
 
 패널과 API hostname은 사용자 route로 등록할 수 없다. `/api`, `/api/auth`, `/events`, `/ws`, Next static 경로는 패널 server block 안에서 명시적으로 분리한다. 외부 API server block은 API key 인증 경로만 허용하고 auth·session route를 차단한다. 사용자 container가 관리 cookie나 내부 header를 받지 않도록 각 server block의 header set을 따로 정의한다.
 
+## 2.1 client IP 복구 (real_ip)
+
+프록시 뒤에서 원본 client IP를 복구하지 않으면 모든 요청이 게이트웨이 IP 하나로 수렴한다. 그 상태에서는 `limit_req_zone` 키가 전 사용자 공유가 되어 한 명의 로그인 실패가 전체를 429로 만들고, access log `client_ip`와 감사 로그 sourceIp도 전부 같은 값이 된다. `nginx.conf` http 블록은 다음을 둔다.
+
+```nginx
+set_real_ip_from 10.89.0.10/32;
+real_ip_header CF-Connecting-IP;
+real_ip_recursive on;
+```
+
+신뢰 대역은 `edge` 네트워크의 cloudflared 고정 IP 하나로 좁힌다. 대역 밖에서 온 요청의 헤더는 무시되므로 위조로 rate limit 키를 바꿀 수 없다. real_ip 모듈이 `$remote_addr` 자체를 치환하기 때문에 `map $remote_addr $containers_client_ip`, `limit_req_zone $containers_client_ip`, access log `client_ip`, upstream으로 전달하는 `X-Real-IP`가 모두 별도 수정 없이 원본 IP 기준이 된다. engine-agent 보호 계약도 map 소스로 `$remote_addr`을 요구할 뿐이라 영향받지 않는다.
+
+`cf_ray`·`country`는 여전히 요청 헤더 원문을 그대로 기록한다. 신뢰 대역 밖에서 온 요청에서는 위조 가능한 값이므로 분석 시 검증된 값으로 다루지 않는다.
+
+알 수 없는 Host로 온 요청은 catch-all `default_server`가 `444`로 끊는다. 등록한 `server_name` 밖의 도메인은 패널·API에 도달하지 않는다. 노출 경로별 설정과 도메인 전환 절차는 [EXPOSURE.md](./EXPOSURE.md)를 따른다.
+
 ## 3. 설정 모델
 
 ### 3.1 구조화 route
