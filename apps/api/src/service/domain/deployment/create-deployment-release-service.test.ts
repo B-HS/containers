@@ -63,7 +63,7 @@ const createTestContext = async ({
         protectedHostnames: [],
         protectedNetworks: ['containers_control'],
     })
-    const manifest = await manifestService.create(actorId, {
+    const { manifest } = await manifestService.create(actorId, {
         healthcheck: { path: '/health', retries: 2, startPeriodSeconds: 0 },
         imageDigest,
         internalPort: 3000,
@@ -220,7 +220,7 @@ describe('blue-green deployment release', () => {
         })
         const firstRelease = await releaseService.create(actorId, manifest.id)
         await releaseService.run(firstRelease.id)
-        const secondManifest = await manifestService.create(actorId, {
+        const { manifest: secondManifest } = await manifestService.create(actorId, {
             healthcheck: { path: '/health', retries: 2, startPeriodSeconds: 0 },
             imageDigest,
             internalPort: 3000,
@@ -264,7 +264,7 @@ describe('blue-green deployment release', () => {
         })
         const firstRelease = await releaseService.create(actorId, manifest.id)
         await releaseService.run(firstRelease.id)
-        const secondManifest = await manifestService.create(actorId, {
+        const { manifest: secondManifest } = await manifestService.create(actorId, {
             healthcheck: { path: '/health', retries: 2, startPeriodSeconds: 0 },
             imageDigest,
             internalPort: 3000,

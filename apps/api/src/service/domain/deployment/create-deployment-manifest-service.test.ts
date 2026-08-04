@@ -68,9 +68,10 @@ const createInput = (overrides: Record<string, unknown> = {}) => ({
 describe('배포 manifest 서비스', () => {
     test('image digest를 확인하고 secret 값 없이 immutable manifest를 저장합니다', async () => {
         const { actorId, db, service, sqlite } = await createTestContext()
-        const created = await service.create(actorId, createInput())
+        const { manifest: created, reused } = await service.create(actorId, createInput())
         const [stored] = await db.select().from(deploymentManifest)
 
+        expect(reused).toBe(false)
         expect(created.imageDigest).toBe(imageDigest)
         expect(created.secrets).toEqual([{ environmentKey: 'DATABASE_URL', reference: 'production/sample/database-url' }])
         expect(stored?.secretsJson).not.toContain('secret-value')
@@ -79,11 +80,33 @@ describe('배포 manifest 서비스', () => {
         sqlite.close()
     })
 
+    test('같은 name·version 재요청은 payload가 같으면 기존 manifest를 재사용합니다', async () => {
+        const { actorId, db, service, sqlite } = await createTestContext()
+        const first = await service.create(actorId, createInput())
+        const second = await service.create(actorId, createInput())
+
+        expect(second.reused).toBe(true)
+        expect(second.manifest.id).toBe(first.manifest.id)
+        expect(await db.select().from(deploymentManifest)).toHaveLength(1)
+        sqlite.close()
+    })
+
+    test('name·version 조회 필터로 목록을 좁힙니다', async () => {
+        const { actorId, service, sqlite } = await createTestContext()
+        await service.create(actorId, createInput())
+        await service.create(actorId, createInput({ version: '1.1.0' }))
+
+        expect(await service.list({ name: 'sample-app' })).toHaveLength(2)
+        expect(await service.list({ name: 'sample-app', version: '1.1.0' })).toHaveLength(1)
+        expect(await service.list({ name: 'other-app' })).toHaveLength(0)
+        sqlite.close()
+    })
+
     test('중복 version, 보호 hostname, 존재하지 않는 digest를 거부합니다', async () => {
         const { actorId, service, sqlite } = await createTestContext()
         await service.create(actorId, createInput())
 
-        await expect(service.create(actorId, createInput())).rejects.toThrow('DEPLOYMENT_MANIFEST_VERSION_EXISTS')
+        await expect(service.create(actorId, createInput({ internalPort: 4000 }))).rejects.toThrow('DEPLOYMENT_MANIFEST_VERSION_EXISTS')
         await expect(service.create(actorId, createInput({ route: { hostname: 'panel.example.com' }, version: '1.0.1' }))).rejects.toThrow(
             'DEPLOYMENT_ROUTE_PROTECTED_HOSTNAME',
         )

@@ -5,24 +5,34 @@ export const API_KEY_SCOPE = {
     ARTIFACT_UPLOAD: 'artifact:upload',
     BACKUP_READ: 'backup:read',
     BACKUP_WRITE: 'backup:write',
+    CONTROL_PLANE_READ: 'control-plane:read',
     DEPLOYMENT_READ: 'deployment:read',
     DEPLOYMENT_WRITE: 'deployment:write',
+    ENGINE_READ: 'engine:read',
     IMAGE_LOAD: 'image:load',
+    JOB_READ: 'job:read',
+    JOB_WRITE: 'job:write',
     SECRET_READ: 'secret:read',
     SECRET_WRITE: 'secret:write',
 } as const
 
-const apiKeyScopeSchema = z.enum([
+export const API_KEY_SCOPE_VALUES = [
     API_KEY_SCOPE.ARTIFACT_READ,
     API_KEY_SCOPE.ARTIFACT_UPLOAD,
     API_KEY_SCOPE.BACKUP_READ,
     API_KEY_SCOPE.BACKUP_WRITE,
+    API_KEY_SCOPE.CONTROL_PLANE_READ,
     API_KEY_SCOPE.DEPLOYMENT_READ,
     API_KEY_SCOPE.DEPLOYMENT_WRITE,
+    API_KEY_SCOPE.ENGINE_READ,
     API_KEY_SCOPE.IMAGE_LOAD,
+    API_KEY_SCOPE.JOB_READ,
+    API_KEY_SCOPE.JOB_WRITE,
     API_KEY_SCOPE.SECRET_READ,
     API_KEY_SCOPE.SECRET_WRITE,
-])
+] as const
+
+const apiKeyScopeSchema = z.enum(API_KEY_SCOPE_VALUES)
 
 export const apiKeyCreateSchema = z.object({
     expiresInDays: z.number().int().min(1).max(365).nullable(),
@@ -30,7 +40,7 @@ export const apiKeyCreateSchema = z.object({
     scopes: z
         .array(apiKeyScopeSchema)
         .min(1)
-        .max(9)
+        .max(API_KEY_SCOPE_VALUES.length)
         .transform((scopes) => [...new Set(scopes)]),
 })
 

@@ -15,6 +15,10 @@ const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const MANIFEST_READ_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const MANIFEST_WRITE_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const manifestIdParamSchema = z.object({ id: z.uuid() })
+const manifestListQuerySchema = z.object({
+    name: z.string().trim().min(1).max(63).optional(),
+    version: z.string().trim().min(1).max(64).optional(),
+})
 
 type DeploymentManifestRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
@@ -51,9 +55,11 @@ export const createDeploymentManifestRoute = ({
                 summary: '배포 manifest 목록 조회',
                 tags: ['Deployment'],
             }),
+            validator('query', manifestListQuerySchema),
             withErrorHandling(async (context) => {
                 await authenticateRead(context.req.raw.headers, apiKeyService, authService)
-                return context.json(successResponse(await deploymentManifestService.list()), 200)
+                const query = context.req.valid('query' as never) as z.infer<typeof manifestListQuerySchema>
+                return context.json(successResponse(await deploymentManifestService.list(query)), 200)
             }),
         )
         .get(
@@ -97,15 +103,15 @@ export const createDeploymentManifestRoute = ({
                 }
                 await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
                 try {
-                    const created = await deploymentManifestService.create(actorId, context.req.valid('json' as never))
+                    const { manifest, reused } = await deploymentManifestService.create(actorId, context.req.valid('json' as never))
                     await auditService.record({
                         ...audit,
                         actorId,
                         authMethod,
-                        detail: { name: created.name, version: created.version },
+                        detail: { name: manifest.name, reused, version: manifest.version },
                         result: 'success',
                     })
-                    return context.json(successResponse(created), 201)
+                    return context.json(successResponse(manifest), reused ? 200 : 201)
                 } catch (error) {
                     const code = error instanceof Error ? error.message : 'DEPLOYMENT_MANIFEST_CREATE_FAILED'
                     await auditService.record({ ...audit, actorId, authMethod, detail: { code }, result: 'failure' })

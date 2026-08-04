@@ -19,6 +19,7 @@ import { createDeploymentRoute } from '../route/deployment/create-deployment-rou
 import { createEngineRoute } from '../route/engine/create-engine-route'
 import { createEngineStreamProxyRoute } from '../route/stream/create-engine-stream-proxy-route'
 import { createHealthRoute } from '../route/health/create-health-route'
+import { createReadinessRoute } from '../route/health/create-readiness-route'
 import { createJobRoute } from '../route/job/create-job-route'
 import { createMaintenanceRoute } from '../route/maintenance/create-maintenance-route'
 import { createNginxRoute } from '../route/nginx/create-nginx-route'
@@ -36,6 +37,7 @@ import type { DeploymentReleaseService } from '../service/domain/deployment/crea
 import type { DeploymentSecretService } from '../service/domain/deployment/create-deployment-secret-service'
 import { createEngineService } from '../service/domain/engine/create-engine-service'
 import { createHealthService } from '../service/domain/health/create-health-service'
+import type { ReadinessService } from '../service/domain/health/create-readiness-service'
 import type { BackupScheduleService } from '../service/domain/job/create-backup-schedule-service'
 import type { OperationJobService } from '../service/domain/job/create-operation-job-service'
 import type { MaintenanceService } from '../service/domain/maintenance/create-maintenance-service'
@@ -75,6 +77,7 @@ type AppDependencies = {
     maintenanceService: Pick<MaintenanceService, 'disable' | 'enable' | 'enter' | 'getStatus' | 'isEnabled' | 'leave'>
     nginxProxyRouteService: Pick<NginxProxyRouteService, 'create' | 'list' | 'remove'>
     controlPlaneStatusService: Pick<ControlPlaneStatusService, 'getStatus'>
+    readinessService: Pick<ReadinessService, 'getReadiness'>
     notificationDeliveryService: Pick<NotificationDeliveryService, 'deliverTest'>
     notificationDestinationService: NotificationDestinationService
     operationJobService: Pick<OperationJobService, 'enqueue' | 'get' | 'list' | 'listEvents' | 'requestCancel'>
@@ -102,15 +105,17 @@ export const createApp = ({
     notificationDestinationService,
     controlPlaneStatusService,
     operationJobService,
+    readinessService,
     trafficWorkerClient,
     trafficExportRoot = '/backups/traffic-exports',
     uploadService,
 }: AppDependencies) => {
     const healthService = createHealthService({ now: () => new Date() })
     const healthRoute = createHealthRoute({ healthService })
+    const readinessRoute = createReadinessRoute({ apiKeyService, authService, readinessService })
     const auditRoute = createAuditRoute({ auditService, authService })
     const engineService = createEngineService({ engineAgentClient })
-    const engineRoute = createEngineRoute({ authService, engineService })
+    const engineRoute = createEngineRoute({ apiKeyService, authService, engineService })
     const engineStreamProxyRoute = createEngineStreamProxyRoute({ authService, engineAgentClient })
     const authRoute = createAuthRoute({ auditService, authService })
     const controlService = createControlService({ engineAgentClient })
@@ -139,9 +144,9 @@ export const createApp = ({
         notificationDeliveryService,
         notificationDestinationService,
     })
-    const jobRoute = createJobRoute({ auditService, authService, backupScheduleService, operationJobService })
+    const jobRoute = createJobRoute({ apiKeyService, auditService, authService, backupScheduleService, operationJobService })
     const maintenanceRoute = createMaintenanceRoute({ auditService, authService, maintenanceService })
-    const controlPlaneRoute = createControlPlaneRoute({ authService, controlPlaneStatusService })
+    const controlPlaneRoute = createControlPlaneRoute({ apiKeyService, authService, controlPlaneStatusService })
     const loginRateWindows = new Map<string, { count: number; startedAt: number }>()
     const isLoginRateLimited = (headers: Headers) => {
         const key = headers.get('x-real-ip')?.trim() ?? 'unknown'
@@ -184,6 +189,7 @@ export const createApp = ({
         })
         .route('/api', maintenanceRoute)
         .route('/api/health', healthRoute)
+        .route('/api', readinessRoute)
         .route('/api', engineRoute)
         .route('/api', engineStreamProxyRoute)
         .route('/api', auditRoute)

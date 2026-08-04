@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
     deploymentManifestInputSchema,
     deploymentManifestListSchema,
@@ -138,6 +138,31 @@ const toRow = (id: string, actorId: string, timestamp: Date, input: DeploymentMa
     volumesJson: JSON.stringify(input.volumes),
 })
 
+const OMITTED_DIGEST_FIELDS = new Set(['createdAt', 'createdBy', 'id', 'updatedAt'])
+
+const canonicalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+        return value.map(canonicalize)
+    }
+    if (typeof value === 'object' && value !== null) {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .filter(([key]) => !OMITTED_DIGEST_FIELDS.has(key))
+            .sort(([left], [right]) => (left < right ? -1 : 1))
+        return Object.fromEntries(entries.map(([key, entryValue]) => [key, canonicalize(entryValue)]))
+    }
+    return value
+}
+
+const payloadDigest = (value: unknown) =>
+    createHash('sha256')
+        .update(JSON.stringify(canonicalize(value)))
+        .digest('hex')
+
+type ManifestListFilter = {
+    name?: string | undefined
+    version?: string | undefined
+}
+
 export const createDeploymentManifestService = ({
     db,
     engineAgentClient,
@@ -145,7 +170,13 @@ export const createDeploymentManifestService = ({
     protectedHostnames,
     protectedNetworks,
 }: DeploymentManifestServiceDependencies) => {
-    const list = async () => deploymentManifestListSchema.parse((await db.list()).map(toManifest))
+    const list = async (filter: ManifestListFilter = {}) => {
+        const manifests = deploymentManifestListSchema.parse((await db.list()).map(toManifest))
+        return manifests.filter(
+            (manifest) =>
+                (filter.name === undefined || manifest.name === filter.name) && (filter.version === undefined || manifest.version === filter.version),
+        )
+    }
 
     return {
         create: async (actorId: string, input: unknown) => {
@@ -168,7 +199,15 @@ export const createDeploymentManifestService = ({
             }
             const collision = await db.findVersionCollision(payload.name, payload.version)
             if (collision !== undefined) {
-                throw createAppError('DEPLOYMENT_MANIFEST_VERSION_EXISTS')
+                const existing = await db.findById(collision.id)
+                if (!existing) {
+                    throw createAppError('DEPLOYMENT_MANIFEST_VERSION_EXISTS')
+                }
+                const existingManifest = toManifest(existing)
+                if (payloadDigest(existingManifest) !== payloadDigest(payload)) {
+                    throw createAppError('DEPLOYMENT_MANIFEST_VERSION_EXISTS')
+                }
+                return { manifest: existingManifest, reused: true as const }
             }
             const images = await engineAgentClient.getImages()
             const imageExists = images.some(
@@ -185,7 +224,7 @@ export const createDeploymentManifestService = ({
             if (!created) {
                 throw createAppError('DEPLOYMENT_MANIFEST_CREATE_FAILED')
             }
-            return toManifest(created)
+            return { manifest: toManifest(created), reused: false as const }
         },
         get: async (id: string) => {
             const record = await db.findById(id)

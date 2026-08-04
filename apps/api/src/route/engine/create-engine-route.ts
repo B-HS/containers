@@ -1,14 +1,17 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
+import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { containerLogRequestSchema } from '@containers/contracts/engine'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
 import { withErrorHandling } from '../../lib/with-error-handling'
+import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { EngineService } from '../../service/domain/engine/create-engine-service'
 
 type EngineRouteDependencies = {
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>
     authService: Pick<AuthService, 'requireRole'>
     engineService: EngineService
 }
@@ -29,8 +32,16 @@ const withEngineFallback =
         }
     }
 
-export const createEngineRoute = ({ authService, engineService }: EngineRouteDependencies) =>
-    new Hono()
+export const createEngineRoute = ({ apiKeyService, authService, engineService }: EngineRouteDependencies) => {
+    const authenticateRead = async (headers: Headers) => {
+        if (headers.has('authorization')) {
+            await apiKeyService.authenticate(headers, API_KEY_SCOPE.ENGINE_READ)
+            return
+        }
+        await authService.requireRole(headers, ALL_ROLES)
+    }
+
+    return new Hono()
         .get(
             '/system/engine',
             describeRoute({
@@ -41,7 +52,7 @@ export const createEngineRoute = ({ authService, engineService }: EngineRouteDep
                 tags: ['Engine'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, ALL_ROLES)
+                await authenticateRead(context.req.raw.headers)
                 return withEngineFallback('ENGINE_UNAVAILABLE')(async () => context.json(successResponse(await engineService.getOverview()), 200))
             }),
         )
@@ -55,7 +66,7 @@ export const createEngineRoute = ({ authService, engineService }: EngineRouteDep
                 tags: ['Engine'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, ALL_ROLES)
+                await authenticateRead(context.req.raw.headers)
                 return withEngineFallback('ENGINE_UNAVAILABLE')(async () => context.json(successResponse(await engineService.getContainers()), 200))
             }),
         )
@@ -69,7 +80,7 @@ export const createEngineRoute = ({ authService, engineService }: EngineRouteDep
                 tags: ['Engine'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, ALL_ROLES)
+                await authenticateRead(context.req.raw.headers)
                 return withEngineFallback('CONTAINER_INSPECT_FAILED')(async () =>
                     context.json(successResponse(await engineService.getContainer(context.req.param('containerId'))), 200),
                 )
@@ -86,7 +97,7 @@ export const createEngineRoute = ({ authService, engineService }: EngineRouteDep
             }),
             validator('query', containerLogRequestSchema),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, ALL_ROLES)
+                await authenticateRead(context.req.raw.headers)
                 return withEngineFallback('CONTAINER_LOGS_FAILED')(async () =>
                     context.json(
                         successResponse(await engineService.getContainerLogs(context.req.param('containerId'), context.req.valid('query'))),
@@ -95,3 +106,4 @@ export const createEngineRoute = ({ authService, engineService }: EngineRouteDep
                 )
             }),
         )
+}

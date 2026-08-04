@@ -1,10 +1,12 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
+import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { operationJobListQuerySchema } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
 import { withErrorHandling } from '../../lib/with-error-handling'
+import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { BackupScheduleService } from '../../service/domain/job/create-backup-schedule-service'
@@ -15,6 +17,7 @@ const JOB_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const jobIdSchema = z.object({ id: z.uuid() })
 
 type JobRouteDependencies = {
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     backupScheduleService: Pick<BackupScheduleService, 'getSchedule'>
@@ -23,8 +26,24 @@ type JobRouteDependencies = {
 
 const sourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-export const createJobRoute = ({ auditService, authService, backupScheduleService, operationJobService }: JobRouteDependencies) =>
-    new Hono()
+export const createJobRoute = ({ apiKeyService, auditService, authService, backupScheduleService, operationJobService }: JobRouteDependencies) => {
+    const authenticateRead = async (headers: Headers) => {
+        if (headers.has('authorization')) {
+            await apiKeyService.authenticate(headers, API_KEY_SCOPE.JOB_READ)
+            return
+        }
+        await authService.requireRole(headers, JOB_ROLES)
+    }
+
+    const authenticateWrite = async (headers: Headers) => {
+        if (headers.has('authorization')) {
+            return apiKeyService.authenticate(headers, API_KEY_SCOPE.JOB_WRITE)
+        }
+        const session = await authService.requireRecentRole(headers, JOB_ROLES, RECENT_AUTH_MAX_AGE_MS)
+        return { actorId: session.user.id, authMethod: 'session' as const }
+    }
+
+    return new Hono()
         .get(
             '/jobs',
             describeRoute({
@@ -34,7 +53,7 @@ export const createJobRoute = ({ auditService, authService, backupScheduleServic
             }),
             validator('query', operationJobListQuerySchema),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, JOB_ROLES)
+                await authenticateRead(context.req.raw.headers)
                 const query = context.req.valid('query' as never) as z.infer<typeof operationJobListQuerySchema>
                 return context.json(successResponse(await operationJobService.list(query)), 200)
             }),
@@ -47,7 +66,7 @@ export const createJobRoute = ({ auditService, authService, backupScheduleServic
                 tags: ['Job'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, JOB_ROLES)
+                await authenticateRead(context.req.raw.headers)
                 return context.json(successResponse(await backupScheduleService.getSchedule()), 200)
             }),
         )
@@ -60,7 +79,7 @@ export const createJobRoute = ({ auditService, authService, backupScheduleServic
             }),
             validator('param', jobIdSchema),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, JOB_ROLES)
+                await authenticateRead(context.req.raw.headers)
                 const { id } = context.req.valid('param' as never) as z.infer<typeof jobIdSchema>
                 return context.json(successResponse(await operationJobService.get(id)), 200)
             }),
@@ -74,7 +93,7 @@ export const createJobRoute = ({ auditService, authService, backupScheduleServic
             }),
             validator('param', jobIdSchema),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, JOB_ROLES)
+                await authenticateRead(context.req.raw.headers)
                 const { id } = context.req.valid('param' as never) as z.infer<typeof jobIdSchema>
                 return context.json(successResponse(await operationJobService.listEvents(id)), 200)
             }),
@@ -96,8 +115,7 @@ export const createJobRoute = ({ auditService, authService, backupScheduleServic
                     targetId,
                     targetType: 'job' as const,
                 }
-                const session = await authService.requireRecentRole(context.req.raw.headers, JOB_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                const principal = { actorId: session.user.id, authMethod: 'session' as const }
+                const principal = await authenticateWrite(context.req.raw.headers)
                 try {
                     await auditService.record({ ...audit, ...principal, result: 'attempt' })
                     const job = await operationJobService.requestCancel(targetId)
@@ -110,3 +128,4 @@ export const createJobRoute = ({ auditService, authService, backupScheduleServic
                 }
             }),
         )
+}
