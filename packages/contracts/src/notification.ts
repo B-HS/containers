@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { operationJobKindSchema } from './operation-job'
 
 export const NOTIFICATION_DESTINATION_TYPE = {
     DISCORD: 'discord',
@@ -6,8 +7,18 @@ export const NOTIFICATION_DESTINATION_TYPE = {
 
 export const NOTIFICATION_EVENT_TYPE = {
     BACKUP_FAILED: 'backup.failed',
+    DEPLOY_FAILED: 'deploy.failed',
+    JOB_FAILED: 'job.failed',
+    RESTORE_FAILED: 'restore.failed',
     TEST: 'test',
 } as const
+
+export const NOTIFICATION_SUBSCRIBABLE_EVENT_TYPES = [
+    NOTIFICATION_EVENT_TYPE.BACKUP_FAILED,
+    NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
+    NOTIFICATION_EVENT_TYPE.RESTORE_FAILED,
+    NOTIFICATION_EVENT_TYPE.JOB_FAILED,
+] as const
 
 export const NOTIFICATION_DELIVERY_STATUS = {
     DELIVERED: 'delivered',
@@ -17,7 +28,13 @@ export const NOTIFICATION_DELIVERY_STATUS = {
 
 export const notificationDestinationTypeSchema = z.enum([NOTIFICATION_DESTINATION_TYPE.DISCORD])
 
-export const notificationEventTypeSchema = z.enum([NOTIFICATION_EVENT_TYPE.BACKUP_FAILED, NOTIFICATION_EVENT_TYPE.TEST])
+export const notificationEventTypeSchema = z.enum([
+    NOTIFICATION_EVENT_TYPE.BACKUP_FAILED,
+    NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
+    NOTIFICATION_EVENT_TYPE.JOB_FAILED,
+    NOTIFICATION_EVENT_TYPE.RESTORE_FAILED,
+    NOTIFICATION_EVENT_TYPE.TEST,
+])
 
 const isPrivateIpv4 = (octets: number[]) => {
     const first = octets[0]
@@ -130,6 +147,7 @@ export const notificationDeliverJobPayloadSchema = z.object({
     failureCode: z.string().nullable(),
     occurredAt: z.iso.datetime(),
     sourceJobId: z.uuid(),
+    sourceJobKind: operationJobKindSchema.nullable().default(null),
 })
 
 export const notificationDeliverySchema = z.object({

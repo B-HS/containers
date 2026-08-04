@@ -9,7 +9,7 @@ import { buildNotificationDestinationServiceDb } from '../../../compose/compose-
 import { buildNotificationDeliveryServiceDb } from '../../../compose/compose-notification-delivery'
 import { buildOperationJobServiceDb } from '../../../compose/compose-operation-job'
 import { createAppError } from '../../../lib/error'
-import { createOperationJobService } from '../job/create-operation-job-service'
+import { createJobError, createOperationJobService, type OperationJobHandler } from '../job/create-operation-job-service'
 import { createNotificationDeliveryService } from './create-notification-delivery-service'
 import { createNotificationDestinationService } from './create-notification-destination-service'
 
@@ -64,16 +64,22 @@ const createTestContext = async (fetchStatus: number | ((url: string) => Promise
         },
         now: () => new Date(clock.value),
     })
+    const failableHandler =
+        (failureCode: string): OperationJobHandler =>
+        async ({ job }) => {
+            if (job.payload.fail === true) {
+                throw createJobError(failureCode)
+            }
+            return null
+        }
     jobService = createOperationJobService({
         db: buildOperationJobServiceDb(database.db),
         handlers: {
-            'backup.create': async ({ job }) => {
-                if (job.payload.fail === true) {
-                    throw createAppError('BACKUP_ENGINE_FAILED')
-                }
-                return null
-            },
+            'backup.create': failableHandler('BACKUP_ENGINE_FAILED'),
+            'backup.restore': failableHandler('BACKUP_RESTORE_FAILED'),
+            'deploy.release': failableHandler('DEPLOYMENT_RELEASE_FAILED'),
             'notification.deliver': deliveryService.handleDeliver,
+            'system.prune': failableHandler('ENGINE_PRUNE_FAILED'),
         },
         now: () => new Date(clock.value),
         onFinished: (job) => deliveryService.onFinished(job),
@@ -81,10 +87,14 @@ const createTestContext = async (fetchStatus: number | ((url: string) => Promise
     return { clock, database, deliveryService, destinationService, jobService, requests }
 }
 
-const upsertDiscord = async (destinationService: ReturnType<typeof createNotificationDestinationService>, name = 'ops-discord') =>
+const upsertDiscord = async (
+    destinationService: ReturnType<typeof createNotificationDestinationService>,
+    name = 'ops-discord',
+    eventTypes: string[] = ['backup.failed'],
+) =>
     destinationService.upsert('notification-owner', {
         enabled: true,
-        eventTypes: ['backup.failed'],
+        eventTypes,
         name,
         type: 'discord',
         webhookUrl,
@@ -252,5 +262,53 @@ describe('notification delivery service', () => {
         const [row] = await database.db.select().from(notificationDelivery).where(eq(notificationDelivery.id, orphanId))
         expect(row?.jobId).not.toBeNull()
         expect(requests).toHaveLength(1)
+    })
+    test('deploy job 실패는 deploy.failed 를 구독한 대상으로 전달합니다', async () => {
+        const { database, destinationService, jobService, requests } = await createTestContext(200)
+        const destination = await upsertDiscord(destinationService, 'deploy-discord', ['deploy.failed'])
+        const sourceJob = await jobService.enqueue({ kind: 'deploy.release', maxAttempts: 1, payload: { fail: true } })
+
+        await jobService.tick()
+        await flush()
+        await jobService.tick()
+        await flush()
+
+        const [delivery] = await database.db.select().from(notificationDelivery).where(eq(notificationDelivery.destinationId, destination.id))
+        expect(delivery).toMatchObject({
+            eventType: 'deploy.failed',
+            failureCode: 'DEPLOYMENT_RELEASE_FAILED',
+            sourceJobId: sourceJob.id,
+            status: 'delivered',
+        })
+        const embed = (requests[0]?.body as { embeds: { fields: { value: string }[]; title: string }[] }).embeds[0]
+        expect(embed?.title).toBe('배포 실패')
+        expect(embed?.fields.map((field) => field.value)).toContain('deploy.release')
+    })
+
+    test('restore 실패는 restore.failed, 그 외 job 실패는 job.failed 로 매핑합니다', async () => {
+        const { database, destinationService, jobService } = await createTestContext(200)
+        await upsertDiscord(destinationService, 'all-events-discord', ['backup.failed', 'deploy.failed', 'restore.failed', 'job.failed'])
+
+        await jobService.enqueue({ kind: 'backup.restore', maxAttempts: 1, payload: { fail: true } })
+        await jobService.tick()
+        await flush()
+        await jobService.enqueue({ kind: 'system.prune', maxAttempts: 1, payload: { fail: true } })
+        await jobService.tick()
+        await flush()
+
+        const deliveries = await database.db.select().from(notificationDelivery)
+        expect(deliveries.map((delivery) => delivery.eventType).sort()).toEqual(['job.failed', 'restore.failed'])
+    })
+
+    test('구독하지 않은 event type 의 실패는 전달을 생성하지 않습니다', async () => {
+        const { database, destinationService, jobService, requests } = await createTestContext(200)
+        await upsertDiscord(destinationService, 'backup-only-discord', ['backup.failed'])
+
+        await jobService.enqueue({ kind: 'deploy.release', maxAttempts: 1, payload: { fail: true } })
+        await jobService.tick()
+        await flush()
+
+        expect(await database.db.select().from(notificationDelivery)).toHaveLength(0)
+        expect(requests).toHaveLength(0)
     })
 })

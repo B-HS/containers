@@ -2,12 +2,11 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
+import { NOTIFICATION_SUBSCRIBABLE_EVENT_TYPES } from '@containers/contracts/notification'
 import { Button } from '@shared/ui/button'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
 import { Switch } from '@shared/ui/switch'
-
-const BACKUP_FAILED_EVENT = 'backup.failed'
 
 type NotificationCreateInput = {
     enabled: boolean
@@ -21,7 +20,8 @@ type NotificationCreateFormProps = {
     labels: {
         destinationCreate: string
         enabled: string
-        eventBackupFailed: string
+        eventLabels: Record<string, string>
+        events: string
         name: string
         save: string
         webhookUrl: string
@@ -31,7 +31,11 @@ type NotificationCreateFormProps = {
 
 export const NotificationCreateForm: FC<NotificationCreateFormProps> = ({ busy, labels, onSave }) => {
     const [enabled, setEnabled] = useState(true)
-    const [eventBackupFailed, setEventBackupFailed] = useState(true)
+    const [subscribedEvents, setSubscribedEvents] = useState<string[]>([...NOTIFICATION_SUBSCRIBABLE_EVENT_TYPES])
+
+    const toggleEvent = (eventType: string, checked: boolean) => {
+        setSubscribedEvents((current) => (checked ? [...new Set([...current, eventType])] : current.filter((subscribed) => subscribed !== eventType)))
+    }
 
     return (
         <form
@@ -42,7 +46,7 @@ export const NotificationCreateForm: FC<NotificationCreateFormProps> = ({ busy, 
                 const data = new FormData(form)
                 void onSave({
                     enabled,
-                    eventTypes: eventBackupFailed ? [BACKUP_FAILED_EVENT] : [],
+                    eventTypes: NOTIFICATION_SUBSCRIBABLE_EVENT_TYPES.filter((eventType) => subscribedEvents.includes(eventType)),
                     name: String(data.get('name') ?? ''),
                     webhookUrl: String(data.get('webhookUrl') ?? ''),
                 }).then((saved) => {
@@ -61,17 +65,26 @@ export const NotificationCreateForm: FC<NotificationCreateFormProps> = ({ busy, 
                     <Input id="notification-webhook-url" name="webhookUrl" type="url" placeholder="https://discord.com/api/webhooks/..." required />
                 </div>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="grid gap-3">
+                <p className="text-xs text-text-subtle">{labels.events}</p>
                 <div className="flex flex-wrap items-center gap-6">
-                    <Label htmlFor="notification-event-backup-failed" className="text-text-muted">
-                        <Switch id="notification-event-backup-failed" checked={eventBackupFailed} onCheckedChange={setEventBackupFailed} />
-                        {labels.eventBackupFailed}
-                    </Label>
-                    <Label htmlFor="notification-enabled" className="text-text-muted">
-                        <Switch id="notification-enabled" checked={enabled} onCheckedChange={setEnabled} />
-                        {labels.enabled}
-                    </Label>
+                    {NOTIFICATION_SUBSCRIBABLE_EVENT_TYPES.map((eventType) => (
+                        <Label key={eventType} htmlFor={`notification-event-${eventType}`} className="text-text-muted">
+                            <Switch
+                                id={`notification-event-${eventType}`}
+                                checked={subscribedEvents.includes(eventType)}
+                                onCheckedChange={(checked) => toggleEvent(eventType, checked)}
+                            />
+                            {labels.eventLabels[eventType] ?? eventType}
+                        </Label>
+                    ))}
                 </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <Label htmlFor="notification-enabled" className="text-text-muted">
+                    <Switch id="notification-enabled" checked={enabled} onCheckedChange={setEnabled} />
+                    {labels.enabled}
+                </Label>
                 <Button type="submit" size="sm" disabled={busy}>
                     {labels.save}
                 </Button>

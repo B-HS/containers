@@ -8,7 +8,8 @@ export type NotificationLabels = {
     empty: string
     emptyDescription: string
     enabled: string
-    eventBackupFailed: string
+    eventLabels: Record<string, string>
+    events: string
     failed: string
     lastDelivery: string
     name: string

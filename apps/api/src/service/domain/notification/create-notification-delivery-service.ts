@@ -8,11 +8,31 @@ import {
     type NotificationDeliverJobPayload,
     type NotificationDestination,
 } from '@containers/contracts/notification'
-import { OPERATION_JOB_KIND, type OperationJob } from '@containers/contracts/operation-job'
+import { OPERATION_JOB_KIND, type OperationJob, type OperationJobKind } from '@containers/contracts/operation-job'
 import { createJobError, type OperationJobHandler } from '../job/create-operation-job-service'
 import type { NotificationDestinationService } from './create-notification-destination-service'
 
 const DELIVERY_MAX_ATTEMPTS = 3
+const CANCELLED_FAILURE_CODE = 'JOB_CANCELLED'
+
+const FAILURE_EVENT_BY_JOB_KIND: Partial<Record<OperationJobKind, (typeof NOTIFICATION_EVENT_TYPE)[keyof typeof NOTIFICATION_EVENT_TYPE]>> = {
+    [OPERATION_JOB_KIND.BACKUP_CREATE]: NOTIFICATION_EVENT_TYPE.BACKUP_FAILED,
+    [OPERATION_JOB_KIND.BACKUP_RESTORE]: NOTIFICATION_EVENT_TYPE.RESTORE_FAILED,
+    [OPERATION_JOB_KIND.DEPLOY_LOAD]: NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
+    [OPERATION_JOB_KIND.DEPLOY_RELEASE]: NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
+    [OPERATION_JOB_KIND.DEPLOY_ROLLBACK]: NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
+    [OPERATION_JOB_KIND.IMAGE_PULL]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
+    [OPERATION_JOB_KIND.SYSTEM_PRUNE]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
+    [OPERATION_JOB_KIND.TRAFFIC_EXPORT]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
+    [OPERATION_JOB_KIND.UPLOAD_FINALIZE]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
+}
+
+const FAILURE_EMBED_TITLE = {
+    [NOTIFICATION_EVENT_TYPE.BACKUP_FAILED]: '백업 실패',
+    [NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED]: '배포 실패',
+    [NOTIFICATION_EVENT_TYPE.JOB_FAILED]: '작업 실패',
+    [NOTIFICATION_EVENT_TYPE.RESTORE_FAILED]: '복원 실패',
+}
 const WEBHOOK_REQUEST_TIMEOUT_MS = 10_000
 const MIN_RETRY_AFTER_MS = 1_000
 const MAX_RETRY_AFTER_MS = 3_600_000
@@ -199,11 +219,12 @@ const buildEmbed = (payload: NotificationDeliverJobPayload) => {
         color: 0xe74c3c,
         fields: [
             { inline: true, name: '실패 코드', value: payload.failureCode ?? '알 수 없음' },
+            { inline: true, name: '작업 종류', value: payload.sourceJobKind ?? '알 수 없음' },
             { inline: true, name: '작업 ID', value: payload.sourceJobId.slice(0, 8) },
             { inline: false, name: '발생 시각', value: payload.occurredAt },
         ],
         timestamp: payload.occurredAt,
-        title: '백업 실패',
+        title: FAILURE_EMBED_TITLE[payload.eventType],
     }
 }
 
@@ -319,13 +340,17 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
         return { destinationId, id, status: NOTIFICATION_DELIVERY_STATUS.QUEUED }
     }
 
-    const deliverBackupFailure = async (destination: NotificationDestination, sourceJob: OperationJob) => {
+    const deliverJobFailure = async (
+        destination: NotificationDestination,
+        sourceJob: OperationJob,
+        eventType: (typeof NOTIFICATION_EVENT_TYPE)[keyof typeof NOTIFICATION_EVENT_TYPE],
+    ) => {
         const id = randomUUID()
         try {
             await db.insert({
                 createdAt: now(),
                 destinationId: destination.id,
-                eventType: NOTIFICATION_EVENT_TYPE.BACKUP_FAILED,
+                eventType,
                 failureCode: sourceJob.failureCode,
                 id,
                 sourceJobId: sourceJob.id,
@@ -345,28 +370,28 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
                 deliveryId: id,
                 destinationId: destination.id,
                 destinationName: destination.name,
-                eventType: NOTIFICATION_EVENT_TYPE.BACKUP_FAILED,
+                eventType,
                 failureCode: sourceJob.failureCode,
                 occurredAt: sourceJob.finishedAt ?? sourceJob.updatedAt,
                 sourceJobId: sourceJob.id,
+                sourceJobKind: sourceJob.kind,
             }),
         })
         await updateDelivery(id, { jobId: job.id })
     }
 
     const produce = async (job: OperationJob) => {
-        if (
-            job.kind !== OPERATION_JOB_KIND.BACKUP_CREATE ||
-            job.status !== 'failed' ||
-            job.failureCode === null ||
-            job.failureCode === 'JOB_CANCELLED'
-        ) {
+        if (job.status !== 'failed' || job.failureCode === null || job.failureCode === CANCELLED_FAILURE_CODE) {
+            return
+        }
+        const eventType = FAILURE_EVENT_BY_JOB_KIND[job.kind]
+        if (eventType === undefined) {
             return
         }
         const destinations = (await destinationService.list()).filter(
-            (destination) => destination.enabled && destination.eventTypes.includes(NOTIFICATION_EVENT_TYPE.BACKUP_FAILED),
+            (destination) => destination.enabled && destination.eventTypes.includes(eventType),
         )
-        await Promise.all(destinations.map(async (destination) => deliverBackupFailure(destination, job)))
+        await Promise.all(destinations.map(async (destination) => deliverJobFailure(destination, job, eventType)))
     }
 
     const reconcileQueued = async () => {

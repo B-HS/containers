@@ -9,8 +9,6 @@ import { Button } from '@shared/ui/button'
 import { Label } from '@shared/ui/label'
 import { Switch } from '@shared/ui/switch'
 
-const BACKUP_FAILED_EVENT = 'backup.failed'
-
 type NotificationDetailProps = {
     busy: boolean
     destination: NotificationDestination
@@ -20,7 +18,7 @@ type NotificationDetailProps = {
         confirmRemoveTitle: string
         disabled: string
         enabled: string
-        eventBackupFailed: string
+        eventLabels: Record<string, string>
         lastDelivery: string
         none: string
         remove: string
@@ -48,7 +46,7 @@ export const NotificationDetail: FC<NotificationDetailProps> = ({ busy, destinat
                         <Badge variant="neutral">{destination.type}</Badge>
                         {destination.eventTypes.map((eventType) => (
                             <Badge key={eventType} variant="neutral">
-                                {eventType === BACKUP_FAILED_EVENT ? labels.eventBackupFailed : eventType}
+                                {labels.eventLabels[eventType] ?? eventType}
                             </Badge>
                         ))}
                         <Badge variant="neutral">
