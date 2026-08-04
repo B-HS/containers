@@ -66,17 +66,53 @@ type EngineControlServiceDependencies = {
 const matchesIdentifier = (confirmation: string, id: string, names: string[]) =>
     confirmation === id || confirmation === id.slice(0, 12) || names.includes(confirmation)
 
-const containerMatchesReference = (containerId: string, containerNames: string[], reference: string) =>
-    containerId === reference || containerId.startsWith(reference) || containerNames.includes(reference)
+const AMBIGUOUS_REFERENCE_ERROR = 'CONTROL_FAILED:AMBIGUOUS_REFERENCE'
 
-const findContainerByReference = (containers: Array<{ Id: string; Labels: Record<string, string>; Names: string[] }>, reference: string) =>
-    containers.find((candidate) =>
-        containerMatchesReference(
-            candidate.Id,
-            candidate.Names.map((name) => name.replace(/^\//, '')),
-            reference,
-        ),
+const stripDigestPrefix = (value: string) => value.replace(/^sha256:/, '')
+
+const resolveUniqueMatch = <TCandidate>(
+    candidates: TCandidate[],
+    isExact: (candidate: TCandidate) => boolean,
+    isPrefix: (candidate: TCandidate) => boolean,
+) => {
+    const exact = candidates.filter(isExact)
+    const matches = exact.length > 0 ? exact : candidates.filter(isPrefix)
+    if (matches.length > 1) {
+        throw createAppError(AMBIGUOUS_REFERENCE_ERROR)
+    }
+    return matches[0]
+}
+
+const findContainerByReference = <TContainer extends { Id: string; Names: string[] }>(containers: TContainer[], reference: string) =>
+    resolveUniqueMatch(
+        containers,
+        (candidate) => candidate.Id === reference || candidate.Names.some((name) => name.replace(/^\//, '') === reference),
+        (candidate) => candidate.Id.startsWith(reference),
     )
+
+const findImageByReference = <TImage extends { Id: string; RepoDigests: string[]; RepoTags: string[] }>(images: TImage[], reference: string) => {
+    const normalized = stripDigestPrefix(reference)
+    return resolveUniqueMatch(
+        images,
+        (candidate) =>
+            stripDigestPrefix(candidate.Id) === normalized || candidate.RepoTags.includes(reference) || candidate.RepoDigests.includes(reference),
+        (candidate) => stripDigestPrefix(candidate.Id).startsWith(normalized),
+    )
+}
+
+const findNetworkByReference = <TNetwork extends { Id: string; Name: string }>(networks: TNetwork[], reference: string) =>
+    resolveUniqueMatch(
+        networks,
+        (candidate) => candidate.Id === reference || candidate.Name === reference,
+        (candidate) => candidate.Id.startsWith(reference),
+    )
+
+const toRepository = (reference: string) => {
+    const [withoutDigest = ''] = reference.split('@')
+    const lastSlash = withoutDigest.lastIndexOf('/')
+    const lastColon = withoutDigest.lastIndexOf(':')
+    return lastColon > lastSlash ? withoutDigest.slice(0, lastColon) : withoutDigest
+}
 
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
 const MANAGEMENT_LABEL = 'managed-by'
@@ -99,6 +135,21 @@ const PROTECTED_VOLUMES = [
 
 const isManagementPlaneResource = (labels: Record<string, string>) =>
     labels[COMPOSE_PROJECT_LABEL] === MANAGEMENT_PROJECT || labels[MANAGEMENT_LABEL] === MANAGEMENT_LABEL_VALUE
+
+const collectManagementRepositories = (
+    containers: Array<{ Image: string; ImageID: string; Labels: Record<string, string> }>,
+    images: Array<{ Id: string; RepoTags: string[] }>,
+) => {
+    const managementContainers = containers.filter((container) => isManagementPlaneResource(container.Labels))
+    const managementImageIds = new Set(managementContainers.map((container) => container.ImageID))
+    const tags = images.filter((image) => managementImageIds.has(image.Id)).flatMap((image) => image.RepoTags)
+    return new Set([...managementContainers.map((container) => container.Image), ...tags].map(toRepository).filter((repository) => repository !== ''))
+}
+
+const isProtectedRepository = (managementRepositories: Set<string>, repository: string) =>
+    [...managementRepositories].some(
+        (protectedRepository) => repository.startsWith(protectedRepository) || protectedRepository.startsWith(repository),
+    )
 
 const isPrivateIpv4Octets = (octets: number[]) => {
     const first = octets[0]
@@ -243,19 +294,27 @@ export const createEngineControlService = ({
         }
     }
 
+    const resolveManagedContainer = async (containerId: string) => {
+        const containers = await dockerEngineClient.getContainers()
+        const container = findContainerByReference(containers, containerId)
+        if (!container) {
+            throw createAppError('DOCKER_NOT_FOUND')
+        }
+        if (isManagementPlaneResource(container.Labels)) {
+            throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
+        }
+        return container
+    }
+
     return {
         connectContainerNetwork: async (containerId: string, input: unknown) => {
             const request = containerNetworkAttachmentSchema.parse(input)
             if (request.network === 'host' || request.network === 'none') {
                 throw createAppError('MANAGEMENT_NETWORK_PROTECTED')
             }
-            const containers = await dockerEngineClient.getContainers()
-            const container = findContainerByReference(containers, containerId)
-            if (container && isManagementPlaneResource(container.Labels)) {
-                throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
-            }
-            await dockerEngineClient.connectContainerNetwork(containerId, request.network)
-            return operationResultSchema.parse({ operation: 'connect-network', targetId: containerId })
+            const container = await resolveManagedContainer(containerId)
+            await dockerEngineClient.connectContainerNetwork(container.Id, request.network)
+            return operationResultSchema.parse({ operation: 'connect-network', targetId: container.Id })
         },
         createContainer: async (input: unknown) => {
             const container = containerCreateRequestSchema.parse(input)
@@ -279,21 +338,13 @@ export const createEngineControlService = ({
         },
         disconnectContainerNetwork: async (containerId: string, input: unknown) => {
             const request = containerNetworkAttachmentSchema.parse(input)
-            const containers = await dockerEngineClient.getContainers()
-            const container = findContainerByReference(containers, containerId)
-            if (container && isManagementPlaneResource(container.Labels)) {
-                throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
-            }
-            await dockerEngineClient.disconnectContainerNetwork(containerId, request.network)
-            return operationResultSchema.parse({ operation: 'disconnect-network', targetId: containerId })
+            const container = await resolveManagedContainer(containerId)
+            await dockerEngineClient.disconnectContainerNetwork(container.Id, request.network)
+            return operationResultSchema.parse({ operation: 'disconnect-network', targetId: container.Id })
         },
         executeContainer: async (containerId: string, input: unknown) => {
-            const containers = await dockerEngineClient.getContainers()
-            const container = findContainerByReference(containers, containerId)
-            if (container && isManagementPlaneResource(container.Labels)) {
-                throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
-            }
-            return containerExecResultSchema.parse(await dockerEngineClient.executeContainer(containerId, containerExecRequestSchema.parse(input)))
+            const container = await resolveManagedContainer(containerId)
+            return containerExecResultSchema.parse(await dockerEngineClient.executeContainer(container.Id, containerExecRequestSchema.parse(input)))
         },
         getImages: async () => {
             const images = await dockerEngineClient.getImages()
@@ -311,7 +362,7 @@ export const createEngineControlService = ({
         },
         getImageRemovalImpact: async (imageId: string) => {
             const [images, containers] = await Promise.all([dockerEngineClient.getImages(), dockerEngineClient.getContainers()])
-            const image = images.find((candidate) => candidate.Id === imageId || candidate.Id.endsWith(imageId) || candidate.Id.startsWith(imageId))
+            const image = findImageByReference(images, imageId)
             if (!image) {
                 throw createAppError('DOCKER_NOT_FOUND')
             }
@@ -493,18 +544,10 @@ export const createEngineControlService = ({
         },
         performContainerAction: async (containerId: string, input: unknown) => {
             const action = containerActionSchema.parse(input)
-
-            if (PROTECTED_CONTAINER_ACTIONS.includes(action.action)) {
-                const containers = await dockerEngineClient.getContainers()
-                const container = findContainerByReference(containers, containerId)
-                if (container && isManagementPlaneResource(container.Labels)) {
-                    throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
-                }
-            }
+            const container = PROTECTED_CONTAINER_ACTIONS.includes(action.action) ? await resolveManagedContainer(containerId) : undefined
+            const targetId = container?.Id ?? containerId
 
             if (action.action === 'remove') {
-                const containers = await dockerEngineClient.getContainers()
-                const container = findContainerByReference(containers, containerId)
                 const names = container?.Names.map((name) => name.replace(/^\//, '')) ?? []
 
                 if (!container || !matchesIdentifier(action.confirmation, container.Id, names)) {
@@ -512,8 +555,8 @@ export const createEngineControlService = ({
                 }
             }
 
-            await dockerEngineClient.performContainerAction(containerId, action)
-            return operationResultSchema.parse({ operation: action.action, targetId: containerId })
+            await dockerEngineClient.performContainerAction(targetId, action)
+            return operationResultSchema.parse({ operation: action.action, targetId })
         },
         pullImage: async (input: unknown) => {
             const request = imagePullRequestSchema.parse(input)
@@ -531,16 +574,31 @@ export const createEngineControlService = ({
         },
         tagImage: async (imageId: string, input: unknown) => {
             const request = imageTagRequestSchema.parse(input)
-            await dockerEngineClient.tagImage(imageId, request.repository, request.tag)
+            const [images, containers] = await Promise.all([dockerEngineClient.getImages(), dockerEngineClient.getContainers()])
+            const image = findImageByReference(images, imageId)
+
+            if (!image) {
+                throw createAppError('DOCKER_NOT_FOUND')
+            }
+
+            if (containers.some((container) => container.ImageID === image.Id && isManagementPlaneResource(container.Labels))) {
+                throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
+            }
+
+            if (isProtectedRepository(collectManagementRepositories(containers, images), toRepository(request.repository))) {
+                throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
+            }
+
+            await dockerEngineClient.tagImage(image.Id, request.repository, request.tag)
             return operationResultSchema.parse({ operation: 'tag-image', targetId: `${request.repository}:${request.tag}` })
         },
         removeImage: async (imageId: string, input: unknown) => {
             const request = imageRemoveRequestSchema.parse(input)
             const [images, containers] = await Promise.all([dockerEngineClient.getImages(), dockerEngineClient.getContainers()])
-            const image = images.find((candidate) => candidate.Id === imageId || candidate.Id.endsWith(imageId) || candidate.Id.startsWith(imageId))
+            const image = findImageByReference(images, imageId)
             const identifiers = image ? [...image.RepoTags, ...image.RepoDigests] : []
 
-            if (!image || !matchesIdentifier(request.confirmation, image.Id.replace(/^sha256:/, ''), identifiers)) {
+            if (!image || !matchesIdentifier(request.confirmation, stripDigestPrefix(image.Id), identifiers)) {
                 throw createAppError('CONFIRMATION_MISMATCH')
             }
 
@@ -548,15 +606,13 @@ export const createEngineControlService = ({
                 throw createAppError('MANAGEMENT_RESOURCE_PROTECTED')
             }
 
-            await dockerEngineClient.removeImage(imageId, request.force, request.pruneChildren)
-            return operationResultSchema.parse({ operation: 'remove-image', targetId: imageId })
+            await dockerEngineClient.removeImage(image.Id, request.force, request.pruneChildren)
+            return operationResultSchema.parse({ operation: 'remove-image', targetId: image.Id })
         },
         removeNetwork: async (networkId: string, input: unknown) => {
             const request = dockerResourceRemoveRequestSchema.parse(input)
             const networks = await dockerEngineClient.getNetworks()
-            const network = networks.find(
-                (candidate) => candidate.Id === networkId || candidate.Id.startsWith(networkId) || candidate.Name === networkId,
-            )
+            const network = findNetworkByReference(networks, networkId)
 
             if (!network || !matchesIdentifier(request.confirmation, network.Id, [network.Name])) {
                 throw createAppError('CONFIRMATION_MISMATCH')

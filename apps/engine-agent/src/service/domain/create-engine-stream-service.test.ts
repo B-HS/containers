@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { PassThrough } from 'node:stream'
+import { createAppError } from '../../lib/error'
 import { createEngineStreamService, normalizeContainerStats, normalizeEngineEvent } from './create-engine-stream-service'
 
 const NOW = new Date('2026-08-01T00:00:00.000Z')
@@ -106,6 +107,25 @@ describe('engine stream 서비스', () => {
         const rest = await reader.read()
         expect(rest.done).toBe(true)
         expect(service.getActiveStreamCount()).toBe(0)
+    })
+
+    test('event stream 준비 실패 시 slot을 반납하고 source를 정리합니다', async () => {
+        const source = new PassThrough()
+        const service = createEngineStreamService({
+            dockerEngineClient: {
+                getContainers: async () => {
+                    throw createAppError('CONTROL_FAILED')
+                },
+                openContainerLogStream: async () => ({ stream: new PassThrough(), tty: true }),
+                openContainerStatsStream: async () => new PassThrough(),
+                openEventStream: async () => source,
+            },
+            now: () => NOW,
+        })
+
+        await expect(service.openEventStream()).rejects.toThrow('CONTROL_FAILED')
+        expect(service.getActiveStreamCount()).toBe(0)
+        expect(source.destroyed).toBe(true)
     })
 
     test('동시 stream 상한을 넘으면 거부합니다', async () => {

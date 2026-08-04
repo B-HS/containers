@@ -38,10 +38,14 @@ const REQUIRED_CONFIG_TOKENS = [
     'X-Frame-Options "DENY" always;',
 ]
 
+const PROBE_MAX_ATTEMPTS = 5
+const PROBE_RETRY_DELAY_MS = 250
+const PROBE_TIMEOUT_MS = 2_000
+
 type NginxConfigServiceDependencies = {
     configRoot: string
     dockerEngineClient: Pick<DockerEngineClient, 'executeContainer' | 'getContainers' | 'signalContainer'>
-    fetcher?: typeof fetch
+    fetcher?: (input: string, init?: RequestInit) => Promise<Response>
     now: () => Date
     statusUrl: string
 }
@@ -208,18 +212,25 @@ export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetch
         return container
     }
 
-    const probeStatus = async () => {
-        for (let attempt = 0; attempt < 5; attempt += 1) {
-            try {
-                const response = await fetcher(statusUrl, { signal: AbortSignal.timeout(2_000) })
-                if (response.ok) {
-                    return
-                }
-            } catch {
-                await new Promise((resolve) => setTimeout(resolve, 250))
+    const probeOnce = async () => {
+        try {
+            const response = await fetcher(statusUrl, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+            return response.ok
+        } catch {
+            return false
+        }
+    }
+
+    const probeUntilHealthy = async () => {
+        for (let attempt = 0; attempt < PROBE_MAX_ATTEMPTS; attempt += 1) {
+            if (await probeOnce()) {
+                return true
+            }
+            if (attempt < PROBE_MAX_ATTEMPTS - 1) {
+                await new Promise((resolve) => setTimeout(resolve, PROBE_RETRY_DELAY_MS))
             }
         }
-        throw createAppError('NGINX_POST_RELOAD_PROBE_FAILED')
+        return false
     }
 
     return {
@@ -260,10 +271,15 @@ export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetch
 
             try {
                 await dockerEngineClient.signalContainer(nginxContainer.Id, 'HUP')
-                await probeStatus()
+                if (!(await probeUntilHealthy())) {
+                    throw createAppError('NGINX_POST_RELOAD_PROBE_FAILED')
+                }
             } catch (error) {
                 await copyFile(previousRevisionPath, currentPath)
                 await dockerEngineClient.signalContainer(nginxContainer.Id, 'HUP')
+                if (!(await probeUntilHealthy())) {
+                    throw createAppError('NGINX_POST_RELOAD_PROBE_FAILED:ROLLBACK_UNHEALTHY', error)
+                }
                 throw error
             }
 

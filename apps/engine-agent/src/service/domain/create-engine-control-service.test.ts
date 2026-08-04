@@ -128,14 +128,15 @@ describe('Engine 제어 서비스', () => {
             fetcher: async () => new Response(null, { status: 204 }),
         })
 
-        await expect(service.connectContainerNetwork('created-container-id', { network: 'containers_edge' })).resolves.toEqual({
+        await expect(service.connectContainerNetwork('containers-api-1', { network: 'containers_edge' })).resolves.toEqual({
             operation: 'connect-network',
-            targetId: 'created-container-id',
+            targetId: '1234567890abcdef',
         })
-        await expect(service.disconnectContainerNetwork('created-container-id', { network: 'containers_control' })).resolves.toEqual({
+        await expect(service.disconnectContainerNetwork('1234567890', { network: 'containers_control' })).resolves.toEqual({
             operation: 'disconnect-network',
-            targetId: 'created-container-id',
+            targetId: '1234567890abcdef',
         })
+        await expect(service.connectContainerNetwork('unknown-container', { network: 'containers_edge' })).rejects.toThrow('DOCKER_NOT_FOUND')
         await expect(service.probeContainer('created-container-id', { path: '/health', port: 3000, timeoutMs: 1_000 })).resolves.toMatchObject({
             error: null,
             healthy: true,
@@ -174,7 +175,7 @@ describe('Engine 제어 서비스', () => {
                 force: false,
                 pruneChildren: false,
             }),
-        ).resolves.toEqual({ operation: 'remove-image', targetId: 'abcdef1234567890' })
+        ).resolves.toEqual({ operation: 'remove-image', targetId: 'sha256:abcdef1234567890' })
     })
 
     test('인증 pull은 credential ID를 Agent에서 해석해 Docker auth header로만 전달합니다', async () => {
@@ -225,6 +226,69 @@ describe('Engine 제어 서비스', () => {
             containers: [{ id: '1234567890abcdef', isManagementPlane: true }],
             isManagementPlane: true,
         })
+    })
+
+    test('관리 plane 이미지는 재태그할 수 없고 제어 plane repository도 선점할 수 없습니다', async () => {
+        const client = createClientStub()
+        const managementClient = {
+            ...client,
+            getContainers: async () =>
+                (await client.getContainers()).map((container) => ({
+                    ...container,
+                    ImageID: 'sha256:abcdef1234567890',
+                    Labels: { 'com.docker.compose.project': 'containers' },
+                })),
+            getImages: async () => [
+                ...(await client.getImages()),
+                { Created: 1, Id: 'sha256:99887766554433', RepoDigests: [], RepoTags: ['workload:latest'], SharedSize: 0, Size: 10 },
+            ],
+        }
+        const service = createEngineControlService({ artifactRoot: '/artifacts', dockerEngineClient: managementClient })
+
+        await expect(service.tagImage('abcdef1234567890', { repository: 'evil', tag: 'latest' })).rejects.toThrow('MANAGEMENT_RESOURCE_PROTECTED')
+        await expect(service.tagImage('99887766554433', { repository: 'containers-api', tag: 'latest' })).rejects.toThrow(
+            'MANAGEMENT_RESOURCE_PROTECTED',
+        )
+        await expect(service.tagImage('99887766554433', { repository: 'containers-api/extra', tag: 'latest' })).rejects.toThrow(
+            'MANAGEMENT_RESOURCE_PROTECTED',
+        )
+    })
+
+    test('이미지 태그는 해석된 canonical ID로 Docker에 전달하고 미해석 참조는 거부합니다', async () => {
+        const calls: string[] = []
+        const service = createEngineControlService({
+            artifactRoot: '/artifacts',
+            dockerEngineClient: {
+                ...createClientStub(),
+                tagImage: async (imageId: string) => {
+                    calls.push(imageId)
+                },
+            },
+        })
+
+        await expect(service.tagImage('abcdef1234', { repository: 'workload', tag: 'v1' })).resolves.toEqual({
+            operation: 'tag-image',
+            targetId: 'workload:v1',
+        })
+        expect(calls).toEqual(['sha256:abcdef1234567890'])
+        await expect(service.tagImage('ffffffffffff', { repository: 'workload', tag: 'v1' })).rejects.toThrow('DOCKER_NOT_FOUND')
+    })
+
+    test('이미지 참조는 suffix로 매칭하지 않고 모호한 prefix는 거부합니다', async () => {
+        const client = createClientStub()
+        const service = createEngineControlService({
+            artifactRoot: '/artifacts',
+            dockerEngineClient: {
+                ...client,
+                getImages: async () => [
+                    ...(await client.getImages()),
+                    { Created: 1, Id: 'sha256:abcdef1234000000', RepoDigests: [], RepoTags: [], SharedSize: 0, Size: 10 },
+                ],
+            },
+        })
+
+        await expect(service.getImageRemovalImpact('1234567890')).rejects.toThrow('DOCKER_NOT_FOUND')
+        await expect(service.getImageRemovalImpact('abcdef1234')).rejects.toThrow('AMBIGUOUS_REFERENCE')
     })
 
     test('Docker의 알 수 없는 shared size는 0으로 정규화합니다', async () => {

@@ -13,13 +13,14 @@ afterEach(async () => {
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
 
-const createTestContext = async (validationExitCode = 0) => {
+const createTestContext = async (validationExitCode = 0, fetcher?: (input: string, init?: RequestInit) => Promise<Response>) => {
     const directory = await mkdtemp(join(tmpdir(), 'containers-nginx-config-'))
     temporaryDirectories.push(directory)
     const currentConfig = await readFile(resolve(process.cwd(), 'infra/nginx/nginx.conf'), 'utf8')
     await writeFile(join(directory, 'current.conf'), currentConfig)
     const signals: string[] = []
     const service = createNginxConfigService({
+        ...(fetcher === undefined ? {} : { fetcher }),
         configRoot: directory,
         dockerEngineClient: {
             executeContainer: async () => ({
@@ -78,6 +79,34 @@ describe('Nginx 설정 서비스', () => {
 
         await expect(service.apply({ config: 'events {}', expectedSha256: digest(currentConfig) })).rejects.toThrow('NGINX_PROTECTED_CONTRACT')
         await expect(service.apply({ config: currentConfig, expectedSha256: 'a'.repeat(64) })).rejects.toThrow('NGINX_CONFIG_CONFLICT')
+    })
+
+    test('probe가 non-2xx를 반환하면 지연을 두고 재시도한 뒤 롤백합니다', async () => {
+        const RECOVERY_CALL_INDEX = 5
+        const MINIMUM_ELAPSED_MS = 900
+        let calls = 0
+        const { currentConfig, directory, service, signals } = await createTestContext(0, async () => {
+            calls += 1
+            return new Response(null, { status: calls > RECOVERY_CALL_INDEX ? 200 : 503 })
+        })
+        const startedAt = Date.now()
+
+        await expect(service.apply({ config: `${currentConfig}\n`, expectedSha256: digest(currentConfig) })).rejects.toThrow(
+            'NGINX_POST_RELOAD_PROBE_FAILED',
+        )
+
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(MINIMUM_ELAPSED_MS)
+        expect(calls).toBe(RECOVERY_CALL_INDEX + 1)
+        expect(signals).toEqual(['HUP', 'HUP'])
+        expect(await readFile(join(directory, 'current.conf'), 'utf8')).toBe(currentConfig)
+    })
+
+    test('롤백 후에도 probe가 실패하면 롤백 실패를 결과에 반영합니다', async () => {
+        const { currentConfig, service } = await createTestContext(0, async () => new Response(null, { status: 503 }))
+
+        await expect(service.apply({ config: `${currentConfig}\n`, expectedSha256: digest(currentConfig) })).rejects.toThrow(
+            'NGINX_POST_RELOAD_PROBE_FAILED:ROLLBACK_UNHEALTHY',
+        )
     })
 
     test('rate limit과 panel 보안 header를 raw config에서도 제거할 수 없습니다', async () => {

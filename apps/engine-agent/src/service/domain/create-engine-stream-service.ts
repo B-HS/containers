@@ -223,21 +223,37 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
         }
     }
 
+    const withSourceCleanup = async <TSource, TResult>(source: TSource, destroy: (source: TSource) => void, build: () => Promise<TResult>) => {
+        try {
+            return await build()
+        } catch (error) {
+            activeStreams -= 1
+            destroy(source)
+            throw error
+        }
+    }
+
     return {
         getActiveStreamCount: () => activeStreams,
         openEventStream: async () => {
             const source = await openWithSource(() => dockerEngineClient.openEventStream())
-            const parser = createLineParser()
-            const managementIds = new Set(
-                (await dockerEngineClient.getContainers())
-                    .filter((container) => isManagementPlaneResource(container.Labels))
-                    .map((container) => container.Id),
-            )
-            return toSseStream(source, (chunk) =>
-                parser
-                    .push(chunk)
-                    .map((line) => normalizeEngineEvent(line, now()))
-                    .filter((event) => event !== null && !managementIds.has(event.actorId)),
+            return withSourceCleanup(
+                source,
+                (stream) => stream.destroy(),
+                async () => {
+                    const parser = createLineParser()
+                    const managementIds = new Set(
+                        (await dockerEngineClient.getContainers())
+                            .filter((container) => isManagementPlaneResource(container.Labels))
+                            .map((container) => container.Id),
+                    )
+                    return toSseStream(source, (chunk) =>
+                        parser
+                            .push(chunk)
+                            .map((line) => normalizeEngineEvent(line, now()))
+                            .filter((event) => event !== null && !managementIds.has(event.actorId)),
+                    )
+                },
             )
         },
         openContainerLogStream: async (containerId: string, tail: number) => {
