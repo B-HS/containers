@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { createTrafficDatabase } from '../db/database'
+import { createTrafficDatabase } from '../../db/database'
 import { createTrafficBackupService } from './create-traffic-backup-service'
 
 const temporaryDirectories: string[] = []
@@ -43,7 +43,7 @@ describe('Traffic SQLite backup', () => {
         temporaryDirectories.push(directory)
         const database = createTrafficDatabase({
             filePath: join(directory, 'traffic-live.sqlite'),
-            migrationsFolder: resolve(import.meta.dir, '../../drizzle'),
+            migrationsFolder: resolve(import.meta.dir, '../../../drizzle'),
         })
         const service = createTrafficBackupService({ backupRoot: join(directory, 'backups'), database })
         const id = randomUUID()
@@ -64,7 +64,7 @@ describe('Traffic SQLite backup', () => {
         temporaryDirectories.push(directory)
         const database = createTrafficDatabase({
             filePath: join(directory, 'traffic-live.sqlite'),
-            migrationsFolder: resolve(import.meta.dir, '../../drizzle'),
+            migrationsFolder: resolve(import.meta.dir, '../../../drizzle'),
         })
         const service = createTrafficBackupService({ backupRoot: join(directory, 'backups'), database })
         const id = randomUUID()

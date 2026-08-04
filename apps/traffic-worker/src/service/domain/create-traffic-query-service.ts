@@ -1,5 +1,5 @@
 import { trafficAnalyticsQuerySchema, trafficAnalyticsSchema, trafficSummarySchema } from '@containers/contracts/traffic'
-import type { TrafficDatabase } from '../db/database'
+import type { TrafficDatabase } from '../../db/database'
 
 type TrafficQueryServiceDependencies = {
     database: Pick<TrafficDatabase, 'getAnalyticsSummary' | 'getPercentile' | 'getRecentEvents' | 'getStatusCounts' | 'getSummary' | 'getTopPaths'>

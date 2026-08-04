@@ -8,18 +8,20 @@ import {
     trafficSummaryQuerySchema,
 } from '@containers/contracts/traffic'
 import { trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
-import type { TrafficIngestionService } from '../service/create-traffic-ingestion-service'
-import type { TrafficQueryService } from '../service/create-traffic-query-service'
-import type { TrafficExportService } from '../service/create-traffic-export-service'
+import type { TrafficIngestionService } from '../service/domain/create-traffic-ingestion-service'
+import type { TrafficQueryService } from '../service/domain/create-traffic-query-service'
+import type { TrafficExportService } from '../service/domain/create-traffic-export-service'
+import type { TrafficSseStream } from '../service/shared/create-traffic-sse-stream'
 import { withErrorHandling } from '../lib/with-error-handling'
 
 type TrafficRouteDependencies = {
     exportService: TrafficExportService
-    ingestionService: Pick<TrafficIngestionService, 'getState' | 'subscribe'>
+    ingestionService: Pick<TrafficIngestionService, 'getState'>
     queryService: TrafficQueryService
+    sseStream: TrafficSseStream
 }
 
-export const createTrafficRoute = ({ exportService, ingestionService, queryService }: TrafficRouteDependencies) =>
+export const createTrafficRoute = ({ exportService, ingestionService, queryService, sseStream }: TrafficRouteDependencies) =>
     new Hono()
         .get(
             '/analytics',
@@ -36,30 +38,7 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
             validator('query', trafficLiveQuerySchema),
             withErrorHandling((context) => {
                 const query = context.req.valid('query' as never) as z.infer<typeof trafficLiveQuerySchema>
-                const encoder = new TextEncoder()
-                let unsubscribe: (() => boolean) | undefined
-                let heartbeat: ReturnType<typeof setInterval> | undefined
-                const body = new ReadableStream<Uint8Array>({
-                    cancel: () => {
-                        clearInterval(heartbeat)
-                        unsubscribe?.()
-                    },
-                    start: (controller) => {
-                        unsubscribe = ingestionService.subscribe(query, (event) => {
-                            if ((controller.desiredSize ?? 0) > 0) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
-                        })
-                        heartbeat = setInterval(() => {
-                            if ((controller.desiredSize ?? 0) > 0) controller.enqueue(encoder.encode(': keepalive\n\n'))
-                        }, 15_000)
-                        context.req.raw.signal.addEventListener('abort', () => {
-                            clearInterval(heartbeat)
-                            unsubscribe?.()
-                        })
-                    },
-                })
-                return new Response(body, {
-                    headers: { 'cache-control': 'no-store', 'content-type': 'text/event-stream', 'x-accel-buffering': 'no' },
-                })
+                return sseStream.live(query, context.req.raw.signal)
             }),
         )
         .get(

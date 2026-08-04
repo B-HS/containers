@@ -8,7 +8,7 @@ import {
     type NginxAccessEvent,
     type TrafficLiveEvent,
 } from '@containers/contracts/traffic'
-import type { TrafficDatabase } from '../db/database'
+import type { TrafficDatabase } from '../../db/database'
 import { createAppError } from '@/lib/error'
 
 const READ_CHUNK_BYTES = 4_194_304

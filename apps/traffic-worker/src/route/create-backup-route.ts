@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { describeRoute, validator } from 'hono-openapi'
 import { trafficBackupParamSchema } from '@containers/contracts/backup'
-import type { TrafficBackupService } from '../service/create-traffic-backup-service'
+import type { TrafficBackupService } from '../service/domain/create-traffic-backup-service'
 import { withErrorHandling } from '../lib/with-error-handling'
 
 type BackupRouteDependencies = {

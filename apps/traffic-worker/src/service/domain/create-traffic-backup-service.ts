@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import { backupIdSchema, backupSnapshotResultSchema } from '@containers/contracts/backup'
-import type { TrafficDatabase } from '../db/database'
+import type { TrafficDatabase } from '../../db/database'
 import { createAppError } from '@/lib/error'
 
 type TrafficBackupServiceDependencies = {

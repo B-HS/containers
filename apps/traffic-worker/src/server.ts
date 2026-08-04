@@ -3,10 +3,10 @@ import { parseEnv } from '@containers/config/env'
 import { loadOrCreateSecret } from '@containers/config/secret'
 import { createTrafficApp } from './compose/create-traffic-app'
 import { createTrafficDatabase } from './db/database'
-import { createTrafficIngestionService } from './service/create-traffic-ingestion-service'
-import { createTrafficQueryService } from './service/create-traffic-query-service'
-import { createTrafficBackupService } from './service/create-traffic-backup-service'
-import { createTrafficExportService } from './service/create-traffic-export-service'
+import { createTrafficIngestionService } from './service/domain/create-traffic-ingestion-service'
+import { createTrafficQueryService } from './service/domain/create-traffic-query-service'
+import { createTrafficBackupService } from './service/domain/create-traffic-backup-service'
+import { createTrafficExportService } from './service/domain/create-traffic-export-service'
 
 const env = parseEnv(
     z.object({

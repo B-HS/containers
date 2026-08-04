@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { appendFile, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { createTrafficDatabase, type TrafficDatabase } from '../db/database'
+import { createTrafficDatabase, type TrafficDatabase } from '../../db/database'
 import { createAppError } from '@/lib/error'
 import { createTrafficIngestionService } from './create-traffic-ingestion-service'
 import { createTrafficQueryService } from './create-traffic-query-service'
@@ -46,7 +46,7 @@ const createFixture = async () => {
     await writeFile(accessLogPath, '')
     const database = createTrafficDatabase({
         filePath: join(directory, 'traffic.sqlite'),
-        migrationsFolder: resolve(import.meta.dir, '../../drizzle'),
+        migrationsFolder: resolve(import.meta.dir, '../../../drizzle'),
     })
     const now = new Date('2026-07-31T00:00:30.000Z').getTime()
     const createIngestion = (databaseOverride: Pick<TrafficDatabase, 'deleteBefore' | 'insertEvents'> = database) =>
