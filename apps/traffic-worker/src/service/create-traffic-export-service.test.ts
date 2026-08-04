@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { createTrafficDatabase } from '../database/create-traffic-database'
+import { join, resolve } from 'node:path'
+import { createTrafficDatabase } from '../db/database'
 import { createTrafficExportService } from './create-traffic-export-service'
 
 const temporaryDirectories: string[] = []
@@ -46,7 +46,10 @@ describe('traffic export', () => {
         await writeFile(join(exportRoot, expiredName), 'expired')
         const old = new Date('2026-07-01T00:00:00.000Z')
         await utimes(join(exportRoot, expiredName), old, old)
-        const database = createTrafficDatabase({ filePath: join(directory, 'traffic.sqlite') })
+        const database = createTrafficDatabase({
+            filePath: join(directory, 'traffic.sqlite'),
+            migrationsFolder: resolve(import.meta.dir, '../../drizzle'),
+        })
         database.insertEvents([event])
         const service = createTrafficExportService({
             database,

@@ -21,6 +21,7 @@ FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b4
 
 WORKDIR /app
 COPY --from=build --chown=bun:bun /app/apps/traffic-worker/dist ./dist
+COPY --from=build --chown=bun:bun /app/apps/traffic-worker/drizzle ./drizzle
 RUN mkdir -p /backups /credentials /data
 RUN chown bun:bun /backups /credentials /data
 

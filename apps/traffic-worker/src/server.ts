@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { parseEnv } from '@containers/config/env'
 import { loadOrCreateSecret } from '@containers/config/secret'
 import { createTrafficApp } from './compose/create-traffic-app'
-import { createTrafficDatabase } from './database/create-traffic-database'
+import { createTrafficDatabase } from './db/database'
 import { createTrafficIngestionService } from './service/create-traffic-ingestion-service'
 import { createTrafficQueryService } from './service/create-traffic-query-service'
 import { createTrafficBackupService } from './service/create-traffic-backup-service'
@@ -16,12 +16,13 @@ const env = parseEnv(
         BACKUP_ROOT: z.string().min(1).default('/backups'),
         INGEST_CHECKPOINT_PATH: z.string().min(1).default('/data/ingest-checkpoint.json'),
         TRAFFIC_DB_PATH: z.string().min(1),
+        TRAFFIC_MIGRATIONS_PATH: z.string().min(1),
         TRAFFIC_EXPORT_ROOT: z.string().min(1).default('/backups/traffic-exports'),
         TRAFFIC_RAW_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(14),
     }),
 )
 
-const database = createTrafficDatabase({ filePath: env.TRAFFIC_DB_PATH })
+const database = createTrafficDatabase({ filePath: env.TRAFFIC_DB_PATH, migrationsFolder: env.TRAFFIC_MIGRATIONS_PATH })
 const ingestionService = createTrafficIngestionService({
     accessLogPath: env.ACCESS_LOG_PATH,
     checkpointPath: env.INGEST_CHECKPOINT_PATH,

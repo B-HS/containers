@@ -164,6 +164,7 @@ services:
             BACKUP_ROOT: /backups
             TRAFFIC_DB_PATH: /data/traffic.sqlite
             TRAFFIC_EXPORT_ROOT: /backups/traffic-exports
+            TRAFFIC_MIGRATIONS_PATH: /app/drizzle
             TRAFFIC_RAW_RETENTION_DAYS: 14
             TRAFFIC_WORKER_PORT: 3003
         healthcheck:

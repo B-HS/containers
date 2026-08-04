@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { trafficExportResultSchema } from '@containers/contracts/traffic'
 import { trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import { z } from 'zod'
-import type { TrafficDatabase } from '../database/create-traffic-database'
+import type { TrafficDatabase } from '../db/database'
 
 const EXPORT_RETENTION_MS = 14 * 24 * 60 * 60 * 1_000
 const jobIdSchema = z.uuid()

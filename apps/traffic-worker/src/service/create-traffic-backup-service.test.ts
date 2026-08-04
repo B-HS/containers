@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { createTrafficDatabase } from '../database/create-traffic-database'
+import { createTrafficDatabase } from '../db/database'
 import { createTrafficBackupService } from './create-traffic-backup-service'
 
 const temporaryDirectories: string[] = []
@@ -41,7 +41,10 @@ describe('Traffic SQLite backup', () => {
     test('일관 snapshot을 생성하고 변경된 DB를 원래 시점으로 복구합니다', async () => {
         const directory = await mkdtemp(join(tmpdir(), 'containers-traffic-backup-'))
         temporaryDirectories.push(directory)
-        const database = createTrafficDatabase({ filePath: join(directory, 'traffic-live.sqlite') })
+        const database = createTrafficDatabase({
+            filePath: join(directory, 'traffic-live.sqlite'),
+            migrationsFolder: resolve(import.meta.dir, '../../drizzle'),
+        })
         const service = createTrafficBackupService({ backupRoot: join(directory, 'backups'), database })
         const id = randomUUID()
 
@@ -59,7 +62,10 @@ describe('Traffic SQLite backup', () => {
     test('유효한 SQLite가 아닌 snapshot은 복구하지 않습니다', async () => {
         const directory = await mkdtemp(join(tmpdir(), 'containers-traffic-backup-'))
         temporaryDirectories.push(directory)
-        const database = createTrafficDatabase({ filePath: join(directory, 'traffic-live.sqlite') })
+        const database = createTrafficDatabase({
+            filePath: join(directory, 'traffic-live.sqlite'),
+            migrationsFolder: resolve(import.meta.dir, '../../drizzle'),
+        })
         const service = createTrafficBackupService({ backupRoot: join(directory, 'backups'), database })
         const id = randomUUID()
         await mkdir(join(directory, 'backups', id), { recursive: true })
