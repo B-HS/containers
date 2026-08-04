@@ -35,8 +35,8 @@
 
 1. live control DB의 `PRAGMA foreign_key_check`가 비어 있는지 확인한다.
 2. Traffic Worker에 HMAC·timestamp·nonce 서명된 UUID 요청을 보낸다.
-3. Worker가 자신의 SQLite connection에서 native `serialize()` snapshot을 만들어 원자 rename한다.
-4. API가 control DB를 같은 방식으로 snapshot한다.
+3. Worker가 자신의 SQLite connection에서 `VACUUM INTO` 로 임시 파일에 snapshot을 쓰고 원자 rename한다.
+4. API가 control DB를 같은 방식으로 snapshot한다. byte 수와 SHA-256은 완성된 파일을 스트리밍으로 읽어 계산하므로 DB 전체가 메모리에 올라오지 않는다.
 5. Engine Agent에서 Nginx `current.conf`를 받아 `nginx.conf`로 저장한다(실패해도 backup은 계속된다).
 6. passphrase가 있으면 마스터 키 2종을 봉인해 `secrets.enc`로 저장한다.
 7. byte 수와 SHA-256을 기록한 manifest를 마지막에 원자 rename한다.
@@ -125,7 +125,7 @@ Nginx 설정은 **자동으로 적용하지 않는다.** `nginx.conf`는 사본�
 
 ## 6. 현재 한계와 후속 작업
 
-- `serialize()`와 control 검증은 DB 전체를 메모리에 올린다. 큰 traffic DB를 위한 streaming SQLite backup API 또는 sidecar 방식이 필요하다.
+- snapshot 생성과 digest 계산은 `VACUUM INTO` + 스트리밍 해시로 메모리 상주가 없다. 다만 복원 시의 control 검증은 여전히 대상 DB를 열어 대조하므로 대형 DB에서는 시간이 걸린다.
 - 자동 backup 실패는 job 으로 영속 기록되고 schedule API·패널에 노출되지만, 실패 alert(Discord 등)는 아직 없다.
 - 불완전 디렉터리는 목록과 retention 계산에서 제외되어 장기적으로 별도 garbage collection이 필요하다.
 - restore 는 maintenance mode 로 mutation 을 차단하고 drain 한 뒤 수행된다. 단 API 재시작 시 maintenance 는 in-memory 라 해제되며, 중단된 restore job 은 자동 재개되지 않고 `JOB_INTERRUPTED` 실패로 확정된다 — 이때는 pre-restore recovery snapshot 으로 수동 복구한다.

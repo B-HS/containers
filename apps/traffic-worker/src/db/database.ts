@@ -126,7 +126,9 @@ export const createTrafficDatabase = ({ filePath, migrationsFolder }: TrafficDat
                 sqlite.exec('DETACH DATABASE backup_source')
             }
         },
-        serializeSnapshot: () => sqlite.serialize(),
+        writeSnapshot: (destinationPath: string) => {
+            sqlite.run('VACUUM INTO ?1', [destinationPath])
+        },
     }
 }
 

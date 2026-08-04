@@ -1,13 +1,13 @@
-import { createHash } from 'node:crypto'
-import { mkdir, rename } from 'node:fs/promises'
+import { mkdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { backupIdSchema, backupSnapshotResultSchema } from '@containers/contracts/backup'
 import type { TrafficDatabase } from '../../db/database'
 import { createAppError } from '@/lib/error'
+import { hashFile } from '@/lib/hash-file'
 
 type TrafficBackupServiceDependencies = {
     backupRoot: string
-    database: Pick<TrafficDatabase, 'restoreSnapshot' | 'serializeSnapshot'>
+    database: Pick<TrafficDatabase, 'restoreSnapshot' | 'writeSnapshot'>
 }
 
 export const createTrafficBackupService = ({ backupRoot, database }: TrafficBackupServiceDependencies) => {
@@ -20,13 +20,10 @@ export const createTrafficBackupService = ({ backupRoot, database }: TrafficBack
             const destination = snapshotPath(id)
             const temporary = `${destination}.tmp`
             await mkdir(directory, { recursive: true })
-            const snapshot = database.serializeSnapshot()
-            await Bun.write(temporary, snapshot)
+            await rm(temporary, { force: true })
+            database.writeSnapshot(temporary)
             await rename(temporary, destination)
-            return backupSnapshotResultSchema.parse({
-                bytes: snapshot.byteLength,
-                sha256: createHash('sha256').update(snapshot).digest('hex'),
-            })
+            return backupSnapshotResultSchema.parse(await hashFile(destination))
         },
         restore: async (input: unknown) => {
             const destination = snapshotPath(input)
@@ -34,12 +31,9 @@ export const createTrafficBackupService = ({ backupRoot, database }: TrafficBack
             if (!(await file.exists())) {
                 throw createAppError('BACKUP_TRAFFIC_NOT_FOUND')
             }
-            const snapshot = new Uint8Array(await file.arrayBuffer())
+            const result = await hashFile(destination)
             database.restoreSnapshot(destination)
-            return backupSnapshotResultSchema.parse({
-                bytes: snapshot.byteLength,
-                sha256: createHash('sha256').update(snapshot).digest('hex'),
-            })
+            return backupSnapshotResultSchema.parse(result)
         },
     }
 }

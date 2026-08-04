@@ -124,7 +124,9 @@ export const buildBackupServiceDb = ({ sqlite }: BuildBackupServiceDbDependencie
             return pageCount * pageSize
         },
         restoreControlSnapshot,
-        snapshot: () => sqlite.serialize(),
+        writeSnapshot: (destinationPath: string) => {
+            sqlite.run('VACUUM INTO ?1', [destinationPath])
+        },
         validateControlSnapshot,
     }
 }

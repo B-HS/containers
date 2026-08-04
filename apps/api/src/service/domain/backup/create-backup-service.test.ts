@@ -127,6 +127,18 @@ describe('Control·Traffic backup orchestration', () => {
         database.sqlite.close()
     })
 
+    test('control snapshot manifest 의 크기·digest 가 디스크 파일과 일치합니다', async () => {
+        const { backupRoot, database, service } = await createTestContext()
+        await database.db.insert(user).values(createUser('digest-owner'))
+
+        const backup = await service.create({ label: 'digest' })
+        const file = new Uint8Array(await Bun.file(join(backupRoot, backup.id, 'control.sqlite')).arrayBuffer())
+
+        expect(backup.controlBytes).toBe(file.byteLength)
+        expect(backup.controlSha256).toBe(createHash('sha256').update(file).digest('hex'))
+        database.sqlite.close()
+    })
+
     test('retention 수를 넘긴 오래된 set을 제거하고 확인 문구 없는 삭제를 거부합니다', async () => {
         const { database, service } = await createTestContext(2)
         const first = await service.create({ label: 'first' })

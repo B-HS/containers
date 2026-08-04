@@ -16,14 +16,15 @@ import {
     type BackupSecretBundle,
 } from '@containers/contracts/backup'
 import { createAppError } from '../../../lib/error'
+import { hashFile } from '../../../lib/hash-file'
 import type { TrafficWorkerClient } from '../../../service/shared/traffic-worker-client/create-traffic-worker-client'
 
 type BackupServiceDb = {
     checkForeignKeys: () => Promise<void>
     estimateSnapshotBytes: () => number
     restoreControlSnapshot: (filePath: string, mode: BackupRestoreMode) => Promise<void>
-    snapshot: () => Uint8Array
     validateControlSnapshot: (filePath: string) => Promise<void>
+    writeSnapshot: (destinationPath: string) => void
 }
 
 type BackupSecretKeyFiles = {
@@ -260,6 +261,15 @@ export const createBackupService = ({
         await Promise.all([chmod(secretKeyFiles.deployment, SECRET_KEY_FILE_MODE), chmod(secretKeyFiles.notification, SECRET_KEY_FILE_MODE)])
     }
 
+    const writeControlSnapshot = async (id: string) => {
+        const destination = controlPath(id)
+        const temporaryPath = `${destination}.tmp`
+        await rm(temporaryPath, { force: true })
+        db.writeSnapshot(temporaryPath)
+        await rename(temporaryPath, destination)
+        return hashFile(destination)
+    }
+
     const createSnapshot = async (input: unknown, applyRetention: boolean) => {
         const payload = backupCreateSchema.parse(input)
         await ensureDiskCapacity()
@@ -269,13 +279,12 @@ export const createBackupService = ({
         await mkdir(directory, { recursive: true })
         try {
             const traffic = await trafficWorkerClient.createBackup(id)
-            const controlSnapshot = db.snapshot()
-            await writeAtomic(controlPath(id), controlSnapshot)
+            const control = await writeControlSnapshot(id)
             const nginx = await captureNginxConfig(id)
             const secrets = payload.passphrase === null ? null : await captureSecretBundle(id, payload.passphrase)
             const manifest = backupManifestSchema.parse({
-                controlBytes: controlSnapshot.byteLength,
-                controlSha256: createHash('sha256').update(controlSnapshot).digest('hex'),
+                controlBytes: control.bytes,
+                controlSha256: control.sha256,
                 createdAt: now().toISOString(),
                 id,
                 label: payload.label,
