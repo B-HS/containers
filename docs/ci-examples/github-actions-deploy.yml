@@ -1,0 +1,314 @@
+# GitHub Actions — API key 기반 무인 배포 (Containers control plane)
+#
+# 이 워크플로는 이미지 빌드부터 release 성공 판정까지를 API key 로만 수행한다.
+# 사람이 패널에 로그인하지 않아도 되고, 실패는 job 상태로 확정 판정한다.
+#
+# 전제 (반드시 먼저 읽는다)
+#  1. 패널·API 는 기본적으로 ${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-8080} 로만 publish 된다
+#     (compose.yaml). GitHub 호스티드 러너는 이 주소에 도달할 수 없다. 다음 중 하나가 필요하다.
+#       - 같은 호스트(또는 같은 사설망)에 셀프호스티드 러너를 두고 http://127.0.0.1:8080 사용
+#       - cloudflared 등 터널을 통해 api.<도메인> 을 노출하고 https://api.<도메인> 사용
+#     평문 HTTP 로 외부 구간을 지나면 ctk_ 키가 그대로 노출된다. 터널 경유는 반드시 HTTPS 다.
+#  2. nginx 는 Host 기반으로 server 블록을 고른다. 기본 default_server 는 444 를 돌려준다.
+#     127.0.0.1 / localhost / panel.containers.local / api.containers.local 중 하나여야 한다.
+#     API_BASE 의 host 가 이와 다르면 CONTAINERS_API_HOST 로 Host 헤더를 지정한다.
+#  3. API key 는 패널에서 발급하고 GitHub Secrets(CONTAINERS_API_KEY)로만 주입한다.
+#     워크플로·로그·아티팩트에 원문을 남기지 않는다.
+#  4. 필요한 scope (packages/contracts/src/api-key.ts 기준)
+#       artifact:upload  업로드 세션·청크·finalize
+#       job:read         job 폴링과 이벤트 덤프 (성패 판정의 핵심)
+#       image:load       artifact -> docker image load
+#       deployment:read  manifest·release 조회
+#       deployment:write manifest 생성, release 생성, rollback
+#       engine:read      배포 후 컨테이너·로그 확인
+#       control-plane:read  배포 후 control plane 상태 확인
+#     job:write 는 교착된 job 을 CI 가 직접 취소할 때만 추가한다.
+#  5. 배포 manifest 는 저장소에 커밋한다(예: .github/deploy/manifest.json).
+#     imageDigest 와 version 은 이 워크플로가 주입하므로 파일에는 넣지 않아도 된다.
+#     나머지 필수 필드는 packages/contracts/src/deployment.ts 의 deploymentManifestInputSchema 를 따른다.
+#
+# 사용하는 엔드포인트와 성공 판정
+#   POST /api/uploads/sessions                          201 세션(재실행 시 같은 idempotency-key 면 기존 세션)
+#   PUT  /api/uploads/sessions/{id}/chunks?offset=N     200 receivedBytes
+#   POST /api/uploads/sessions/{id}/finalize            202 job -> job.result.artifactId
+#   POST /api/artifacts/{artifactId}/load               200 이미 load / 202 job -> job.result.deploymentId
+#   POST /api/deployment-manifests                      201 신규 / 200 동일 payload 재사용(멱등)
+#   POST /api/deployment-manifests/{id}/releases        202 job + release -> job succeeded 면 release healthy
+#   POST /api/deployment-releases/{id}/rollback         202 job + release -> job succeeded 면 rolled-back
+#   GET  /api/jobs/{id}, /api/jobs/{id}/events          job 상태·타임라인 (job:read)
+# job status 는 queued|running|cancelling|succeeded|failed|cancelled 이며 succeeded 만 성공이다.
+# release job 은 자동 재시도가 없다(maxAttempts 1). release 도중 실패하면 서버가 이전 라우트로 자동 복구한다.
+
+name: Deploy via control plane API
+
+on:
+    push:
+        branches: [main]
+    workflow_dispatch:
+        inputs:
+            rollback_release_id:
+                description: '되돌릴 현재 healthy release id (지정하면 배포 대신 rollback 만 수행)'
+                required: false
+                type: string
+
+concurrency:
+    group: containers-deploy
+    cancel-in-progress: false
+
+env:
+    API_BASE: ${{ vars.CONTAINERS_API_BASE }}
+    CONTAINERS_API_HOST: ${{ vars.CONTAINERS_API_HOST }}
+    DEPLOY_NAME: example-app
+    MANIFEST_FILE: .github/deploy/manifest.json
+
+jobs:
+    deploy:
+        name: build · upload · load · release
+        runs-on: self-hosted
+        timeout-minutes: 60
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Write API helper
+              run: |
+                  set -euo pipefail
+                  cat > "$RUNNER_TEMP/api.sh" <<'SCRIPT'
+                  API_BASE="${API_BASE:?API_BASE is required}"
+                  POLL_INTERVAL_SECONDS=5
+                  JOB_TIMEOUT_SECONDS=1800
+
+                  sha256_of() {
+                      if command -v sha256sum > /dev/null 2>&1; then
+                          sha256sum "$1" | cut -d' ' -f1
+                      else
+                          shasum -a 256 "$1" | cut -d' ' -f1
+                      fi
+                  }
+
+                  api_curl() {
+                      local method="$1" path="$2"
+                      shift 2
+                      local args=(--fail-with-body -sS -X "$method" "${API_BASE}${path}"
+                          -H "authorization: Bearer ${CONTAINERS_API_KEY}")
+                      if [ -n "${CONTAINERS_API_HOST:-}" ]; then
+                          args+=(-H "host: ${CONTAINERS_API_HOST}")
+                      fi
+                      curl "${args[@]}" "$@"
+                  }
+
+                  api_json() {
+                      local method="$1" path="$2" body="$3"
+                      shift 3
+                      if [ -n "$body" ]; then
+                          api_curl "$method" "$path" -H 'content-type: application/json' --data-binary "$body" "$@"
+                      else
+                          api_curl "$method" "$path" "$@"
+                      fi
+                  }
+
+                  dump_job() {
+                      local job_id="$1"
+                      echo "--- job ${job_id}"
+                      api_curl GET "/api/jobs/${job_id}" | jq . || true
+                      echo "--- job ${job_id} events"
+                      api_curl GET "/api/jobs/${job_id}/events" | jq . || true
+                  }
+
+                  poll_job() {
+                      local job_id="$1"
+                      local deadline=$(( $(date +%s) + JOB_TIMEOUT_SECONDS ))
+                      local response status
+                      while :; do
+                          response="$(api_curl GET "/api/jobs/${job_id}")"
+                          status="$(jq -r '.data.status' <<<"$response")"
+                          case "$status" in
+                              succeeded)
+                                  printf '%s' "$response"
+                                  return 0
+                                  ;;
+                              failed | cancelled)
+                                  echo "job ${job_id} ${status}: $(jq -r '.data.failureCode // "unknown"' <<<"$response")" >&2
+                                  dump_job "$job_id" >&2
+                                  return 1
+                                  ;;
+                          esac
+                          if [ "$(date +%s)" -ge "$deadline" ]; then
+                              echo "job ${job_id} timed out in status ${status}" >&2
+                              dump_job "$job_id" >&2
+                              return 1
+                          fi
+                          sleep "$POLL_INTERVAL_SECONDS"
+                      done
+                  }
+                  SCRIPT
+                  bash -n "$RUNNER_TEMP/api.sh"
+
+            - name: Build image and save archive
+              id: image
+              run: |
+                  set -euo pipefail
+                  tag="${DEPLOY_NAME}:${GITHUB_SHA}"
+                  docker build -t "$tag" .
+                  archive="$RUNNER_TEMP/image.tar"
+                  docker save "$tag" -o "$archive"
+                  digest="$(docker image inspect --format '{{.Id}}' "$tag")"
+                  source "$RUNNER_TEMP/api.sh"
+                  sha256="$(sha256_of "$archive")"
+                  size="$(wc -c < "$archive" | tr -d ' ')"
+                  {
+                      echo "archive=$archive"
+                      echo "digest=$digest"
+                      echo "sha256=$sha256"
+                      echo "size=$size"
+                      echo "version=${GITHUB_SHA::12}"
+                  } >> "$GITHUB_OUTPUT"
+
+            - name: Upload artifact and finalize
+              id: artifact
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  ARCHIVE: ${{ steps.image.outputs.archive }}
+                  ARCHIVE_SHA256: ${{ steps.image.outputs.sha256 }}
+                  ARCHIVE_SIZE: ${{ steps.image.outputs.size }}
+              run: |
+                  set -euo pipefail
+                  source "$RUNNER_TEMP/api.sh"
+                  CHUNK_BYTES=33554432
+
+                  session="$(api_json POST /api/uploads/sessions "$(jq -nc \
+                      --arg sha "$ARCHIVE_SHA256" \
+                      --argjson size "$ARCHIVE_SIZE" \
+                      --arg name "${DEPLOY_NAME}-${GITHUB_SHA}.tar" \
+                      '{expectedSha256: $sha, expectedSizeBytes: $size, fileName: $name, mediaType: "application/vnd.docker.image.rootfs.diff.tar"}')" \
+                      -H "idempotency-key: upload-${GITHUB_SHA}")"
+                  session_id="$(jq -r '.data.id' <<<"$session")"
+                  received="$(jq -r '.data.receivedBytes' <<<"$session")"
+                  echo "session ${session_id} resumes at ${received} bytes"
+
+                  if [ $(( received % CHUNK_BYTES )) -ne 0 ]; then
+                      echo "resume offset ${received} is not chunk aligned. 새 idempotency-key 로 다시 올려야 한다." >&2
+                      exit 1
+                  fi
+
+                  chunk_dir="$RUNNER_TEMP/chunks"
+                  rm -rf "$chunk_dir"
+                  mkdir -p "$chunk_dir"
+                  split -b "$CHUNK_BYTES" "$ARCHIVE" "$chunk_dir/chunk-"
+
+                  offset="$received"
+                  skip=$(( received / CHUNK_BYTES ))
+                  for chunk in $(find "$chunk_dir" -type f -name 'chunk-*' | sort | tail -n +$(( skip + 1 ))); do
+                      size="$(wc -c < "$chunk" | tr -d ' ')"
+                      digest="$(sha256_of "$chunk")"
+                      api_curl PUT "/api/uploads/sessions/${session_id}/chunks?offset=${offset}" \
+                          -H 'content-type: application/octet-stream' \
+                          -H "x-chunk-sha256: ${digest}" \
+                          --data-binary "@${chunk}" > /dev/null
+                      offset=$(( offset + size ))
+                  done
+
+                  finalize="$(api_json POST "/api/uploads/sessions/${session_id}/finalize" '')"
+                  job_id="$(jq -r '.data.job.id' <<<"$finalize")"
+                  result="$(poll_job "$job_id")"
+                  artifact_id="$(jq -r '.data.result.artifactId' <<<"$result")"
+                  echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+
+            - name: Load docker image
+              id: load
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+              run: |
+                  set -euo pipefail
+                  source "$RUNNER_TEMP/api.sh"
+                  response="$(api_json POST "/api/artifacts/${ARTIFACT_ID}/load" '')"
+                  job_id="$(jq -r '.data.job.id // empty' <<<"$response")"
+                  if [ -z "$job_id" ]; then
+                      echo "already loaded: $(jq -r '.data.deployment.id' <<<"$response")"
+                      exit 0
+                  fi
+                  poll_job "$job_id" > /dev/null
+
+            - name: Create or reuse deployment manifest
+              id: manifest
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+                  MANIFEST_VERSION: ${{ steps.image.outputs.version }}
+              run: |
+                  set -euo pipefail
+                  source "$RUNNER_TEMP/api.sh"
+                  payload="$(jq -c \
+                      --arg digest "$IMAGE_DIGEST" \
+                      --arg version "$MANIFEST_VERSION" \
+                      '.imageDigest = $digest | .version = $version' "$MANIFEST_FILE")"
+                  manifest="$(api_json POST /api/deployment-manifests "$payload")"
+                  manifest_id="$(jq -r '.data.id' <<<"$manifest")"
+                  echo "manifest_id=$manifest_id" >> "$GITHUB_OUTPUT"
+
+            - name: Create release and wait for healthy
+              id: release
+              if: ${{ inputs.rollback_release_id == '' }}
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  MANIFEST_ID: ${{ steps.manifest.outputs.manifest_id }}
+              run: |
+                  set -euo pipefail
+                  source "$RUNNER_TEMP/api.sh"
+                  response="$(api_json POST "/api/deployment-manifests/${MANIFEST_ID}/releases" '')"
+                  release_id="$(jq -r '.data.release.id' <<<"$response")"
+                  job_id="$(jq -r '.data.job.id' <<<"$response")"
+                  echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+                  echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
+                  poll_job "$job_id" > /dev/null
+
+            - name: Manual rollback
+              if: ${{ inputs.rollback_release_id != '' }}
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  ROLLBACK_RELEASE_ID: ${{ inputs.rollback_release_id }}
+              run: |
+                  set -euo pipefail
+                  source "$RUNNER_TEMP/api.sh"
+                  response="$(api_json POST "/api/deployment-releases/${ROLLBACK_RELEASE_ID}/rollback" '')"
+                  poll_job "$(jq -r '.data.job.id' <<<"$response")" > /dev/null
+
+            - name: Verify after deploy
+              if: ${{ success() && inputs.rollback_release_id == '' }}
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  RELEASE_ID: ${{ steps.release.outputs.release_id }}
+              run: |
+                  set -euo pipefail
+                  source "$RUNNER_TEMP/api.sh"
+                  release="$(api_curl GET "/api/deployment-releases/${RELEASE_ID}")"
+                  status="$(jq -r '.data.status' <<<"$release")"
+                  echo "release status: ${status}"
+                  [ "$status" = 'healthy' ]
+                  api_curl GET /api/control-plane/status | jq '{maintenance: .data.maintenance, integrity: .data.databaseIntegrity, migrations: (.data.migrations.pending | length)}'
+                  api_curl GET /api/readyz | jq '.data.checks' || echo 'readyz degraded (503) — 배포 자체는 성공했으나 확인이 필요하다'
+                  container_name="$(jq -r '.data.containerName' <<<"$release")"
+                  api_curl GET /api/containers | jq --arg name "/${container_name}" '.data[] | select(.names | index($name)) | {id, state, status}'
+
+            - name: Dump failure diagnostics
+              if: ${{ failure() }}
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  RELEASE_ID: ${{ steps.release.outputs.release_id }}
+              run: |
+                  set -euo pipefail
+                  source "$RUNNER_TEMP/api.sh"
+                  echo '--- 최근 job 20건'
+                  api_curl GET '/api/jobs?limit=20' | jq '.data[] | {id, kind, status, failureCode, progressStep, finishedAt}' || true
+                  if [ -n "${RELEASE_ID:-}" ]; then
+                      release="$(api_curl GET "/api/deployment-releases/${RELEASE_ID}")" || release=''
+                      if [ -n "$release" ]; then
+                          echo '--- release'
+                          jq '.data | {id, status, failureCode, containerName, containerId, previousReleaseId}' <<<"$release"
+                          container_id="$(jq -r '.data.containerId // empty' <<<"$release")"
+                          if [ -n "$container_id" ]; then
+                              echo '--- container logs'
+                              api_curl GET "/api/containers/${container_id}/logs?tail=200" | jq -r '.data.stdout, .data.stderr' || true
+                          fi
+                      fi
+                  fi

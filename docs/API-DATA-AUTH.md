@@ -50,6 +50,50 @@ middleware는 Host 문자열만 신뢰하지 않고 Nginx가 내부 network에�
 | `/ws/exec/:ticket`   | TTY stream                                                      |
 | `/events/docker`     | Docker event SSE                                                |
 
+### 2.1 인증 방식 (구현 기준)
+
+아래 표는 **현재 코드가 실제로 받아들이는 인증 방식**이다. 위 prefix 표는 목표 그룹핑이라 일부 경로명이 다르다.
+
+인증은 세 층이다.
+
+- **session**: Better Auth 세션 쿠키 + `user_role` 역할 검사(`requireRole`).
+- **recent session**: 위와 같되 세션이 최근 15분 안에 인증돼야 한다(`requireRecentRole`). 파괴적·보안 민감 조작에만 요구한다.
+- **API key**: `authorization: Bearer ctk_...`. `Authorization` 헤더가 있으면 route가 API key 경로로 분기하고, 없으면 세션 경로로 간다. 키는 sha256 해시로만 저장되며 scope·만료·분당 rate limit(`API_KEY_RATE_LIMIT_PER_MINUTE`, 기본 120)을 적용한다. `backup:write`·`secret:write`는 **발급·사용 모두 owner에게만** 허용된다.
+
+| 경로                                                                                                                                                      | API key scope               | session 요구                              |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------- |
+| `GET /api/health`                                                                                                                                         | 불필요                      | 불필요                                    |
+| `GET /api/readyz`                                                                                                                                         | `control-plane:read` (상세) | 요약은 불필요, 상세는 owner·admin         |
+| `GET /api/artifacts`                                                                                                                                      | `artifact:read`             | 전 역할                                   |
+| `POST /api/uploads/sessions`, `PUT .../chunks`, `POST .../finalize`                                                                                       | `artifact:upload`           | owner·admin·operator                      |
+| `POST /api/artifacts/:artifactId/load`                                                                                                                    | `image:load`                | recent owner·admin                        |
+| `GET /api/deployment-manifests`, `GET /api/deployment-releases`(+ `/:id`)                                                                                 | `deployment:read`           | 전 역할                                   |
+| `POST /api/deployment-manifests`                                                                                                                          | `deployment:write`          | recent owner·admin                        |
+| `POST /api/deployment-manifests/:manifestId/releases`                                                                                                     | `deployment:write`          | recent owner·admin                        |
+| `POST /api/deployment-releases/:id/rollback`                                                                                                              | `deployment:write`          | recent owner·admin                        |
+| `GET /api/deployment-secrets`                                                                                                                             | `secret:read`               | owner·admin                               |
+| `POST`·`DELETE /api/deployment-secrets`                                                                                                                   | `secret:write`(owner)       | recent owner·admin                        |
+| `GET /api/jobs`, `/api/jobs/:id`, `/api/jobs/:id/events`, `/api/jobs/backup-schedule`                                                                     | `job:read`                  | owner·admin                               |
+| `POST /api/jobs/:id/cancel`                                                                                                                               | `job:write`                 | recent owner·admin                        |
+| `GET /api/backups`                                                                                                                                        | `backup:read`               | owner                                     |
+| `POST /api/backups`                                                                                                                                       | `backup:write`(owner)       | recent owner                              |
+| `POST /api/backups/:id/restore`, `DELETE /api/backups/:id`                                                                                                | 불가                        | recent owner만                            |
+| `GET /api/system/engine`, `/api/containers`, `/api/containers/:id`, `/api/containers/:id/logs`                                                            | `engine:read`               | 전 역할                                   |
+| `GET /api/control-plane/status`                                                                                                                           | `control-plane:read`        | owner·admin                               |
+| `/api/nginx/*` 조회                                                                                                                                       | 불가                        | 전 역할                                   |
+| `/api/nginx/*` 변경(`config/apply`, routes CUD)                                                                                                           | 불가                        | recent owner·admin                        |
+| `/api/traffic/*`                                                                                                                                          | 불가                        | 전 역할(export는 owner·admin)             |
+| `/api/audit`                                                                                                                                              | 불가                        | owner·admin·viewer·auditor                |
+| `/api/api-keys` 조회                                                                                                                                      | 불가                        | owner·admin                               |
+| `/api/api-keys` 생성·폐기                                                                                                                                 | 불가                        | recent 세션(폐기는 recent owner·admin)    |
+| `/api/maintenance` 조회 / 변경                                                                                                                            | 불가                        | 전 역할 / recent owner                    |
+| `/api/notification-destinations`                                                                                                                          | 불가                        | owner·admin                               |
+| Docker 제어(`/api/containers` 생성·actions·exec, `/api/images/*`, `/api/networks/*`, `/api/volumes/*`, `/api/system/prune*`, `/api/registry-credentials`) | 불가                        | 조회는 전 역할, 변경은 recent owner·admin |
+| SSE·exec stream(`/api/stream/*`, `/api/containers/:id/exec-tickets`, `/api/exec/ws/:ticket`)                                                              | 불가                        | 전 역할                                   |
+| `/api/auth/*`, `/api/session`, `/api/users`, `/api/invitations`                                                                                           | 불가                        | Better Auth 세션                          |
+
+CI·자동화가 배포 전 구간을 무인으로 수행하려면 `artifact:upload`, `image:load`, `deployment:read`, `deployment:write`, `job:read`가 필요하고, 배포 후 검증까지 하려면 `engine:read`·`control-plane:read`를, 교착 job 해소까지 하려면 `job:write`를 추가한다. 실제 워크플로는 [ci-examples/github-actions-deploy.yml](./ci-examples/github-actions-deploy.yml)에 있다.
+
 ## 3. 응답과 오류
 
 성공 응답은 `{ success: true, data }`, 페이지 응답은 `{ success: true, data, pagination }`, 실패는 `{ success: false, error: { code, message, requestId, details? } }`다. production에서 내부 stack과 raw Engine payload를 details에 넣지 않는다.
@@ -171,6 +215,7 @@ snapshot은 짧게 보존하고 현재 판단에 사용하지 않는다.
 ## 10. API 문서
 
 - 비production에서만 OpenAPI JSON과 Swagger UI를 노출한다.
+- 현재 구현: `API_DOCS_ENABLED=true`일 때만 `GET /api/openapi.json`이 route의 `describeRoute` 정의로 스펙을 생성해 서빙한다. 기본값은 `false`이므로 production 이미지는 아무것도 노출하지 않는다. Swagger UI는 아직 서빙하지 않는다.
 - 외부 자동화 문서는 API key scope, idempotency, pagination, job, SSE reconnect, rate limit, error code를 포함한다.
 - Hono RPC type은 내부 web에 사용하고 외부 클라이언트의 장기 계약은 versioned OpenAPI로 제공한다.
 - breaking API는 `/api/v2` 또는 명시적 media version으로 올린다.
