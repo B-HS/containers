@@ -2,10 +2,10 @@
 
 import type { FC } from 'react'
 import { useTranslations } from 'next-intl'
-import type { NginxBlock, NginxConfig, NginxConfigNode, NginxDirective } from '@shared/lib/nginx-config/parse-nginx-config'
+import type { NginxBlock, NginxConfig, NginxConfigNode, NginxDirective } from '@containers/nginx-config/parse'
 import { findFirstBlock, getChildIndent, updateDirectiveArgs } from '@shared/lib/nginx-config/nginx-editor-model'
-import { createDirectiveNode } from '@shared/lib/nginx-config/serialize-nginx-config'
-import { tokenizeNginxArgs } from '@shared/lib/nginx-config/parse-nginx-config'
+import { createDirectiveNode } from '@containers/nginx-config/serialize'
+import { tokenizeNginxArgs } from '@containers/nginx-config/parse'
 import { NginxDirectiveSection } from '@features/nginx-directive-section/nginx-directive-section'
 
 const parseValue = (value: string) => (value.trim() === '' ? [] : tokenizeNginxArgs(value))

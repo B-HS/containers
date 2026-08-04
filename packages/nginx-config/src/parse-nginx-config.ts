@@ -30,11 +30,20 @@ export type NginxConfig = NginxBlock
 
 type ScanResult = {
     end: number
-    terminator: 'semicolon' | 'open' | 'close' | 'eof'
+    terminator: 'comment' | 'semicolon' | 'open' | 'close' | 'eof'
+}
+
+const findLineEnd = (text: string, start: number) => {
+    let index = start
+    while (index < text.length && text[index] !== '\n') {
+        index += 1
+    }
+    return index
 }
 
 const scanStatementEnd = (text: string, start: number): ScanResult => {
     let quote: "'" | '"' | undefined
+    let hasContent = false
     for (let index = start; index < text.length; index += 1) {
         const char = text[index]
         if (quote !== undefined) {
@@ -45,12 +54,14 @@ const scanStatementEnd = (text: string, start: number): ScanResult => {
         }
         if (char === "'" || char === '"') {
             quote = char
+            hasContent = true
             continue
         }
         if (char === '#') {
-            while (index < text.length && text[index] !== '\n') {
-                index += 1
+            if (!hasContent) {
+                return { end: findLineEnd(text, index), terminator: 'comment' }
             }
+            index = findLineEnd(text, index)
             continue
         }
         if (char === ';') {
@@ -61,6 +72,9 @@ const scanStatementEnd = (text: string, start: number): ScanResult => {
         }
         if (char === '}') {
             return { end: index + 1, terminator: 'close' }
+        }
+        if (char !== ' ' && char !== '\t' && char !== '\n' && char !== '\r') {
+            hasContent = true
         }
     }
     return { end: text.length, terminator: 'eof' }
@@ -112,13 +126,13 @@ const parseBlockBody = (text: string, start: number, block: NginxBlock): number 
             block.tail = raw
             return end
         }
-        if (trimmed === '') {
-            block.children.push({ kind: 'text', raw })
+        if (terminator === 'comment') {
+            block.children.push({ kind: 'comment', raw })
             position = end
             continue
         }
-        if (trimmed.startsWith('#')) {
-            block.children.push({ kind: 'comment', raw })
+        if (trimmed === '') {
+            block.children.push({ kind: 'text', raw })
             position = end
             continue
         }

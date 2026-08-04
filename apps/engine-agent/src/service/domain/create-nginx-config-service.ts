@@ -2,6 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { access, copyFile, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { nginxConfigApplyResultSchema, nginxConfigApplySchema, nginxConfigRevisionSchema, nginxConfigStateSchema } from '@containers/contracts/nginx'
+import type { NginxBlock, NginxDirective } from '@containers/nginx-config/parse'
+import { parseNginxConfig } from '@containers/nginx-config/parse'
+import { serializeNginxConfig } from '@containers/nginx-config/serialize'
 import type { DockerEngineClient } from '../shared/create-docker-engine-client'
 import { createAppError } from '../../lib/error'
 
@@ -13,29 +16,36 @@ const MANAGEMENT_PROJECT = 'containers'
 const isManagementPlaneResource = (labels: Record<string, string>) =>
     labels[COMPOSE_PROJECT_LABEL] === MANAGEMENT_PROJECT || labels[MANAGEMENT_LABEL] === MANAGEMENT_LABEL_VALUE
 
-const REQUIRED_CONFIG_TOKENS = [
-    'pid /tmp/nginx.pid;',
-    'access_log /var/log/nginx/access.jsonl containers_json;',
-    'listen 8080',
-    'listen 8081',
-    'location /api/',
-    'location = /status',
-    'stub_status;',
-    'proxy_pass http://containers_api;',
-    'proxy_pass http://containers_web;',
-    'upstream containers_api',
-    'upstream containers_web',
-    'server api:3001',
-    'server web:3000',
-    'map $remote_addr $containers_client_ip',
-    'limit_req_zone $containers_client_ip zone=containers_api_rate:10m rate=300r/m;',
-    'limit_req_zone $containers_client_ip zone=containers_auth_rate:10m rate=5r/m;',
-    'limit_req_status 429;',
-    'limit_req zone=containers_api_rate',
-    'limit_req zone=containers_auth_rate',
-    'Content-Security-Policy',
-    'X-Content-Type-Options "nosniff" always;',
-    'X-Frame-Options "DENY" always;',
+const PANEL_SERVER_NAME = 'panel.containers.local'
+const API_SERVER_NAME = 'api.containers.local'
+const PANEL_LISTEN_PORT = '8080'
+const STATUS_LISTEN_PORT = '8081'
+const STATUS_LOCATION_PATH = '/status'
+const API_LOCATION_PATH = '/api/'
+const API_UPSTREAM_NAME = 'containers_api'
+const WEB_UPSTREAM_NAME = 'containers_web'
+const API_UPSTREAM_TARGET = 'http://containers_api'
+const WEB_UPSTREAM_TARGET = 'http://containers_web'
+const API_UPSTREAM_SERVER = 'api:3001'
+const WEB_UPSTREAM_SERVER = 'web:3000'
+const API_RATE_ZONE = 'containers_api_rate'
+const AUTH_RATE_ZONE = 'containers_auth_rate'
+const API_BURST_LIMIT = 1_000
+const AUTH_BURST_LIMIT = 100
+const CLIENT_IP_MAP_SOURCE = '$remote_addr'
+const CLIENT_IP_MAP_TARGET = '$containers_client_ip'
+const PANEL_REQUIRED_HEADERS = ['Content-Security-Policy', 'X-Content-Type-Options', 'X-Frame-Options']
+const API_REQUIRED_HEADERS = ['X-Content-Type-Options', 'X-Frame-Options']
+const SIGN_IN_LOCATION_PATTERN = /^\^\/api\/auth\/sign-in\/email/
+const BURST_ARGUMENT_PATTERN = /^burst=(\d+)$/
+
+const REQUIRED_ROOT_DIRECTIVES = [{ args: ['/tmp/nginx.pid'], name: 'pid' }]
+
+const REQUIRED_HTTP_DIRECTIVES = [
+    { args: ['/var/log/nginx/access.jsonl', 'containers_json'], name: 'access_log' },
+    { args: [CLIENT_IP_MAP_TARGET, `zone=${API_RATE_ZONE}:10m`, 'rate=300r/m'], name: 'limit_req_zone' },
+    { args: [CLIENT_IP_MAP_TARGET, `zone=${AUTH_RATE_ZONE}:10m`, 'rate=5r/m'], name: 'limit_req_zone' },
+    { args: ['429'], name: 'limit_req_status' },
 ]
 
 const PROBE_MAX_ATTEMPTS = 5
@@ -52,147 +62,180 @@ type NginxConfigServiceDependencies = {
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
 
-const stripComments = (config: string) =>
-    config
+const collectBlocks = (parent: NginxBlock, name: string) =>
+    parent.children.filter((node): node is NginxBlock => node.kind === 'block' && node.name === name)
+
+const collectDirectives = (parent: NginxBlock, name: string) =>
+    parent.children.filter((node): node is NginxDirective => node.kind === 'directive' && node.name === name)
+
+const collectDirectivesDeep = (parent: NginxBlock, name: string): NginxDirective[] =>
+    parent.children.flatMap((node) => {
+        if (node.kind === 'block') {
+            return collectDirectivesDeep(node, name)
+        }
+        if (node.kind === 'directive' && node.name === name) {
+            return [node]
+        }
+        return []
+    })
+
+const hasDirective = (parent: NginxBlock, name: string, requiredArgs: string[]) =>
+    collectDirectives(parent, name).some((directive) => requiredArgs.every((argument) => directive.args.includes(argument)))
+
+const stripTailComments = (tail: string) =>
+    tail
         .split('\n')
-        .map((line) => {
-            let inSingleQuote = false
-            let inDoubleQuote = false
-            for (let index = 0; index < line.length; index += 1) {
-                const character = line[index]
-                if (character === "'" && !inDoubleQuote) {
-                    inSingleQuote = !inSingleQuote
-                } else if (character === '"' && !inSingleQuote) {
-                    inDoubleQuote = !inDoubleQuote
-                } else if (character === '#' && !inSingleQuote && !inDoubleQuote) {
-                    return line.slice(0, index)
-                }
-            }
-            return line
-        })
-        .join('\n')
+        .map((line) => (line.trimStart().startsWith('#') ? '' : line))
+        .join('')
+        .trim()
 
-const extractServerBlock = (config: string, serverName: string) => {
-    const serverStart = config.indexOf(`server_name ${serverName}`)
-    if (serverStart < 0) {
-        return ''
-    }
-    const blockStart = config.lastIndexOf('server {', serverStart)
-    if (blockStart < 0) {
-        return ''
-    }
-    let depth = 0
-    let index = blockStart
-    for (; index < config.length; index += 1) {
-        const character = config[index]
-        if (character === '{') {
-            depth += 1
-        } else if (character === '}') {
-            depth -= 1
-            if (depth === 0) {
-                break
-            }
-        }
-    }
-    return depth === 0 ? config.slice(blockStart, index + 1) : ''
+const hasBalancedBlocks = (parent: NginxBlock): boolean =>
+    parent.children.every((node) => node.kind !== 'block' || (stripTailComments(node.tail) === '}' && hasBalancedBlocks(node)))
+
+type LocationContext = {
+    ancestors: NginxBlock[]
+    block: NginxBlock
 }
 
-const stripNestedBlocks = (block: string) => {
-    let result = ''
-    let depth = 0
-    for (let index = 0; index < block.length; index += 1) {
-        const character = block[index]
-        if (character === '{') {
-            depth += 1
-            if (depth > 1) {
-                continue
-            }
-        } else if (character === '}') {
-            depth -= 1
-            if (depth === 0) {
-                result += character
-            }
-            continue
+const collectLocations = (parent: NginxBlock, ancestors: NginxBlock[]): LocationContext[] =>
+    parent.children.flatMap((node) => {
+        if (node.kind !== 'block') {
+            return []
         }
-        if (depth <= 1) {
-            result += character
+        const nested = collectLocations(node, [node, ...ancestors])
+        if (node.name !== 'location') {
+            return nested
+        }
+        return [{ ancestors, block: node }, ...nested]
+    })
+
+const resolveLimitRequests = ({ ancestors, block }: LocationContext) => {
+    for (const level of [block, ...ancestors]) {
+        const directives = collectDirectives(level, 'limit_req')
+        if (directives.length > 0) {
+            return directives
         }
     }
-    return result
+    return []
 }
 
-const extractLocation = (block: string, locationPattern: RegExp) => {
-    const match = locationPattern.exec(block)
-    if (!match) {
-        return ''
+const satisfiesRateLimit = (context: LocationContext, zone: string, maxBurst: number) => {
+    const matched = resolveLimitRequests(context).filter((directive) => directive.args.includes(`zone=${zone}`))
+    if (matched.length === 0) {
+        return false
     }
-    const locationStart = match.index
-    const braceStart = block.indexOf('{', locationStart)
-    if (braceStart < 0) {
-        return ''
-    }
-    let depth = 0
-    let index = braceStart
-    for (; index < block.length; index += 1) {
-        const character = block[index]
-        if (character === '{') {
-            depth += 1
-        } else if (character === '}') {
-            depth -= 1
-            if (depth === 0) {
-                break
+    return matched.every((directive) =>
+        directive.args.every((argument) => {
+            const burst = BURST_ARGUMENT_PATTERN.exec(argument)
+            if (burst === null) {
+                return true
             }
-        }
-    }
-    const full = depth === 0 ? block.slice(locationStart, index + 1) : ''
-    return full === '' ? '' : stripNestedBlocks(full)
+            return Number.parseInt(burst[1] ?? '0', 10) <= maxBurst
+        }),
+    )
 }
+
+const isApiLocation = ({ block }: LocationContext) => {
+    const [modifier, path] = block.args
+    if (block.args.length === 1) {
+        return modifier === API_LOCATION_PATH
+    }
+    return block.args.length === 2 && modifier === '^~' && path === API_LOCATION_PATH
+}
+
+const isSignInLocation = ({ block }: LocationContext) => {
+    const [modifier, pattern] = block.args
+    if (block.args.length !== 2 || pattern === undefined) {
+        return false
+    }
+    return (modifier === '~' || modifier === '~*') && SIGN_IN_LOCATION_PATTERN.test(pattern)
+}
+
+const hasSecurityHeaders = (server: NginxBlock, requiredHeaders: string[]) => {
+    const present = collectDirectives(server, 'add_header').map((directive) => directive.args[0])
+    return requiredHeaders.every((header) => present.includes(header))
+}
+
+const satisfiesServerContract = (server: NginxBlock, requiredHeaders: string[], requiredProxyTargets: string[]) => {
+    if (!hasDirective(server, 'listen', [PANEL_LISTEN_PORT]) || !hasSecurityHeaders(server, requiredHeaders)) {
+        return false
+    }
+    const proxyTargets = collectDirectivesDeep(server, 'proxy_pass').map((directive) => directive.args[0])
+    if (!requiredProxyTargets.every((target) => proxyTargets.includes(target))) {
+        return false
+    }
+    const locations = collectLocations(server, [server])
+    const apiLocations = locations.filter(isApiLocation)
+    if (apiLocations.length === 0 || !apiLocations.every((location) => satisfiesRateLimit(location, API_RATE_ZONE, API_BURST_LIMIT))) {
+        return false
+    }
+    const signInLocations = locations.filter(isSignInLocation)
+    return signInLocations.length > 0 && signInLocations.every((location) => satisfiesRateLimit(location, AUTH_RATE_ZONE, AUTH_BURST_LIMIT))
+}
+
+const findServersByName = (http: NginxBlock, serverName: string) =>
+    collectBlocks(http, 'server').filter((server) =>
+        collectDirectives(server, 'server_name').some((directive) => directive.args.includes(serverName)),
+    )
+
+const hasClientIpMap = (http: NginxBlock) =>
+    collectBlocks(http, 'map').some((map) => map.args.length === 2 && map.args[0] === CLIENT_IP_MAP_SOURCE && map.args[1] === CLIENT_IP_MAP_TARGET)
+
+const hasStatusServer = (http: NginxBlock) =>
+    collectBlocks(http, 'server').some((server) => {
+        if (!hasDirective(server, 'listen', [STATUS_LISTEN_PORT])) {
+            return false
+        }
+        return collectBlocks(server, 'location').some(
+            (location) =>
+                location.args.length === 2 &&
+                location.args[0] === '=' &&
+                location.args[1] === STATUS_LOCATION_PATH &&
+                collectDirectives(location, 'stub_status').length > 0,
+        )
+    })
+
+const hasUpstream = (http: NginxBlock, name: string, target: string) =>
+    collectBlocks(http, 'upstream').some((upstream) => upstream.args.includes(name) && hasDirective(upstream, 'server', [target]))
 
 const verifyProtectedContract = (config: string) => {
     if (config.includes('\0')) {
         throw createAppError('NGINX_PROTECTED_CONTRACT')
     }
-    const activeConfig = stripComments(config)
-    if (REQUIRED_CONFIG_TOKENS.some((token) => !activeConfig.includes(token))) {
+    const root = parseNginxConfig(config)
+    if (serializeNginxConfig(root) !== config || root.tail !== '' || !hasBalancedBlocks(root)) {
         throw createAppError('NGINX_PROTECTED_CONTRACT')
     }
-    const panelBlock = extractServerBlock(activeConfig, 'panel.containers.local')
+    const httpBlocks = collectBlocks(root, 'http')
+    const [http] = httpBlocks
+    if (httpBlocks.length !== 1 || http === undefined) {
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
+    }
     if (
-        !panelBlock ||
-        !panelBlock.includes('listen 8080') ||
-        !panelBlock.includes('add_header Content-Security-Policy') ||
-        !panelBlock.includes('add_header X-Frame-Options') ||
-        !panelBlock.includes('add_header X-Content-Type-Options') ||
-        !panelBlock.includes('proxy_pass http://containers_api;') ||
-        !panelBlock.includes('proxy_pass http://containers_web;')
+        !REQUIRED_ROOT_DIRECTIVES.every(({ args, name }) => hasDirective(root, name, args)) ||
+        !REQUIRED_HTTP_DIRECTIVES.every(({ args, name }) => hasDirective(http, name, args))
     ) {
         throw createAppError('NGINX_PROTECTED_CONTRACT')
     }
-    const apiLocation = extractLocation(panelBlock, /location \/api\//)
-    if (!apiLocation || !apiLocation.includes('limit_req zone=containers_api_rate') || hasExcessiveBurst(apiLocation, 1_000)) {
-        throw createAppError('NGINX_PROTECTED_CONTRACT')
-    }
-    const authLocation = extractLocation(panelBlock, /location\s+~\s+\^\/api\/auth\/sign-in\/email/)
-    if (!authLocation || !authLocation.includes('limit_req zone=containers_auth_rate') || hasExcessiveBurst(authLocation, 100)) {
-        throw createAppError('NGINX_PROTECTED_CONTRACT')
-    }
-    const apiBlock = extractServerBlock(activeConfig, 'api.containers.local')
-    const apiBlockApiLocation = extractLocation(apiBlock, /location \/api\//)
     if (
-        !apiBlockApiLocation ||
-        !apiBlockApiLocation.includes('limit_req zone=containers_api_rate') ||
-        hasExcessiveBurst(apiBlockApiLocation, 1_000)
+        !hasClientIpMap(http) ||
+        !hasStatusServer(http) ||
+        !hasUpstream(http, API_UPSTREAM_NAME, API_UPSTREAM_SERVER) ||
+        !hasUpstream(http, WEB_UPSTREAM_NAME, WEB_UPSTREAM_SERVER)
     ) {
         throw createAppError('NGINX_PROTECTED_CONTRACT')
     }
-}
-
-const hasExcessiveBurst = (location: string, maxBurst: number) => {
-    const match = location.match(/limit_req\s+zone=[a-z_]+_rate\s+burst=(\d+)/)
-    if (!match) {
-        return false
+    const panelServers = findServersByName(http, PANEL_SERVER_NAME)
+    if (
+        panelServers.length === 0 ||
+        !panelServers.every((server) => satisfiesServerContract(server, PANEL_REQUIRED_HEADERS, [API_UPSTREAM_TARGET, WEB_UPSTREAM_TARGET]))
+    ) {
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
     }
-    return Number.parseInt(match[1] ?? '0', 10) > maxBurst
+    const apiServers = findServersByName(http, API_SERVER_NAME)
+    if (apiServers.length === 0 || !apiServers.every((server) => satisfiesServerContract(server, API_REQUIRED_HEADERS, [API_UPSTREAM_TARGET]))) {
+        throw createAppError('NGINX_PROTECTED_CONTRACT')
+    }
 }
 
 export const createNginxConfigService = ({ configRoot, dockerEngineClient, fetcher = fetch, now, statusUrl }: NginxConfigServiceDependencies) => {

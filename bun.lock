@@ -39,6 +39,7 @@
       "dependencies": {
         "@containers/config": "workspace:*",
         "@containers/contracts": "workspace:*",
+        "@containers/nginx-config": "workspace:*",
         "@hono/standard-validator": "^0.2.0",
         "@standard-community/standard-json": "^0.3.5",
         "@standard-community/standard-openapi": "^0.2.9",
@@ -65,6 +66,7 @@
       "dependencies": {
         "@containers/api": "workspace:*",
         "@containers/contracts": "workspace:*",
+        "@containers/nginx-config": "workspace:*",
         "@tailwindcss/postcss": "4.3.3",
         "@tanstack/react-query": "^5.101.4",
         "@xterm/addon-fit": "^0.11.0",
@@ -113,6 +115,10 @@
         "drizzle-orm": "0.45.2",
       },
     },
+    "packages/nginx-config": {
+      "name": "@containers/nginx-config",
+      "version": "0.1.0",
+    },
   },
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
@@ -150,6 +156,8 @@
     "@containers/db-schema": ["@containers/db-schema@workspace:packages/db-schema"],
 
     "@containers/engine-agent": ["@containers/engine-agent@workspace:apps/engine-agent"],
+
+    "@containers/nginx-config": ["@containers/nginx-config@workspace:packages/nginx-config"],
 
     "@containers/traffic-worker": ["@containers/traffic-worker@workspace:apps/traffic-worker"],
 

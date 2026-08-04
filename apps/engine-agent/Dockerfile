@@ -10,11 +10,13 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/db-schema/package.json packages/db-schema/package.json
+COPY packages/nginx-config/package.json packages/nginx-config/package.json
 RUN bun install --frozen-lockfile
 
 COPY apps/engine-agent apps/engine-agent
 COPY packages/config packages/config
 COPY packages/contracts packages/contracts
+COPY packages/nginx-config packages/nginx-config
 RUN bun run --filter @containers/engine-agent build
 
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0

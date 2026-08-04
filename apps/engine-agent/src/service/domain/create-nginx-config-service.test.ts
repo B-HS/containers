@@ -119,4 +119,103 @@ describe('Nginx 설정 서비스', () => {
         )
         await expect(service.apply({ config: withoutRateLimit, expectedSha256: digest(currentConfig) })).rejects.toThrow('NGINX_PROTECTED_CONTRACT')
     })
+
+    test('실제 nginx.conf는 보호 계약을 통과합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+
+        const result = await service.apply({ config: `${currentConfig}\n`, expectedSha256: digest(currentConfig) })
+
+        expect(result.previousSha256).toBe(digest(currentConfig))
+    })
+
+    test('proxy route 렌더러가 넣는 관리 마커 주석이 있어도 통과합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const lastBrace = currentConfig.lastIndexOf('}')
+        const withMarkers = `${currentConfig.slice(0, lastBrace)}# containers-routes:start\n\n# containers-routes:end\n${currentConfig.slice(lastBrace)}`
+
+        const result = await service.apply({ config: withMarkers, expectedSha256: digest(currentConfig) })
+
+        expect(result.sha256).toBe(digest(withMarkers))
+    })
+
+    test('server_name에 panel 도메인이 다른 이름과 함께 나열돼도 통과합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const withAliasServerName = currentConfig.replace(
+            'server_name panel.containers.local;',
+            'server_name panel.containers.local admin.containers.local;',
+        )
+
+        const result = await service.apply({ config: withAliasServerName, expectedSha256: digest(currentConfig) })
+
+        expect(result.sha256).toBe(digest(withAliasServerName))
+    })
+
+    test('앞에 배치한 decoy panel server 블록을 거부합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const decoyServer = `
+    server {
+        listen 8080;
+        server_name panel.containers.local;
+
+        location /api/ {
+            proxy_pass http://containers_api;
+        }
+
+        location / {
+            proxy_pass http://containers_web;
+        }
+    }
+`
+        const withDecoy = currentConfig.replace('http {\n', `http {\n${decoyServer}`)
+
+        await expect(service.apply({ config: withDecoy, expectedSha256: digest(currentConfig) })).rejects.toThrow('NGINX_PROTECTED_CONTRACT')
+    })
+
+    test('rate limit이 없는 두 번째 /api/ location을 거부합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const duplicatedApiLocation = `        location /api/ {
+            proxy_pass http://containers_api;
+        }
+
+        location / {
+            proxy_pass http://containers_web;`
+        const withDuplicate = currentConfig.replace(
+            `        location / {
+            proxy_pass http://containers_web;`,
+            duplicatedApiLocation,
+        )
+
+        await expect(service.apply({ config: withDuplicate, expectedSha256: digest(currentConfig) })).rejects.toThrow('NGINX_PROTECTED_CONTRACT')
+    })
+
+    test('다른 location으로 감싼 nested /api/ 우회를 거부합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const nestedBypass = `        location /internal/ {
+            limit_req zone=containers_auth_rate burst=5 nodelay;
+
+            location /api/ {
+                proxy_pass http://containers_api;
+            }
+        }
+
+        location / {
+            proxy_pass http://containers_web;`
+        const withNestedBypass = currentConfig.replace(
+            `        location / {
+            proxy_pass http://containers_web;`,
+            nestedBypass,
+        )
+
+        await expect(service.apply({ config: withNestedBypass, expectedSha256: digest(currentConfig) })).rejects.toThrow('NGINX_PROTECTED_CONTRACT')
+    })
+
+    test('burst 상한을 넘긴 /api/ rate limit을 거부합니다', async () => {
+        const { currentConfig, service } = await createTestContext()
+        const withExcessiveBurst = currentConfig.replace(
+            'limit_req zone=containers_api_rate burst=100 nodelay;',
+            'limit_req zone=containers_api_rate burst=5000 nodelay;',
+        )
+
+        await expect(service.apply({ config: withExcessiveBurst, expectedSha256: digest(currentConfig) })).rejects.toThrow('NGINX_PROTECTED_CONTRACT')
+    })
 })

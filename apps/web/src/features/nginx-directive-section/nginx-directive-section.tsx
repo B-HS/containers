@@ -2,7 +2,7 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
-import type { NginxDirective } from '@shared/lib/nginx-config/parse-nginx-config'
+import type { NginxDirective } from '@containers/nginx-config/parse'
 import { Button } from '@shared/ui/button'
 import { Input } from '@shared/ui/input'
 import { NginxDirectiveRow } from '@features/nginx-directive-row/nginx-directive-row'

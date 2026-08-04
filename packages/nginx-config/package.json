@@ -1,0 +1,14 @@
+{
+    "name": "@containers/nginx-config",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./parse": "./src/parse-nginx-config.ts",
+        "./serialize": "./src/serialize-nginx-config.ts"
+    },
+    "scripts": {
+        "build": "bun build src/parse-nginx-config.ts src/serialize-nginx-config.ts --outdir dist --target bun",
+        "typecheck": "tsc --noEmit"
+    }
+}

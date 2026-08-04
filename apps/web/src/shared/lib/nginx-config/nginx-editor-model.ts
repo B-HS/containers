@@ -1,5 +1,5 @@
-import type { NginxBlock, NginxConfig, NginxConfigNode, NginxDirective } from './parse-nginx-config'
-import { createDirectiveNode, renderDirectiveRaw } from './serialize-nginx-config'
+import type { NginxBlock, NginxConfig, NginxConfigNode, NginxDirective } from '@containers/nginx-config/parse'
+import { createDirectiveNode, renderDirectiveRaw } from '@containers/nginx-config/serialize'
 
 export const getBlockIndent = (block: NginxBlock): string => block.head.match(/^\s*/)?.[0] ?? ''
 

@@ -6,10 +6,10 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { useApplyNginxConfig, useGetNginxConfig } from '@entities/nginx/nginx.query'
 import { formatDateTime } from '@shared/lib/format-date-time'
-import type { NginxBlock, NginxConfig, NginxDirective } from '@shared/lib/nginx-config/parse-nginx-config'
-import { parseNginxConfig } from '@shared/lib/nginx-config/parse-nginx-config'
-import { serializeNginxConfig } from '@shared/lib/nginx-config/serialize-nginx-config'
-import { createBlockNode } from '@shared/lib/nginx-config/serialize-nginx-config'
+import type { NginxBlock, NginxConfig, NginxDirective } from '@containers/nginx-config/parse'
+import { parseNginxConfig } from '@containers/nginx-config/parse'
+import { serializeNginxConfig } from '@containers/nginx-config/serialize'
+import { createBlockNode } from '@containers/nginx-config/serialize'
 import {
     collectServerBlocks,
     collectUpstreamBlocks,

@@ -10,6 +10,7 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/db-schema/package.json packages/db-schema/package.json
+COPY packages/nginx-config/package.json packages/nginx-config/package.json
 RUN bun install --frozen-lockfile
 
 COPY apps/api apps/api
