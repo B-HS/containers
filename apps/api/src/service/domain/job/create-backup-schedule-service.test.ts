@@ -32,7 +32,12 @@ const createManifest = (createdAt: string) => ({
     createdAt,
     id: '374f1798-c75f-4152-938d-be2d09d12d51',
     label: 'automatic',
-    schemaVersion: 1 as const,
+    nginxBytes: null,
+    nginxSha256: null,
+    schemaVersion: 2 as const,
+    secretsBytes: null,
+    secretsIncluded: false,
+    secretsSha256: null,
     trafficBytes: 1,
     trafficSha256: 'b'.repeat(64),
 })

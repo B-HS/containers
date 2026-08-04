@@ -1,4 +1,5 @@
 import { Database } from 'bun:sqlite'
+import { BACKUP_RESTORE_MODE, type BackupRestoreMode } from '@containers/contracts/backup'
 import { createAppError } from '../lib/error'
 import { createBackupService, type BackupServiceDb } from '../service/domain/backup/create-backup-service'
 import type { TrafficWorkerClient } from '../service/shared/traffic-worker-client/create-traffic-worker-client'
@@ -6,16 +7,12 @@ import type { TrafficWorkerClient } from '../service/shared/traffic-worker-clien
 const quoteIdentifier = (value: string) => `"${value.replaceAll('"', '""')}"`
 const quoteSqlValue = (value: string) => `'${value.replaceAll("'", "''")}'`
 
-const getTables = (database: Database, schema = 'main') =>
-    database
-        .query<{ name: string }, []>(`SELECT name FROM ${schema}.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
-        .all()
-        .map((record) => record.name)
+const MIGRATION_TABLE = '__drizzle_migrations'
 
-const PRESERVED_TABLES = new Set([
+const HOST_PRESERVED_TABLES = new Set([
+    MIGRATION_TABLE,
     'account',
     'api_key',
-    'artifact',
     'audit_log',
     'deployment_secret',
     'invitation',
@@ -30,6 +27,34 @@ const PRESERVED_TABLES = new Set([
     'user_role',
     'verification',
 ])
+
+const FULL_PRESERVED_TABLES = new Set([MIGRATION_TABLE, 'operation_job', 'operation_job_event'])
+
+const preservedTablesOf = (mode: BackupRestoreMode) => (mode === BACKUP_RESTORE_MODE.FULL ? FULL_PRESERVED_TABLES : HOST_PRESERVED_TABLES)
+
+const getTables = (database: Database, schema = 'main') =>
+    database
+        .query<{ name: string }, []>(`SELECT name FROM ${schema}.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+        .all()
+        .map((record) => record.name)
+
+const normalizeDanglingSetNullReferences = (database: Database, tables: string[]) => {
+    for (const table of tables) {
+        const foreignKeys = database
+            .query<{ from: string; on_delete: string; table: string; to: string | null }, []>(`PRAGMA foreign_key_list(${quoteIdentifier(table)})`)
+            .all()
+        for (const foreignKey of foreignKeys) {
+            if (foreignKey.on_delete.toUpperCase() !== 'SET NULL') {
+                continue
+            }
+            const column = quoteIdentifier(foreignKey.from)
+            const parentColumn = quoteIdentifier(foreignKey.to ?? 'id')
+            database.exec(
+                `UPDATE main.${quoteIdentifier(table)} SET ${column} = NULL WHERE ${column} IS NOT NULL AND ${column} NOT IN (SELECT ${parentColumn} FROM main.${quoteIdentifier(foreignKey.table)})`,
+            )
+        }
+    }
+}
 
 type BuildBackupServiceDbDependencies = {
     sqlite: Database
@@ -58,22 +83,21 @@ export const buildBackupServiceDb = ({ sqlite }: BuildBackupServiceDbDependencie
         }
     }
 
-    const restoreControlSnapshot = async (filePath: string) => {
+    const restoreControlSnapshot = async (filePath: string, mode: BackupRestoreMode) => {
         const tables = getTables(sqlite)
+        const preservedTables = preservedTablesOf(mode)
+        const replacedTables = tables.filter((table) => !preservedTables.has(table))
         sqlite.exec(`ATTACH DATABASE ${quoteSqlValue(filePath)} AS backup_source`)
         sqlite.exec('PRAGMA foreign_keys = OFF')
         try {
             sqlite.exec('BEGIN IMMEDIATE')
-            for (const table of [...tables].reverse()) {
-                if (!PRESERVED_TABLES.has(table)) {
-                    sqlite.exec(`DELETE FROM main.${quoteIdentifier(table)}`)
-                }
+            for (const table of [...replacedTables].reverse()) {
+                sqlite.exec(`DELETE FROM main.${quoteIdentifier(table)}`)
             }
-            for (const table of tables) {
-                if (!PRESERVED_TABLES.has(table)) {
-                    sqlite.exec(`INSERT INTO main.${quoteIdentifier(table)} SELECT * FROM backup_source.${quoteIdentifier(table)}`)
-                }
+            for (const table of replacedTables) {
+                sqlite.exec(`INSERT INTO main.${quoteIdentifier(table)} SELECT * FROM backup_source.${quoteIdentifier(table)}`)
             }
+            normalizeDanglingSetNullReferences(sqlite, tables)
             const foreignKeyViolation = sqlite.query('PRAGMA foreign_key_check').get()
             if (foreignKeyViolation) {
                 throw createAppError('BACKUP_FOREIGN_KEY_INVALID')
@@ -102,18 +126,32 @@ export const buildBackupServiceDb = ({ sqlite }: BuildBackupServiceDbDependencie
 
 type ComposeBackupDependencies = {
     backupRoot: string
+    deploymentSecretKeyFile: string
+    nginxConfigProvider: () => Promise<string>
+    notificationSecretKeyFile: string
     now: () => Date
     retentionCount: number
     sqlite: Database
     trafficWorkerClient: Pick<TrafficWorkerClient, 'createBackup' | 'restoreBackup'>
 }
 
-export const composeBackup = ({ backupRoot, now, retentionCount, sqlite, trafficWorkerClient }: ComposeBackupDependencies) => ({
+export const composeBackup = ({
+    backupRoot,
+    deploymentSecretKeyFile,
+    nginxConfigProvider,
+    notificationSecretKeyFile,
+    now,
+    retentionCount,
+    sqlite,
+    trafficWorkerClient,
+}: ComposeBackupDependencies) => ({
     backupService: createBackupService({
         backupRoot,
         db: buildBackupServiceDb({ sqlite }),
+        nginxConfigProvider,
         now,
         retentionCount,
+        secretKeyFiles: { deployment: deploymentSecretKeyFile, notification: notificationSecretKeyFile },
         trafficWorkerClient,
     }),
 })

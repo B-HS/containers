@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BACKUP_RESTORE_MODE, backupRestoreModeSchema } from './backup'
 
 export const OPERATION_JOB_KIND = {
     BACKUP_CREATE: 'backup.create',
@@ -68,6 +69,7 @@ export const trafficExportJobPayloadSchema = z
 export const backupRestoreJobPayloadSchema = z.object({
     backupId: z.uuid(),
     confirmation: z.uuid(),
+    mode: backupRestoreModeSchema.default(BACKUP_RESTORE_MODE.PRESERVE_HOST),
 })
 
 export const systemPruneJobPayloadSchema = z.object({

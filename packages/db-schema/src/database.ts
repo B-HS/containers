@@ -16,7 +16,20 @@ export const createControlDatabase = ({ filePath, migrationsFolder }: ControlDat
     sqlite.exec('PRAGMA busy_timeout = 5000')
 
     const db = drizzle({ client: sqlite, schema })
-    migrate(db, { migrationsFolder })
+
+    try {
+        migrate(db, { migrationsFolder })
+    } catch (error) {
+        console.error(
+            JSON.stringify({
+                event: 'control-database.migrate.failed',
+                filePath,
+                message: error instanceof Error ? error.message : String(error),
+                migrationsFolder,
+            }),
+        )
+        throw error
+    }
 
     return { db, sqlite }
 }

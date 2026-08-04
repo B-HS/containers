@@ -63,8 +63,14 @@ export const createJobHandlers = ({
             await reportProgress('drain')
             await maintenanceService.drain(RESTORE_DRAIN_TIMEOUT_MS)
             await reportProgress('restore')
-            const result = await backupService.restore(payload.backupId, { confirmation: payload.confirmation })
-            return { backupId: payload.backupId, recoveryBackupId: result.recoveryBackupId, restored: true }
+            const result = await backupService.restore(payload.backupId, { confirmation: payload.confirmation, mode: payload.mode })
+            return {
+                backupId: payload.backupId,
+                mode: result.mode,
+                recoveryBackupId: result.recoveryBackupId,
+                restored: true,
+                secretsRestored: result.secretsRestored,
+            }
         } finally {
             if (enabledByJob) {
                 maintenanceService.disable()

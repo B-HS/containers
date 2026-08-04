@@ -147,7 +147,13 @@ describe('job handler factory', () => {
                 },
                 restore: async (id) => {
                     calls.push(`restore:${id}`)
-                    return { backup: undefined as never, recoveryBackupId: 'recovery-id', restored: true as const }
+                    return {
+                        backup: undefined as never,
+                        mode: 'preserve-host' as const,
+                        recoveryBackupId: 'recovery-id',
+                        restored: true as const,
+                        secretsRestored: false,
+                    }
                 },
             },
             maintenanceService: {
@@ -167,7 +173,13 @@ describe('job handler factory', () => {
         const result = await handlers['backup.restore'](createContext(createJob('backup.restore', { backupId: BACKUP_ID, confirmation: BACKUP_ID })))
 
         expect(calls).toEqual(['enable:backup-restore', 'drain', `restore:${BACKUP_ID}`, 'disable'])
-        expect(result).toEqual({ backupId: BACKUP_ID, recoveryBackupId: 'recovery-id', restored: true })
+        expect(result).toEqual({
+            backupId: BACKUP_ID,
+            mode: 'preserve-host',
+            recoveryBackupId: 'recovery-id',
+            restored: true,
+            secretsRestored: false,
+        })
     })
 
     test('수동 maintenance 가 이미 켜져 있으면 restore 후에도 끄지 않고, 실패해도 정리는 수행합니다', async () => {

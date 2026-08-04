@@ -48,10 +48,12 @@ type ComposeEnv = {
     backupRetentionCount: number
     backupRoot: string
     controlMigrationsPath: string
+    deploymentSecretKeyFile: string
     diskHardAvailableBytes: number
     diskSoftAvailableBytes: number
     invitationBaseUrl: string
     nginxStatusUrl: string
+    notificationSecretKeyFile: string
     probeNetworkName: string
     protectedHostnames: string[]
     trafficWorkerInternalUrl: string
@@ -120,6 +122,9 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
     const { deploymentSecretService } = composeDeploymentSecret({ db, masterSecret: secrets.deploymentSecretKey })
     const { backupService } = composeBackup({
         backupRoot: env.backupRoot,
+        deploymentSecretKeyFile: env.deploymentSecretKeyFile,
+        nginxConfigProvider: async () => (await clients.engineAgentClient.getNginxConfig()).config,
+        notificationSecretKeyFile: env.notificationSecretKeyFile,
         now,
         retentionCount: env.backupRetentionCount,
         sqlite,

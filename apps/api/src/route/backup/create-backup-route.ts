@@ -22,7 +22,7 @@ type BackupRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
-    backupService: Pick<BackupService, 'create' | 'list' | 'remove'>
+    backupService: Pick<BackupService, 'create' | 'list' | 'remove' | 'stageRestoreSecret'>
     operationJobService: Pick<OperationJobService, 'enqueue'>
 }
 
@@ -116,11 +116,14 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
                     if (payload.confirmation !== backupId) {
                         throw createAppError('CONFIRMATION_MISMATCH')
                     }
+                    if (payload.passphrase !== null) {
+                        backupService.stageRestoreSecret(backupId, payload.passphrase)
+                    }
                     const job = await operationJobService.enqueue({
                         createdBy: principal.actorId,
                         kind: OPERATION_JOB_KIND.BACKUP_RESTORE,
                         maxAttempts: 1,
-                        payload: { backupId, confirmation: payload.confirmation },
+                        payload: { backupId, confirmation: payload.confirmation, mode: payload.mode },
                         unique: true,
                     })
                     if (job.payload.backupId !== backupId) {

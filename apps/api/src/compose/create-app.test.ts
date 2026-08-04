@@ -169,6 +169,7 @@ const createAppTestDependencies = () => ({
         restore: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
+        stageRestoreSecret: () => undefined,
     },
     auth: {
         handler: async () => new Response(null, { status: 404 }),
