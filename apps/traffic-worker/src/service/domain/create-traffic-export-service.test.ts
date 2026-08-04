@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { createInlineQueryClient } from '../../db/create-query-worker'
 import { createTrafficDatabase } from '../../db/database'
 import { createTrafficExportService } from './create-traffic-export-service'
 
@@ -52,9 +53,9 @@ describe('traffic export', () => {
         })
         database.insertEvents([event])
         const service = createTrafficExportService({
-            database,
             exportRoot,
             now: () => new Date('2026-08-01T02:00:00.000Z').getTime(),
+            queryClient: createInlineQueryClient(database),
         })
         const jobId = '22222222-2222-4222-8222-222222222222'
 

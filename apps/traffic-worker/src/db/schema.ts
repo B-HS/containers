@@ -15,7 +15,10 @@ export const accessEvent = sqliteTable(
         country: text('country').notNull(),
         userAgent: text('user_agent').notNull(),
     },
-    (table) => [index('access_event_occurred_at_idx').on(table.occurredAt), index('access_event_status_idx').on(table.status)],
+    (table) => [
+        index('access_event_occurred_at_idx').on(table.occurredAt),
+        index('access_event_occurred_at_status_idx').on(table.occurredAt, table.status),
+    ],
 )
 
 export const schema = {

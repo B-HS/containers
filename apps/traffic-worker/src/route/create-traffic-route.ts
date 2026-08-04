@@ -31,9 +31,9 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
             '/analytics',
             describeRoute({ summary: '트래픽 분석 조회', tags: ['traffic'], responses: { 200: { description: '분석 결과' } } }),
             validator('query', trafficAnalyticsQuerySchema),
-            withErrorHandling((context) => {
+            withErrorHandling(async (context) => {
                 const query = context.req.valid('query' as never) as z.infer<typeof trafficAnalyticsQuerySchema>
-                return context.json(queryService.getAnalytics(query), 200)
+                return context.json(await queryService.getAnalytics(query), 200)
             }),
         )
         .get(
@@ -49,9 +49,9 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
             '/summary',
             describeRoute({ summary: '트래픽 요약 조회', tags: ['traffic'], responses: { 200: { description: '요약 결과' } } }),
             validator('query', trafficSummaryQuerySchema),
-            withErrorHandling((context) => {
+            withErrorHandling(async (context) => {
                 const { windowMinutes } = context.req.valid('query' as never) as z.infer<typeof trafficSummaryQuerySchema>
-                return context.json(queryService.getSummary(windowMinutes), 200)
+                return context.json(await queryService.getSummary(windowMinutes), 200)
             }),
         )
         .get(

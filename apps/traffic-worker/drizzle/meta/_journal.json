@@ -15,6 +15,13 @@
             "when": 1785881593935,
             "tag": "0001_drop_access_event_raw_json",
             "breakpoints": true
+        },
+        {
+            "idx": 2,
+            "version": "6",
+            "when": 1785882227345,
+            "tag": "0002_access_event_time_status_index",
+            "breakpoints": true
         }
     ]
 }

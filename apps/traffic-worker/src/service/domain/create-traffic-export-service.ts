@@ -1,18 +1,32 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, open, readdir, rename, stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { trafficExportResultSchema } from '@containers/contracts/traffic'
 import { trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import { z } from 'zod'
-import type { TrafficDatabase } from '../../db/database'
+import type { TrafficQueryClient } from '../../db/create-query-worker'
 
 const EXPORT_RETENTION_MS = 14 * 24 * 60 * 60 * 1_000
+const EXPORT_PAGE_SIZE = 5_000
+const EXPORT_FILE_MODE = 0o600
+const CSV_HEADER = [
+    'occurredAt',
+    'requestId',
+    'host',
+    'method',
+    'uriPath',
+    'status',
+    'responseTimeMs',
+    'bytesSent',
+    'country',
+    'clientIpMasked',
+] as const
 const jobIdSchema = z.uuid()
 
 type TrafficExportServiceDependencies = {
-    database: Pick<TrafficDatabase, 'getExportEvents'>
     exportRoot: string
     now: () => number
+    queryClient: Pick<TrafficQueryClient, 'getExportEvents'>
 }
 
 const maskClientIp = (clientIp: string) => {
@@ -36,7 +50,7 @@ const csvCell = (value: string | number) => {
     return `"${safeValue.replaceAll('"', '""')}"`
 }
 
-export const createTrafficExportService = ({ database, exportRoot, now }: TrafficExportServiceDependencies) => {
+export const createTrafficExportService = ({ exportRoot, now, queryClient }: TrafficExportServiceDependencies) => {
     const cleanup = async () => {
         await mkdir(exportRoot, { recursive: true })
         const entries = await readdir(exportRoot, { withFileTypes: true })
@@ -55,61 +69,81 @@ export const createTrafficExportService = ({ database, exportRoot, now }: Traffi
             const jobId = jobIdSchema.parse(jobIdInput)
             const payload = trafficExportJobPayloadSchema.parse(payloadInput)
             await cleanup()
-            const rows = database.getExportEvents(new Date(payload.from).getTime(), new Date(payload.to).getTime())
-            const records = rows.map((row) => ({
-                bytesSent: row.bytesSent,
-                clientIpMasked: maskClientIp(row.clientIp),
-                country: row.country,
-                host: row.host,
-                method: row.method,
-                occurredAt: new Date(row.occurredAt).toISOString(),
-                requestId: row.requestId,
-                responseTimeMs: row.requestTimeMs,
-                status: row.status,
-                uriPath: row.uriPath,
-            }))
-            const content =
-                payload.format === 'ndjson'
-                    ? records.map((record) => JSON.stringify(record)).join('\n') + (records.length === 0 ? '' : '\n')
-                    : [
-                          [
-                              'occurredAt',
-                              'requestId',
-                              'host',
-                              'method',
-                              'uriPath',
-                              'status',
-                              'responseTimeMs',
-                              'bytesSent',
-                              'country',
-                              'clientIpMasked',
-                          ],
-                          ...records.map((record) => [
-                              record.occurredAt,
-                              record.requestId,
-                              record.host,
-                              record.method,
-                              record.uriPath,
-                              record.status,
-                              record.responseTimeMs,
-                              record.bytesSent,
-                              record.country,
-                              record.clientIpMasked,
-                          ]),
-                      ]
-                          .map((row) => row.map(csvCell).join(','))
-                          .join('\n') + '\n'
+
             const fileName = `traffic-${jobId}.${payload.format}`
             const filePath = join(exportRoot, fileName)
             const temporaryPath = `${filePath}.tmp`
-            await writeFile(temporaryPath, content, { encoding: 'utf8', mode: 0o600 })
+            const to = new Date(payload.to).getTime()
+            const hash = createHash('sha256')
+            const handle = await open(temporaryPath, 'w', EXPORT_FILE_MODE)
+            let bytes = 0
+            let cursor = { occurredAt: new Date(payload.from).getTime() - 1, requestId: '' }
+            let rowCount = 0
+
+            const writeChunk = async (chunk: string) => {
+                if (chunk.length === 0) return
+                const buffer = Buffer.from(chunk, 'utf8')
+                hash.update(buffer)
+                bytes += buffer.byteLength
+                await handle.write(buffer)
+            }
+
+            try {
+                if (payload.format === 'csv') await writeChunk(`${CSV_HEADER.map(csvCell).join(',')}\n`)
+                for (;;) {
+                    const rows = await queryClient.getExportEvents(cursor, to, EXPORT_PAGE_SIZE)
+                    const last = rows.at(-1)
+                    if (!last) break
+                    const records = rows.map((row) => ({
+                        bytesSent: row.bytesSent,
+                        clientIpMasked: maskClientIp(row.clientIp),
+                        country: row.country,
+                        host: row.host,
+                        method: row.method,
+                        occurredAt: new Date(row.occurredAt).toISOString(),
+                        requestId: row.requestId,
+                        responseTimeMs: row.requestTimeMs,
+                        status: row.status,
+                        uriPath: row.uriPath,
+                    }))
+                    await writeChunk(
+                        payload.format === 'ndjson'
+                            ? records.map((record) => `${JSON.stringify(record)}\n`).join('')
+                            : records
+                                  .map(
+                                      (record) =>
+                                          `${[
+                                              record.occurredAt,
+                                              record.requestId,
+                                              record.host,
+                                              record.method,
+                                              record.uriPath,
+                                              record.status,
+                                              record.responseTimeMs,
+                                              record.bytesSent,
+                                              record.country,
+                                              record.clientIpMasked,
+                                          ]
+                                              .map(csvCell)
+                                              .join(',')}\n`,
+                                  )
+                                  .join(''),
+                    )
+                    rowCount += rows.length
+                    cursor = { occurredAt: last.occurredAt, requestId: last.requestId }
+                    if (rows.length < EXPORT_PAGE_SIZE) break
+                }
+            } finally {
+                await handle.close()
+            }
+
             await rename(temporaryPath, filePath)
             return trafficExportResultSchema.parse({
-                bytes: Buffer.byteLength(content),
+                bytes,
                 fileName,
                 format: payload.format,
-                rowCount: records.length,
-                sha256: createHash('sha256').update(content).digest('hex'),
+                rowCount,
+                sha256: hash.digest('hex'),
             })
         },
     }

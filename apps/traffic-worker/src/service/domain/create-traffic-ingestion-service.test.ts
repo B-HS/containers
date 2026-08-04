@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { appendFile, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { createInlineQueryClient } from '../../db/create-query-worker'
 import { createTrafficDatabase, type TrafficDatabase } from '../../db/database'
 import { createAppError } from '@/lib/error'
 import { createTrafficIngestionService } from './create-traffic-ingestion-service'
@@ -69,9 +70,9 @@ describe('트래픽 수집', () => {
         const ingestion = fixture.createIngestion()
 
         await ingestion.poll()
-        const queryService = createTrafficQueryService({ database: fixture.database, now: () => fixture.now })
-        const summary = queryService.getSummary(1)
-        const analytics = queryService.getAnalytics({ limit: 10, pathPrefix: '/ko', statusClass: 'all', windowMinutes: 1 })
+        const queryService = createTrafficQueryService({ now: () => fixture.now, queryClient: createInlineQueryClient(fixture.database) })
+        const summary = await queryService.getSummary(1)
+        const analytics = await queryService.getAnalytics({ limit: 10, pathPrefix: '/ko', statusClass: 'all', windowMinutes: 1 })
 
         expect(ingestion.getState().ingestedEventCount).toBe(2)
         expect(ingestion.getState().invalidLineCount).toBe(1)
@@ -159,11 +160,10 @@ describe('트래픽 수집', () => {
         await ingestion.poll()
         await ingestion.poll()
         await ingestion.poll()
-        const analytics = createTrafficQueryService({ database: fixture.database, now: () => fixture.now }).getAnalytics({
-            limit: 10,
-            statusClass: 'all',
-            windowMinutes: 1,
-        })
+        const analytics = await createTrafficQueryService({
+            now: () => fixture.now,
+            queryClient: createInlineQueryClient(fixture.database),
+        }).getAnalytics({ limit: 10, statusClass: 'all', windowMinutes: 1 })
 
         expect(fixture.database.getSummary(0)?.requestCount).toBe(3)
         expect(analytics.events.map((event) => event.requestId).sort()).toEqual(['request-1', 'request-2', 'request-3'])

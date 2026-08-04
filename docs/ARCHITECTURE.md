@@ -95,6 +95,7 @@ Hono Route가 인증·DTO 검증·인가·위험도 판정을 수행하고 job�
 - `api` 장애: Nginx와 workload는 계속 동작하고 변경 작업만 중단된다.
 - `engine-agent` 장애: Docker 변경·stream 기능만 중단되고 조회 화면은 명시적 degraded 상태가 된다.
 - `traffic-worker` 장애: 프록시는 계속 동작하고 raw log가 volume에 쌓인다. 복구 후 offset부터 재처리한다.
+- `traffic-worker` 는 쓰기(수집·보존 정리)와 읽기(분석·export)를 분리한다. 분석·export 조회는 읽기 전용 SQLite 연결을 가진 별도 Worker thread 에서 실행한다. `bun:sqlite` 가 동기 API 라 같은 스레드에서 돌면 큰 범위 조회가 이벤트 루프를 막아 `/health` 응답까지 지연되기 때문이다. export 는 keyset pagination 으로 5,000행씩 읽어 파일에 이어 쓰고 sha256 을 증분 계산한다.
 - Nginx reload 실패: 기존 worker와 설정을 유지하고 새 revision을 failed로 표시한다.
 - SQLite 손상·disk full: 변경 작업을 fail-closed하고 기존 라우팅은 유지한다.
 

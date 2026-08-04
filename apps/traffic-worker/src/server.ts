@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { parseEnv } from '@containers/config/env'
 import { loadOrCreateSecret } from '@containers/config/secret'
 import { createTrafficApp } from './compose/create-traffic-app'
+import { createQueryWorker } from './db/create-query-worker'
 import { createTrafficDatabase } from './db/database'
 import { createTrafficIngestionService } from './service/domain/create-traffic-ingestion-service'
 import { createTrafficQueryService } from './service/domain/create-traffic-query-service'
@@ -44,9 +45,10 @@ const retentionService = createTrafficRetentionService({
     now: Date.now,
     retentionMs: env.TRAFFIC_RAW_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
 })
-const queryService = createTrafficQueryService({ database, now: Date.now })
+const queryWorker = createQueryWorker({ filePath: env.TRAFFIC_DB_PATH })
+const queryService = createTrafficQueryService({ now: Date.now, queryClient: queryWorker.client })
 const backupService = createTrafficBackupService({ backupRoot: env.BACKUP_ROOT, database })
-const exportService = createTrafficExportService({ database, exportRoot: env.TRAFFIC_EXPORT_ROOT, now: Date.now })
+const exportService = createTrafficExportService({ exportRoot: env.TRAFFIC_EXPORT_ROOT, now: Date.now, queryClient: queryWorker.client })
 ingestionService.start(1_000)
 retentionService.start(env.TRAFFIC_RETENTION_INTERVAL_SECONDS * 1_000)
 const app = createTrafficApp({

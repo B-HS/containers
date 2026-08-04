@@ -1,21 +1,14 @@
 import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { migrate } from 'drizzle-orm/bun-sqlite/migrator'
-import { count, desc, sql } from 'drizzle-orm'
 import type { NginxAccessEvent } from '@containers/contracts/traffic'
 import { createAppError } from '@/lib/error'
+import { createTrafficReadQueries } from './read-queries'
 import { accessEvent, schema } from './schema'
 
 type TrafficDatabaseDependencies = {
     filePath: string
     migrationsFolder: string
-}
-
-type TrafficFilter = {
-    pathPrefix: string
-    since: number
-    statusMaximum: number
-    statusMinimum: number
 }
 
 const ACCESS_EVENT_COLUMNS = [
@@ -35,17 +28,6 @@ const ACCESS_EVENT_COLUMNS = [
 const LEGACY_ACCESS_EVENT_COLUMNS = [...ACCESS_EVENT_COLUMNS, 'raw_json'] as const
 
 const STORAGE_RECLAIM_VERSION = 1
-
-const filterCondition = (filter: TrafficFilter) =>
-    sql`${accessEvent.occurredAt} >= ${filter.since} AND ${accessEvent.status} BETWEEN ${filter.statusMinimum} AND ${filter.statusMaximum} AND (${filter.pathPrefix} = '' OR instr(${accessEvent.uriPath}, ${filter.pathPrefix}) = 1)`
-
-const summaryColumns = {
-    averageResponseTimeMs: sql<number>`coalesce(avg(${accessEvent.requestTimeMs}), 0)`,
-    bytesSent: sql<number>`coalesce(sum(${accessEvent.bytesSent}), 0)`,
-    clientErrorCount: sql<number>`coalesce(sum(case when ${accessEvent.status} between 400 and 499 then 1 else 0 end), 0)`,
-    requestCount: count(),
-    serverErrorCount: sql<number>`coalesce(sum(case when ${accessEvent.status} >= 500 then 1 else 0 end), 0)`,
-}
 
 export const createTrafficDatabase = ({ filePath, migrationsFolder }: TrafficDatabaseDependencies) => {
     const sqlite = new Database(filePath, { create: true, strict: true })
@@ -90,6 +72,8 @@ export const createTrafficDatabase = ({ filePath, migrationsFolder }: TrafficDat
         )
     }
 
+    const readQueries = createTrafficReadQueries(sqlite)
+
     const deleteOldest = (rowCount: number) => {
         if (rowCount <= 0) return 0
         return sqlite.run(
@@ -99,6 +83,7 @@ export const createTrafficDatabase = ({ filePath, migrationsFolder }: TrafficDat
     }
 
     return {
+        ...readQueries,
         close: () => sqlite.close(),
         deleteBefore: (timestamp: number) => sqlite.run('DELETE FROM access_event WHERE occurred_at < ?1', [timestamp]).changes,
         deleteOldest,
@@ -107,85 +92,10 @@ export const createTrafficDatabase = ({ filePath, migrationsFolder }: TrafficDat
             return {
                 byteSize: pragmaValue('page_count') * pageSize,
                 reclaimableByteSize: pragmaValue('freelist_count') * pageSize,
-                rowCount: db.select({ value: count() }).from(accessEvent).get()?.value ?? 0,
+                rowCount: readQueries.getRowCount(),
             }
         },
         vacuum: () => sqlite.exec('VACUUM'),
-        getSummary: (since: number) =>
-            db
-                .select(summaryColumns)
-                .from(accessEvent)
-                .where(sql`${accessEvent.occurredAt} >= ${since}`)
-                .get(),
-        getAnalyticsSummary: (filter: TrafficFilter) => db.select(summaryColumns).from(accessEvent).where(filterCondition(filter)).get(),
-        getPercentile: (filter: TrafficFilter, offset: number) =>
-            db
-                .select({ requestTimeMs: accessEvent.requestTimeMs })
-                .from(accessEvent)
-                .where(filterCondition(filter))
-                .orderBy(accessEvent.requestTimeMs)
-                .limit(1)
-                .offset(offset)
-                .get()?.requestTimeMs ?? 0,
-        getRecentEvents: (filter: TrafficFilter, limit: number) =>
-            db
-                .select({
-                    requestId: accessEvent.requestId,
-                    occurredAt: accessEvent.occurredAt,
-                    clientIp: accessEvent.clientIp,
-                    host: accessEvent.host,
-                    method: accessEvent.method,
-                    uriPath: accessEvent.uriPath,
-                    status: accessEvent.status,
-                    requestTimeMs: accessEvent.requestTimeMs,
-                    bytesSent: accessEvent.bytesSent,
-                    country: accessEvent.country,
-                })
-                .from(accessEvent)
-                .where(filterCondition(filter))
-                .orderBy(desc(accessEvent.occurredAt))
-                .limit(limit)
-                .all(),
-        getExportEvents: (from: number, to: number) =>
-            db
-                .select({
-                    requestId: accessEvent.requestId,
-                    occurredAt: accessEvent.occurredAt,
-                    clientIp: accessEvent.clientIp,
-                    host: accessEvent.host,
-                    method: accessEvent.method,
-                    uriPath: accessEvent.uriPath,
-                    status: accessEvent.status,
-                    requestTimeMs: accessEvent.requestTimeMs,
-                    bytesSent: accessEvent.bytesSent,
-                    country: accessEvent.country,
-                })
-                .from(accessEvent)
-                .where(sql`${accessEvent.occurredAt} >= ${from} AND ${accessEvent.occurredAt} < ${to}`)
-                .orderBy(accessEvent.occurredAt, accessEvent.requestId)
-                .all(),
-        getStatusCounts: (filter: TrafficFilter) =>
-            db
-                .select({ status: accessEvent.status, count: count() })
-                .from(accessEvent)
-                .where(filterCondition(filter))
-                .groupBy(accessEvent.status)
-                .orderBy(desc(sql`count(*)`), accessEvent.status)
-                .all(),
-        getTopPaths: (filter: TrafficFilter) =>
-            db
-                .select({
-                    uriPath: accessEvent.uriPath,
-                    requestCount: count(),
-                    averageResponseTimeMs: sql<number>`coalesce(avg(${accessEvent.requestTimeMs}), 0)`,
-                    errorCount: sql<number>`coalesce(sum(case when ${accessEvent.status} >= 400 then 1 else 0 end), 0)`,
-                })
-                .from(accessEvent)
-                .where(filterCondition(filter))
-                .groupBy(accessEvent.uriPath)
-                .orderBy(desc(sql`count(*)`), accessEvent.uriPath)
-                .limit(10)
-                .all(),
         insertEvents,
         restoreSnapshot: (filePath: string) => {
             const source = new Database(filePath, { strict: true })

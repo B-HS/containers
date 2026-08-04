@@ -170,15 +170,13 @@ checkpoint가 가리키는 inode를 로그 디렉터리 어디에서도 찾지 �
 
 `raw_json` 은 2026-08-05 migration `0001` 로 제거했다. 쓰기만 하고 읽는 곳이 없으면서 실측 저장량의 약 67%(19.9 MB 중 13.4 MB)를 차지했다. 제거 후 재기동 시 1회 `VACUUM` 으로 19.9 MB → 4.7 MB 로 줄었다(`PRAGMA user_version` 으로 1회만 수행). 이전 스키마로 만든 백업은 복원 시 legacy 열 구성으로도 허용하며 현재 열만 복사한다.
 
-권장 index:
+현재 index 는 `request_id` primary key 와 `access_event_occurred_at_idx`(`occurred_at`), `access_event_occurred_at_status_idx`(`occurred_at`, `status`) 다.
 
-- timestamp
-- host + timestamp
-- routeId + timestamp
-- containerId + timestamp
-- status + timestamp
-- requestId unique 또는 lookup
-- cfRay lookup
+`status` 단독 index 는 migration `0002` 로 제거했다. 분석 필터가 항상 `status BETWEEN` 형태라 선택도가 없는데도 SQLite 가 이 index 를 골라 시간 범위를 못 좁혔다(실측: 전 쿼리가 `SEARCH USING INDEX access_event_status_idx`). 복합 index 로 바꾼 뒤 같은 데이터에서 최근 이벤트 조회 4.06 ms → 0.12 ms, 요약 2.61 ms → 0.87 ms 로 줄었고 status 집계는 covering index 로 처리된다. `(occurred_at, uri_path)`·`(occurred_at, request_time_ms)` 도 시험했으나 planner 가 채택하지 않아 저장 비용만 늘어 제외했다.
+
+조회 시간 범위는 계약에서 이미 상한이 있다 — 분석·요약은 `windowMinutes` 최대 1440, export 는 `from`~`to` 최대 24시간, 최근 이벤트는 `limit` 최대 100.
+
+향후 rollup 이 생기면 host·route·container 축 index 를 추가로 검토한다.
 
 ### 7.2 rollup
 

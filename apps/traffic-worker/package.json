@@ -4,7 +4,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "bun build src/server.ts --outdir dist --target bun",
+        "build": "bun build src/server.ts --outdir dist --target bun && bun build src/db/query-worker-entry.ts --outfile dist/query-worker-entry.ts --target bun",
         "dev": "bun --watch src/server.ts",
         "start": "bun dist/server.js",
         "typecheck": "tsc --noEmit"

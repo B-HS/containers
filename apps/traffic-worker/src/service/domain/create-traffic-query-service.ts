@@ -1,8 +1,11 @@
 import { trafficAnalyticsQuerySchema, trafficAnalyticsSchema, trafficSummarySchema } from '@containers/contracts/traffic'
-import type { TrafficDatabase } from '../../db/database'
+import type { TrafficQueryClient } from '../../db/create-query-worker'
 
 type TrafficQueryServiceDependencies = {
-    database: Pick<TrafficDatabase, 'getAnalyticsSummary' | 'getPercentile' | 'getRecentEvents' | 'getStatusCounts' | 'getSummary' | 'getTopPaths'>
+    queryClient: Pick<
+        TrafficQueryClient,
+        'getAnalyticsSummary' | 'getPercentile' | 'getRecentEvents' | 'getStatusCounts' | 'getSummary' | 'getTopPaths'
+    >
     now: () => number
 }
 
@@ -34,24 +37,32 @@ const maskClientIp = (clientIp: string) => {
 
 const percentileOffset = (requestCount: number, percentile: number) => Math.max(0, Math.ceil(requestCount * percentile) - 1)
 
-export const createTrafficQueryService = ({ database, now }: TrafficQueryServiceDependencies) => ({
-    getAnalytics: (input: unknown) => {
+export const createTrafficQueryService = ({ now, queryClient }: TrafficQueryServiceDependencies) => ({
+    getAnalytics: async (input: unknown) => {
         const query = trafficAnalyticsQuerySchema.parse(input)
         const filter = {
             pathPrefix: query.pathPrefix ?? '',
             since: now() - query.windowMinutes * 60_000,
             ...getStatusRange(query.statusClass),
         }
-        const summary = database.getAnalyticsSummary(filter)
+        const summary = await queryClient.getAnalyticsSummary(filter)
         const requestCount = summary?.requestCount ?? 0
         const errorCount = (summary?.clientErrorCount ?? 0) + (summary?.serverErrorCount ?? 0)
+        const [events, p50Ms, p95Ms, p99Ms, statusCounts, topPaths] = await Promise.all([
+            queryClient.getRecentEvents(filter, query.limit),
+            requestCount === 0 ? 0 : queryClient.getPercentile(filter, percentileOffset(requestCount, 0.5)),
+            requestCount === 0 ? 0 : queryClient.getPercentile(filter, percentileOffset(requestCount, 0.95)),
+            requestCount === 0 ? 0 : queryClient.getPercentile(filter, percentileOffset(requestCount, 0.99)),
+            queryClient.getStatusCounts(filter),
+            queryClient.getTopPaths(filter),
+        ])
 
         return trafficAnalyticsSchema.parse({
             averageResponseTimeMs: summary?.averageResponseTimeMs ?? 0,
             bytesSent: summary?.bytesSent ?? 0,
             clientErrorCount: summary?.clientErrorCount ?? 0,
             errorRate: requestCount === 0 ? 0 : errorCount / requestCount,
-            events: database.getRecentEvents(filter, query.limit).map((event) => ({
+            events: events.map((event) => ({
                 bytesSent: event.bytesSent,
                 clientIpMasked: maskClientIp(event.clientIp),
                 country: event.country,
@@ -63,21 +74,17 @@ export const createTrafficQueryService = ({ database, now }: TrafficQueryService
                 status: event.status,
                 uriPath: event.uriPath,
             })),
-            latency: {
-                p50Ms: requestCount === 0 ? 0 : database.getPercentile(filter, percentileOffset(requestCount, 0.5)),
-                p95Ms: requestCount === 0 ? 0 : database.getPercentile(filter, percentileOffset(requestCount, 0.95)),
-                p99Ms: requestCount === 0 ? 0 : database.getPercentile(filter, percentileOffset(requestCount, 0.99)),
-            },
+            latency: { p50Ms, p95Ms, p99Ms },
             requestCount,
             requestsPerSecond: requestCount / (query.windowMinutes * 60),
             serverErrorCount: summary?.serverErrorCount ?? 0,
-            statusCounts: database.getStatusCounts(filter),
-            topPaths: database.getTopPaths(filter),
+            statusCounts,
+            topPaths,
             windowMinutes: query.windowMinutes,
         })
     },
-    getSummary: (windowMinutes: number) => {
-        const summary = database.getSummary(now() - windowMinutes * 60_000)
+    getSummary: async (windowMinutes: number) => {
+        const summary = await queryClient.getSummary(now() - windowMinutes * 60_000)
         const requestCount = summary?.requestCount ?? 0
 
         return trafficSummarySchema.parse({
