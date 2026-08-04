@@ -6,7 +6,7 @@ import { createGunzip } from 'node:zlib'
 import { extract } from 'tar-stream'
 import { z } from 'zod'
 import { ARTIFACT_MEDIA_TYPE } from '@containers/contracts/upload'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 const MAX_ARCHIVE_ENTRIES = 100_000
 const MAX_METADATA_BYTES = 16_777_216

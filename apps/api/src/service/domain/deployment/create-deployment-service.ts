@@ -4,7 +4,7 @@ import { deploymentSchema } from '@containers/contracts/upload'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { artifact, deployment } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 const DEPLOYMENT_REUSE_STATUS_PRIORITY = ['loaded', 'loading', 'failed'] as const
 

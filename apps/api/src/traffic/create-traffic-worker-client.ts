@@ -4,7 +4,7 @@ import { trafficAnalyticsQuerySchema, trafficAnalyticsSchema, trafficLiveQuerySc
 import { backupIdSchema, backupSnapshotResultSchema } from '@containers/contracts/backup'
 import { trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import { trafficExportResultSchema } from '@containers/contracts/traffic'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 
 const TRAFFIC_REQUEST_TIMEOUT_MS = 5_000
 

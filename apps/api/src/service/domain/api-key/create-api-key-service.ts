@@ -3,7 +3,7 @@ import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import { apiKeyCreateResultSchema, apiKeyCreateSchema, apiKeyListSchema, type ApiKeyScope } from '@containers/contracts/api-key'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { apiKey, userRole } from '@containers/db-schema/schema'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 type ApiKeyServiceDependencies = {
     db: ControlDatabase

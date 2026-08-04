@@ -11,7 +11,7 @@ import {
     volumeCreateRequestSchema,
 } from '@containers/contracts/engine-control'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 import { registryCredentialDeleteSchema, registryCredentialUpsertSchema } from '@containers/contracts/registry-credential'
 
 const PROTECTED_NETWORKS = ['containers_control', 'containers_ingress', 'containers_probe']

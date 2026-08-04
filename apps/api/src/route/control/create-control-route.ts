@@ -13,7 +13,7 @@ import { OPERATION_JOB_KIND, systemPruneJobPayloadSchema } from '@containers/con
 import { registryCredentialDeleteSchema, registryCredentialUpsertSchema } from '@containers/contracts/registry-credential'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { errorResponse, successResponse } from '../../lib/response'
-import { createAppError } from '../../lib/app-error'
+import { createAppError } from '../../lib/error'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { ControlService } from '../../service/domain/control/create-control-service'

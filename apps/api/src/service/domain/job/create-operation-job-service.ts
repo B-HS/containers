@@ -10,7 +10,7 @@ import {
 } from '@containers/contracts/operation-job'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { operationJob, operationJobEvent } from '@containers/db-schema/schema'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 const ACTIVE_JOB_STATUSES = ['queued', 'running', 'cancelling'] as const
 const FINISHED_JOB_STATUSES = ['succeeded', 'failed', 'cancelled'] as const

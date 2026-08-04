@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 import { eq, sql } from 'drizzle-orm'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { artifact, deployment, user } from '@containers/db-schema/schema'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 import { createDeploymentService } from './create-deployment-service'
 
 const temporaryDirectories: string[] = []

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { DeploymentRelease } from '@containers/contracts/deployment'
 import type { OperationJob } from '@containers/contracts/operation-job'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 import { createJobHandlers } from './create-job-handlers'
 
 const ACTOR_ID = 'test-owner'

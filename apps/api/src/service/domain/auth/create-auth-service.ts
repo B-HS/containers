@@ -5,7 +5,7 @@ import { managedUserListSchema, managedUserSchema, managedUserUpdateSchema } fro
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { invitation, apiKey as apiKeyTable, session as sessionTable, USER_ROLE, user, userRole } from '@containers/db-schema/schema'
 import type { Auth } from '../../../auth/create-auth'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 const ownerBootstrapSchema = z.object({
     email: z.email(),

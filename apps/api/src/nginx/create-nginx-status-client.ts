@@ -1,5 +1,5 @@
 import { nginxStatusSchema } from '@containers/contracts/nginx'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 
 const NGINX_STATUS_TIMEOUT_MS = 3_000
 const nginxStatusPattern =

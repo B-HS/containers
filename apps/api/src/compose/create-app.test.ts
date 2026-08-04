@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { DeploymentRelease } from '@containers/contracts/deployment'
 import { healthSchema } from '@containers/contracts/health'
 import type { OperationJob } from '@containers/contracts/operation-job'
-import { createAppError } from '../lib/app-error'
+import { createAppError } from '../lib/error'
 import { createApp } from './create-app'
 
 const createEngineAgentClientStub = () => ({

@@ -9,7 +9,7 @@ import {
 } from '@containers/contracts/notification'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { notificationDelivery, notificationDestination } from '@containers/db-schema/schema'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 type NotificationDestinationServiceDependencies = {
     db: ControlDatabase

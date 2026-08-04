@@ -10,7 +10,7 @@ import {
     backupRestoreSchema,
     type BackupManifest,
 } from '@containers/contracts/backup'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 import type { TrafficWorkerClient } from '../../../traffic/create-traffic-worker-client'
 
 type BackupServiceDependencies = {

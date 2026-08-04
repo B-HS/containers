@@ -14,7 +14,7 @@ import type { ControlDatabase } from '@containers/db-schema/database'
 import { artifact, uploadChunk, uploadSession } from '@containers/db-schema/schema'
 import type { ArtifactInspectionService } from './create-artifact-inspection-service'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 const MAX_CHUNK_BYTES = 67_108_864
 const SESSION_TTL_MS = 24 * 60 * 60 * 1_000

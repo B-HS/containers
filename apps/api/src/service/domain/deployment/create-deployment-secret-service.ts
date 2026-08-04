@@ -10,7 +10,7 @@ import {
 } from '@containers/contracts/deployment-secret'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { deploymentManifest, deploymentSecret } from '@containers/db-schema/schema'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 type DeploymentSecretServiceDependencies = {
     db: ControlDatabase

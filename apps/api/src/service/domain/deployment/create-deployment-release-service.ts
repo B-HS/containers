@@ -4,7 +4,7 @@ import { deploymentReleaseListSchema, deploymentReleaseSchema, type DeploymentMa
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { deploymentManifest, deploymentRelease } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 import type { NginxProxyRouteService } from '../nginx/create-nginx-proxy-route-service'
 import type { DeploymentManifestService } from './create-deployment-manifest-service'
 import type { DeploymentSecretService } from './create-deployment-secret-service'

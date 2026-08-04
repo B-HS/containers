@@ -1,5 +1,5 @@
 import { maintenanceStatusSchema } from '@containers/contracts/maintenance'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 const DRAIN_POLL_INTERVAL_MS = 50
 

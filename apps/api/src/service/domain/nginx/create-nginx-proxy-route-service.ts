@@ -9,7 +9,7 @@ import {
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { nginxRoute } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../../agent/create-engine-agent-client'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 
 type NginxProxyRouteServiceDependencies = {
     db: ControlDatabase

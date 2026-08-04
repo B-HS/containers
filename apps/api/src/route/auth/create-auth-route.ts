@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { ZodError } from 'zod'
-import { createAppError } from '../../lib/app-error'
+import { createAppError } from '../../lib/error'
 import { errorResponse, successResponse } from '../../lib/response'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'

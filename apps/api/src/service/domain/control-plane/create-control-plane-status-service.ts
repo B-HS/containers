@@ -11,7 +11,7 @@ import {
 } from '@containers/contracts/control-plane'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { operationJob } from '@containers/db-schema/schema'
-import { createAppError } from '../../../lib/app-error'
+import { createAppError } from '../../../lib/error'
 import type { BackupService } from '../backup/create-backup-service'
 import type { MaintenanceService } from '../maintenance/create-maintenance-service'
 
