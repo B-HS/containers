@@ -111,6 +111,8 @@ Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 act
 - Agent port는 `internal: true` Docker network에서만 듣는다.
 - API와 Agent 사이 credential은 Docker secret으로 전달하고 정기 rotation한다.
 - private registry 비밀번호·access token은 Agent 전용 named volume에서 AES-256-GCM으로 암호화한다. API 응답·control DB·job payload·audit에는 원문을 기록하지 않는다.
+- deployment secret 과 notification webhook 의 마스터 키는 **keyring** 이다. v1 은 `/data/deployment-secret-key`·`/data/notification-secret-key`, 이후 버전은 같은 경로에 `.v2`, `.v3` 로 쌓인다(모두 `0600`). 쓰기는 항상 활성(최신) 버전으로, 읽기는 행의 `key_version` 으로 한다.
+- 키 교체는 owner 최근 인증이 필요한 `POST /api/deployment-secrets/rotate` 가 `secret.rotate` durable job 을 만들어 수행한다. 새 버전을 keyring 에 추가한 뒤 기존 행을 전부 복호화·재암호화한다. 옛 키를 지우지 않으므로 교체가 중간에 실패해도 어느 버전으로 암호화된 행이든 계속 복호화된다. 현재 버전은 `GET /api/deployment-secrets/key-versions`(owner·admin) 로 확인한다.
 - registry credential은 선택한 image reference의 registry host와 정확히 일치할 때만 Docker Engine `X-Registry-Auth`로 사용한다.
 - Agent 요청은 request ID, timestamp, nonce, body digest를 서명해 replay를 막는다.
 - API, web, worker, nginx는 불필요한 Linux capability를 모두 drop한다.

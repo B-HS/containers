@@ -1,11 +1,12 @@
 import { asc, eq, inArray } from 'drizzle-orm'
+import type { SecretKeyring } from '@containers/config/keyring'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { deploymentManifest, deploymentSecret } from '@containers/db-schema/schema'
 import { createDeploymentSecretService, type DeploymentSecretServiceDb } from '../service/domain/deployment/create-deployment-secret-service'
 
 type ComposeDeploymentSecretDependencies = {
     db: ControlDatabase
-    masterSecret: string
+    keyring: SecretKeyring
 }
 
 export const buildDeploymentSecretServiceDb = (db: ControlDatabase): DeploymentSecretServiceDb => ({
@@ -27,11 +28,14 @@ export const buildDeploymentSecretServiceDb = (db: ControlDatabase): DeploymentS
     update: async (id, values) => {
         await db.update(deploymentSecret).set(values).where(eq(deploymentSecret.id, id))
     },
+    rekey: async (id, values) => {
+        await db.update(deploymentSecret).set(values).where(eq(deploymentSecret.id, id))
+    },
     delete: async (id) => {
         await db.delete(deploymentSecret).where(eq(deploymentSecret.id, id))
     },
 })
 
-export const composeDeploymentSecret = ({ db, masterSecret }: ComposeDeploymentSecretDependencies) => ({
-    deploymentSecretService: createDeploymentSecretService({ db: buildDeploymentSecretServiceDb(db), masterSecret, now: () => new Date() }),
+export const composeDeploymentSecret = ({ db, keyring }: ComposeDeploymentSecretDependencies) => ({
+    deploymentSecretService: createDeploymentSecretService({ db: buildDeploymentSecretServiceDb(db), keyring, now: () => new Date() }),
 })

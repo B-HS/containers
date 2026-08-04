@@ -93,6 +93,7 @@ const idleDependencies = {
     engineAgentClient: engineAgentClientStub,
     maintenanceService: { disable: () => undefined, drain: async () => undefined, enable: () => true },
     notificationDeliveryService: { handleDeliver: async () => null },
+    secretRotationService: { rotate: async () => SECRET_ROTATE_RESULT },
 }
 
 const createRelease = (overrides: Partial<DeploymentRelease> = {}): DeploymentRelease => ({
@@ -112,6 +113,13 @@ const createRelease = (overrides: Partial<DeploymentRelease> = {}): DeploymentRe
     updatedAt: '2026-08-01T00:00:00.000Z',
     ...overrides,
 })
+
+const SECRET_ROTATE_RESULT = {
+    deploymentKeyVersion: 2,
+    deploymentRotatedCount: 0,
+    notificationKeyVersion: 2,
+    notificationRotatedCount: 0,
+}
 
 const captureFailure = async (execute: () => Promise<unknown>) => {
     try {
@@ -141,6 +149,7 @@ describe('job handler factory', () => {
             ...unusedDependencies,
             engineAgentClient: engineAgentClientStub,
             notificationDeliveryService: { handleDeliver: async () => null },
+            secretRotationService: { rotate: async () => SECRET_ROTATE_RESULT },
             backupService: {
                 create: async () => {
                     throw createAppError('테스트에서 호출되지 않습니다.')
@@ -188,6 +197,7 @@ describe('job handler factory', () => {
             ...unusedDependencies,
             engineAgentClient: engineAgentClientStub,
             notificationDeliveryService: { handleDeliver: async () => null },
+            secretRotationService: { rotate: async () => SECRET_ROTATE_RESULT },
             backupService: {
                 create: async () => {
                     throw createAppError('테스트에서 호출되지 않습니다.')
@@ -216,6 +226,7 @@ describe('job handler factory', () => {
             ...unusedDependencies,
             engineAgentClient: engineAgentClientStub,
             notificationDeliveryService: { handleDeliver: async () => null },
+            secretRotationService: { rotate: async () => SECRET_ROTATE_RESULT },
             backupService: {
                 create: async () => {
                     throw createAppError('테스트에서 호출되지 않습니다.')
@@ -239,6 +250,7 @@ describe('job handler factory', () => {
             ...unusedDependencies,
             engineAgentClient: engineAgentClientStub,
             notificationDeliveryService: { handleDeliver: async () => null },
+            secretRotationService: { rotate: async () => SECRET_ROTATE_RESULT },
             backupService: {
                 create: async () => {
                     throw createAppError('테스트에서 호출되지 않습니다.')
@@ -291,6 +303,7 @@ describe('job handler factory', () => {
                 },
             },
             notificationDeliveryService: { handleDeliver: async () => null },
+            secretRotationService: { rotate: async () => SECRET_ROTATE_RESULT },
             backupService: {
                 create: async () => {
                     throw createAppError('테스트에서 호출되지 않습니다.')
@@ -329,6 +342,7 @@ describe('job handler factory', () => {
             ...unusedDependencies,
             engineAgentClient: engineAgentClientStub,
             notificationDeliveryService: { handleDeliver: async () => null },
+            secretRotationService: { rotate: async () => SECRET_ROTATE_RESULT },
             backupService: {
                 create: async () => {
                     throw createAppError('테스트에서 호출되지 않습니다.')
@@ -367,6 +381,7 @@ describe('job handler factory', () => {
                 },
             },
             notificationDeliveryService: { handleDeliver: async () => null },
+            secretRotationService: { rotate: async () => SECRET_ROTATE_RESULT },
             engineAgentClient: engineAgentClientStub,
             maintenanceService: {
                 disable: () => undefined,

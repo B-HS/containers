@@ -114,7 +114,8 @@ Deployment:      deployment(id, artifactId, containerId, status, createdBy)
                           nanoCpus, memoryBytes, pidsLimit, restartPolicy,
                           network, healthcheck*, route*, rollout*, createdBy)
                  deployment_secret(id, reference, ciphertext,
-                          initializationVector, authenticationTag, version)
+                          initializationVector, authenticationTag, keyVersion,
+                          version)
                  deployment_release(id, manifestId, previousReleaseId,
                           containerId, containerName, nginxRouteId,
                           nginxConfigSha256, status, failureCode, createdBy,
@@ -124,13 +125,14 @@ Jobs:            operation_job(id, kind, status, payload, result, resourceKey,
                           scheduledAt, ... )  kind ∈ backup.create,
                           backup.restore, deploy.load, deploy.release,
                           deploy.rollback, image.pull, notification.deliver,
-                          system.prune, traffic.export, upload.finalize
+                          secret.rotate, system.prune, traffic.export,
+                          upload.finalize
                  operation_job_event(id, jobId, event, detail)
 Nginx routes:    nginx_route(id, hostname, path, pathMode, targetContainer,
                           targetPort, protocol, stripPrefix, timeoutSeconds,
                           bodySizeMegabytes, enabled)
 Notifications:   notification_destination(id, name, type, ciphertext, iv, tag,
-                          enabled, eventTypes, createdBy)
+                          enabled, eventTypes, keyVersion, createdBy)
                  notification_delivery(id, destinationId, jobId, sourceJobId,
                           eventType, failureCode, status)
 Traffic (traffic.sqlite, separate DB): access_event(s) + checkpoints
@@ -155,6 +157,13 @@ Recent-auth (step-up): all DESTRUCTIVE writes require a session <= 15 min old
   secret write, backup write/restore, api-key create/revoke, user update,
   invitation create, nginx route/config, job cancel, maintenance toggle,
   exec-ticket.
+
+Encryption keyring: deployment secret / notification webhook master keys live in
+  /data/<name>-secret-key (v1) plus .v2/.v3 ... (0600). Writes use the active
+  (highest) version; reads use the row's key_version column. Rotation is an
+  owner-only durable job (secret.rotate) that appends a version and re-encrypts
+  every row; old versions are kept so a partial rotation still decrypts.
+  Backups seal every key version in secrets.enc under the operator passphrase.
 
 API keys: `ctk_` + 32-byte random; only SHA-256 stored; scopes deny-by-default.
   Owner-only scopes (backup:write, secret:write) are enforced twice: at issue time

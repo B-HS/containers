@@ -140,6 +140,8 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.PRUNE_NOTHING_TO_DELETE]: '삭제할 항목이 없습니다.',
     [ERROR_CODE.PRUNE_PREVIEW_INVALID]: 'prune preview가 올바르지 않습니다.',
     [ERROR_CODE.PRUNE_PREVIEW_STALE]: 'prune preview를 다시 확인해 주세요.',
+    [ERROR_CODE.SECRET_KEY_VERSION_MISSING]: '암호화 키 버전을 찾을 수 없습니다.',
+    [ERROR_CODE.SECRET_ROTATE_IN_PROGRESS]: '이미 진행 중인 키 교체 작업이 있습니다.',
     [ERROR_CODE.RECENT_AUTH_REQUIRED]: '최근 로그인이 필요한 작업입니다.',
     [ERROR_CODE.SIGN_UP_DISABLED]: '공개 가입은 허용되지 않습니다.',
     [ERROR_CODE.TRAFFIC_EXPORT_CREATE_FAILED]: '트래픽 내보내기 작업을 만들 수 없습니다.',

@@ -36,7 +36,7 @@ const createTestContext = async () => {
     })
     const secretService = createDeploymentSecretService({
         db: buildDeploymentSecretServiceDb(database.db),
-        masterSecret: 'test-master-secret-that-is-longer-than-thirty-two-characters',
+        keyring: { activeVersion: 1, keys: new Map([[1, 'test-master-secret-that-is-longer-than-thirty-two-characters']]) },
         now: () => timestamp,
     })
     const manifestService = createDeploymentManifestService({
@@ -92,6 +92,38 @@ describe('deployment secret service', () => {
 
         await expect(secretService.remove(used.id, { confirmation: used.reference })).rejects.toThrow('DEPLOYMENT_SECRET_IN_USE')
         expect((await secretService.remove(unused.id, { confirmation: unused.reference })).id).toBe(unused.id)
+        sqlite.close()
+    })
+    test('키 교체 후 기존 secret 을 새 키 버전으로 재암호화하고 값은 그대로 읽습니다', async () => {
+        const { actorId, db, secretService, sqlite } = await createTestContext()
+        await secretService.upsert(actorId, { reference: 'apps/sample/token', value: 'plain-token-value' })
+        const before = await db.select().from(deploymentSecret).where(eq(deploymentSecret.reference, 'apps/sample/token'))
+
+        const rotated = await secretService.rotate({
+            activeVersion: 2,
+            keys: new Map([
+                [1, 'test-master-secret-that-is-longer-than-thirty-two-characters'],
+                [2, 'second-master-secret-that-is-longer-than-thirty-two-chars'],
+            ]),
+        })
+        const after = await db.select().from(deploymentSecret).where(eq(deploymentSecret.reference, 'apps/sample/token'))
+
+        expect(rotated).toEqual({ keyVersion: 2, rotatedCount: 1 })
+        expect(before[0]?.keyVersion).toBe(1)
+        expect(after[0]?.keyVersion).toBe(2)
+        expect(after[0]?.ciphertext).not.toBe(before[0]?.ciphertext)
+        expect(await secretService.resolve([{ environmentKey: 'TOKEN', reference: 'apps/sample/token' }])).toEqual(['TOKEN=plain-token-value'])
+        sqlite.close()
+    })
+
+    test('행의 키 버전이 keyring 에 없으면 복호화를 거부합니다', async () => {
+        const { actorId, db, secretService, sqlite } = await createTestContext()
+        await secretService.upsert(actorId, { reference: 'apps/sample/orphan', value: 'orphan-value' })
+        await db.update(deploymentSecret).set({ keyVersion: 7 }).where(eq(deploymentSecret.reference, 'apps/sample/orphan'))
+
+        await expect(secretService.resolve([{ environmentKey: 'TOKEN', reference: 'apps/sample/orphan' }])).rejects.toThrow(
+            'DEPLOYMENT_SECRET_DECRYPTION_FAILED',
+        )
         sqlite.close()
     })
 })

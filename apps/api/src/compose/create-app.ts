@@ -35,6 +35,7 @@ import type { DeploymentService } from '../service/domain/deployment/create-depl
 import type { DeploymentManifestService } from '../service/domain/deployment/create-deployment-manifest-service'
 import type { DeploymentReleaseService } from '../service/domain/deployment/create-deployment-release-service'
 import type { DeploymentSecretService } from '../service/domain/deployment/create-deployment-secret-service'
+import type { SecretRotationService } from '../service/domain/deployment/create-secret-rotation-service'
 import { createEngineService } from '../service/domain/engine/create-engine-service'
 import { createHealthService } from '../service/domain/health/create-health-service'
 import type { ReadinessService } from '../service/domain/health/create-readiness-service'
@@ -70,7 +71,7 @@ type AppDependencies = {
     >
     deploymentManifestService: DeploymentManifestService
     deploymentReleaseService: Pick<DeploymentReleaseService, 'create' | 'get' | 'list' | 'prepareRollback'>
-    deploymentSecretService: DeploymentSecretService
+    deploymentSecretService: Pick<DeploymentSecretService, 'list' | 'remove' | 'resolve' | 'upsert'>
     deploymentService: Pick<DeploymentService, 'getLoaded'>
     engineAgentClient: EngineAgentClient
     nginxStatusClient: NginxStatusClient
@@ -79,8 +80,9 @@ type AppDependencies = {
     controlPlaneStatusService: Pick<ControlPlaneStatusService, 'getStatus'>
     readinessService: Pick<ReadinessService, 'getReadiness'>
     notificationDeliveryService: Pick<NotificationDeliveryService, 'deliverTest'>
-    notificationDestinationService: NotificationDestinationService
+    notificationDestinationService: Pick<NotificationDestinationService, 'list' | 'remove' | 'resolveWebhook' | 'setEnabled' | 'upsert'>
     operationJobService: Pick<OperationJobService, 'enqueue' | 'get' | 'list' | 'listEvents' | 'requestCancel'>
+    secretRotationService: Pick<SecretRotationService, 'getState'>
     trafficWorkerClient: Pick<TrafficWorkerClient, 'getAnalytics' | 'getSummary' | 'openLiveStream'>
     trafficExportRoot?: string
     uploadService: Pick<UploadService, 'appendChunk' | 'cleanupExpiredSessions' | 'createSession' | 'getOwnedSession' | 'listArtifacts'>
@@ -106,6 +108,7 @@ export const createApp = ({
     controlPlaneStatusService,
     operationJobService,
     readinessService,
+    secretRotationService,
     trafficWorkerClient,
     trafficExportRoot = '/backups/traffic-exports',
     uploadService,
@@ -135,7 +138,14 @@ export const createApp = ({
         deploymentReleaseService,
         operationJobService,
     })
-    const deploymentSecretRoute = createDeploymentSecretRoute({ apiKeyService, auditService, authService, deploymentSecretService })
+    const deploymentSecretRoute = createDeploymentSecretRoute({
+        apiKeyService,
+        auditService,
+        authService,
+        deploymentSecretService,
+        operationJobService,
+        secretRotationService,
+    })
     const apiKeyRoute = createApiKeyRoute({ apiKeyService, authService })
     const backupRoute = createBackupRoute({ apiKeyService, auditService, authService, backupService, operationJobService })
     const notificationRoute = createNotificationRoute({

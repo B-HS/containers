@@ -318,6 +318,7 @@ const createAppTestDependencies = () => ({
             throw createAppError('JOB_NOT_FOUND')
         },
     },
+    secretRotationService: { getState: () => ({ deploymentKeyVersion: 1, notificationKeyVersion: 1 }) },
     notificationDeliveryService: {
         deliverTest: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')

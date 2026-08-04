@@ -7,6 +7,7 @@ import {
     deploymentSecretUpsertSchema,
     type DeploymentSecretBinding,
 } from '@containers/contracts/deployment-secret'
+import type { SecretKeyring } from '@containers/config/keyring'
 import { createAppError } from '../../../lib/error'
 
 type SecretRow = {
@@ -16,6 +17,7 @@ type SecretRow = {
     createdBy: string
     id: string
     initializationVector: string
+    keyVersion: number
     reference: string
     updatedAt: Date
     version: number
@@ -39,20 +41,29 @@ type DeploymentSecretServiceDb = {
         createdBy: string
         id: string
         initializationVector: string
+        keyVersion: number
         reference: string
         updatedAt: Date
         version: number
     }) => Promise<void>
     update: (
         id: string,
-        values: { authenticationTag: string; ciphertext: string; initializationVector: string; updatedAt: Date; version: number },
+        values: {
+            authenticationTag: string
+            ciphertext: string
+            initializationVector: string
+            keyVersion: number
+            updatedAt: Date
+            version: number
+        },
     ) => Promise<void>
+    rekey: (id: string, values: { authenticationTag: string; ciphertext: string; initializationVector: string; keyVersion: number }) => Promise<void>
     delete: (id: string) => Promise<void>
 }
 
 type DeploymentSecretServiceDependencies = {
     db: DeploymentSecretServiceDb
-    masterSecret: string
+    keyring: SecretKeyring
     now: () => Date
 }
 
@@ -67,20 +78,29 @@ const toSecret = (record: SecretRow) =>
         version: record.version,
     })
 
-export const createDeploymentSecretService = ({ db, masterSecret, now }: DeploymentSecretServiceDependencies) => {
-    const key = createHash('sha256').update(masterSecret).digest()
+export const createDeploymentSecretService = ({ db, keyring, now }: DeploymentSecretServiceDependencies) => {
+    let activeKeyring = keyring
+
+    const keyOf = (version: number) => {
+        const secret = activeKeyring.keys.get(version)
+        if (secret === undefined) {
+            throw createAppError('SECRET_KEY_VERSION_MISSING')
+        }
+        return createHash('sha256').update(secret).digest()
+    }
     const encrypt = (value: string) => {
         const initializationVector = randomBytes(12)
-        const cipher = createCipheriv('aes-256-gcm', key, initializationVector)
+        const cipher = createCipheriv('aes-256-gcm', keyOf(activeKeyring.activeVersion), initializationVector)
         const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
         return {
             authenticationTag: cipher.getAuthTag().toString('base64url'),
             ciphertext: ciphertext.toString('base64url'),
             initializationVector: initializationVector.toString('base64url'),
+            keyVersion: activeKeyring.activeVersion,
         }
     }
     const decrypt = (record: SecretRow) => {
-        const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(record.initializationVector, 'base64url'))
+        const decipher = createDecipheriv('aes-256-gcm', keyOf(record.keyVersion), Buffer.from(record.initializationVector, 'base64url'))
         decipher.setAuthTag(Buffer.from(record.authenticationTag, 'base64url'))
         return Buffer.concat([decipher.update(Buffer.from(record.ciphertext, 'base64url')), decipher.final()]).toString('utf8')
     }
@@ -126,6 +146,14 @@ export const createDeploymentSecretService = ({ db, masterSecret, now }: Deploym
                     throw createAppError('DEPLOYMENT_SECRET_DECRYPTION_FAILED')
                 }
             })
+        },
+        rotate: async (nextKeyring: SecretKeyring) => {
+            const decrypted = (await db.list()).map((record) => ({ id: record.id, value: decrypt(record) }))
+            activeKeyring = nextKeyring
+            for (const record of decrypted) {
+                await db.rekey(record.id, encrypt(record.value))
+            }
+            return { keyVersion: nextKeyring.activeVersion, rotatedCount: decrypted.length }
         },
         upsert: async (actorId: string, input: unknown) => {
             const request = deploymentSecretUpsertSchema.parse(input)

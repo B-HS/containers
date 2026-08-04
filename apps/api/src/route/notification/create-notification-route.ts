@@ -19,7 +19,7 @@ type NotificationRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     notificationDeliveryService: Pick<NotificationDeliveryService, 'deliverTest'>
-    notificationDestinationService: NotificationDestinationService
+    notificationDestinationService: Pick<NotificationDestinationService, 'list' | 'remove' | 'setEnabled' | 'upsert'>
 }
 
 const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined

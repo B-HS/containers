@@ -277,6 +277,7 @@ export const deploymentSecret = sqliteTable(
         ciphertext: text('ciphertext').notNull(),
         initializationVector: text('initialization_vector').notNull(),
         authenticationTag: text('authentication_tag').notNull(),
+        keyVersion: integer('key_version').default(1).notNull(),
         version: integer('version').default(1).notNull(),
         createdBy: text('created_by')
             .notNull()
@@ -419,6 +420,7 @@ export const notificationDestination = sqliteTable(
         authenticationTag: text('authentication_tag').notNull(),
         enabled: integer('enabled', { mode: 'boolean' }).notNull(),
         eventTypes: text('event_types').notNull(),
+        keyVersion: integer('key_version').default(1).notNull(),
         version: integer('version').default(1).notNull(),
         createdBy: text('created_by')
             .notNull()

@@ -92,6 +92,13 @@
             "when": 1785829171978,
             "tag": "0012_little_the_professor",
             "breakpoints": true
+        },
+        {
+            "idx": 13,
+            "version": "6",
+            "when": 1785884016755,
+            "tag": "0013_secret_key_version",
+            "breakpoints": true
         }
     ]
 }

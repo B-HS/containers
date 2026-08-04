@@ -60,9 +60,13 @@ export const backupSnapshotResultSchema = z.object({
     sha256: sha256Schema,
 })
 
+const secretKeyVersionsSchema = z.record(z.string().regex(/^[1-9][0-9]*$/), z.string().min(1))
+
 export const backupSecretBundleSchema = z.object({
     deploymentSecretKey: z.string().min(1),
+    deploymentSecretKeys: secretKeyVersionsSchema.optional(),
     notificationSecretKey: z.string().min(1),
+    notificationSecretKeys: secretKeyVersionsSchema.optional(),
 })
 
 export const backupSecretEnvelopeSchema = z.object({

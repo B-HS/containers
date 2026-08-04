@@ -1,3 +1,5 @@
+import { createSecretRotationService } from '../service/domain/deployment/create-secret-rotation-service'
+import type { SecretKeyring } from '@containers/config/keyring'
 import type { Database } from 'bun:sqlite'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { createEngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
@@ -35,8 +37,8 @@ type ComposeCore = {
 type ComposeSecrets = {
     agentSharedSecret: string
     authSecret: string
-    deploymentSecretKey: string
-    notificationSecretKey: string
+    deploymentKeyring: SecretKeyring
+    notificationKeyring: SecretKeyring
     trafficWorkerSharedSecret: string
 }
 
@@ -122,7 +124,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         protectedContainers: PROTECTED_CONTAINERS,
         protectedHostnames: env.protectedHostnames,
     })
-    const { deploymentSecretService } = composeDeploymentSecret({ db, masterSecret: secrets.deploymentSecretKey })
+    const { deploymentSecretService } = composeDeploymentSecret({ db, keyring: secrets.deploymentKeyring })
     const { backupService } = composeBackup({
         backupRoot: env.backupRoot,
         deploymentSecretKeyFile: env.deploymentSecretKeyFile,
@@ -145,7 +147,14 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         maintenanceService,
         migrationsFolder: env.controlMigrationsPath,
     })
-    const { notificationDestinationService } = composeNotificationDestination({ db, masterSecret: secrets.notificationSecretKey })
+    const { notificationDestinationService } = composeNotificationDestination({ db, keyring: secrets.notificationKeyring })
+    const secretRotationService = createSecretRotationService({
+        deploymentKeyring: secrets.deploymentKeyring,
+        deploymentSecretService,
+        keyringFiles: { deployment: env.deploymentSecretKeyFile, notification: env.notificationSecretKeyFile },
+        notificationDestinationService,
+        notificationKeyring: secrets.notificationKeyring,
+    })
 
     let operationJobService: OperationJobService | null = null
     const { notificationDeliveryService } = composeNotificationDelivery({
@@ -189,6 +198,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
             engineAgentClient: clients.engineAgentClient,
             maintenanceService,
             notificationDeliveryService,
+            secretRotationService,
             trafficWorkerClient: clients.trafficWorkerClient,
             uploadService,
         }),
@@ -233,6 +243,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         notificationDeliveryService,
         notificationDestinationService,
         operationJobService: operationJobResult.operationJobService,
+        secretRotationService,
         trafficWorkerClient: clients.trafficWorkerClient,
         uploadService,
     }

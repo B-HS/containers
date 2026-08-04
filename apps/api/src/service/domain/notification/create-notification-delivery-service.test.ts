@@ -49,7 +49,7 @@ const createTestContext = async (fetchStatus: number | ((url: string) => Promise
     }) as typeof fetch
     const destinationService = createNotificationDestinationService({
         db: buildNotificationDestinationServiceDb(database.db),
-        masterSecret: 'test-master-secret-that-is-longer-than-thirty-two-characters',
+        keyring: { activeVersion: 1, keys: new Map([[1, 'test-master-secret-that-is-longer-than-thirty-two-characters']]) },
         now: () => new Date(clock.value),
     })
     let jobService: ReturnType<typeof createOperationJobService> | null = null

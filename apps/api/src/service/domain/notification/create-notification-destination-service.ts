@@ -6,6 +6,7 @@ import {
     notificationDestinationUpsertSchema,
     notificationDeliverySummarySchema,
 } from '@containers/contracts/notification'
+import type { SecretKeyring } from '@containers/config/keyring'
 import { createAppError } from '../../../lib/error'
 
 type DestinationRow = {
@@ -17,6 +18,7 @@ type DestinationRow = {
     eventTypes: string
     id: string
     initializationVector: string
+    keyVersion: number
     name: string
     type: string
     updatedAt: Date
@@ -42,7 +44,7 @@ type NotificationDestinationServiceDb = {
 
 type NotificationDestinationServiceDependencies = {
     db: NotificationDestinationServiceDb
-    masterSecret: string
+    keyring: SecretKeyring
     now: () => Date
 }
 
@@ -69,20 +71,29 @@ const toDestination = async (db: NotificationDestinationServiceDb, record: Desti
         version: record.version,
     })
 
-export const createNotificationDestinationService = ({ db, masterSecret, now }: NotificationDestinationServiceDependencies) => {
-    const key = createHash('sha256').update(masterSecret).digest()
+export const createNotificationDestinationService = ({ db, keyring, now }: NotificationDestinationServiceDependencies) => {
+    let activeKeyring = keyring
+
+    const keyOf = (version: number) => {
+        const secret = activeKeyring.keys.get(version)
+        if (secret === undefined) {
+            throw createAppError('SECRET_KEY_VERSION_MISSING')
+        }
+        return createHash('sha256').update(secret).digest()
+    }
     const encrypt = (value: string) => {
         const initializationVector = randomBytes(12)
-        const cipher = createCipheriv('aes-256-gcm', key, initializationVector)
+        const cipher = createCipheriv('aes-256-gcm', keyOf(activeKeyring.activeVersion), initializationVector)
         const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
         return {
             authenticationTag: cipher.getAuthTag().toString('base64url'),
             ciphertext: ciphertext.toString('base64url'),
             initializationVector: initializationVector.toString('base64url'),
+            keyVersion: activeKeyring.activeVersion,
         }
     }
     const decrypt = (record: DestinationRow) => {
-        const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(record.initializationVector, 'base64url'))
+        const decipher = createDecipheriv('aes-256-gcm', keyOf(record.keyVersion), Buffer.from(record.initializationVector, 'base64url'))
         decipher.setAuthTag(Buffer.from(record.authenticationTag, 'base64url'))
         return Buffer.concat([decipher.update(Buffer.from(record.ciphertext, 'base64url')), decipher.final()]).toString('utf8')
     }
@@ -117,6 +128,14 @@ export const createNotificationDestinationService = ({ db, masterSecret, now }: 
             } catch {
                 throw createAppError('NOTIFICATION_DESTINATION_DECRYPTION_FAILED')
             }
+        },
+        rotate: async (nextKeyring: SecretKeyring) => {
+            const decrypted = (await db.list()).map((record) => ({ id: record.id, value: decrypt(record) }))
+            activeKeyring = nextKeyring
+            for (const record of decrypted) {
+                await db.update(record.id, { ...encrypt(record.value), updatedAt: now() })
+            }
+            return { keyVersion: nextKeyring.activeVersion, rotatedCount: decrypted.length }
         },
         setEnabled: async (id: string, enabled: boolean) => {
             const record = await findRecord(id)

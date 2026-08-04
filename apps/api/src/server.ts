@@ -3,6 +3,7 @@ import { websocket } from 'hono/bun'
 import { openAPIRouteHandler } from 'hono-openapi'
 import { parseEnv } from '@containers/config/env'
 import { CONTROL_PLANE_VERSION } from '@containers/contracts/control-plane'
+import { loadKeyring } from '@containers/config/keyring'
 import { loadOrCreateSecret } from '@containers/config/secret'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { createEngineAgentClient } from './service/shared/engine-agent-client/create-engine-agent-client'
@@ -84,8 +85,8 @@ const composed = compose({
     secrets: {
         agentSharedSecret: await loadOrCreateSecret(env.AGENT_SHARED_SECRET_FILE),
         authSecret: await loadAuthSecret(env.AUTH_SECRET_FILE),
-        deploymentSecretKey: await loadOrCreateSecret(env.DEPLOYMENT_SECRET_KEY_FILE),
-        notificationSecretKey: await loadOrCreateSecret(env.NOTIFICATION_SECRET_KEY_FILE),
+        deploymentKeyring: await loadKeyring(env.DEPLOYMENT_SECRET_KEY_FILE),
+        notificationKeyring: await loadKeyring(env.NOTIFICATION_SECRET_KEY_FILE),
         trafficWorkerSharedSecret: await loadOrCreateSecret(env.TRAFFIC_WORKER_SHARED_SECRET_FILE),
     },
     env: {
@@ -132,6 +133,7 @@ const {
     notificationDestinationService,
     operationJobService,
     readinessService,
+    secretRotationService,
     uploadService,
 } = composed
 
@@ -189,6 +191,7 @@ const app = createApp({
     notificationDestinationService,
     operationJobService,
     readinessService,
+    secretRotationService,
     trafficExportRoot: env.TRAFFIC_EXPORT_ROOT,
     trafficWorkerClient,
     uploadService,

@@ -9,6 +9,7 @@ export const OPERATION_JOB_KIND = {
     DEPLOY_ROLLBACK: 'deploy.rollback',
     IMAGE_PULL: 'image.pull',
     NOTIFICATION_DELIVER: 'notification.deliver',
+    SECRET_ROTATE: 'secret.rotate',
     SYSTEM_PRUNE: 'system.prune',
     TRAFFIC_EXPORT: 'traffic.export',
     UPLOAD_FINALIZE: 'upload.finalize',
@@ -31,6 +32,7 @@ export const operationJobKindSchema = z.enum([
     OPERATION_JOB_KIND.DEPLOY_ROLLBACK,
     OPERATION_JOB_KIND.IMAGE_PULL,
     OPERATION_JOB_KIND.NOTIFICATION_DELIVER,
+    OPERATION_JOB_KIND.SECRET_ROTATE,
     OPERATION_JOB_KIND.SYSTEM_PRUNE,
     OPERATION_JOB_KIND.TRAFFIC_EXPORT,
     OPERATION_JOB_KIND.UPLOAD_FINALIZE,
@@ -70,6 +72,17 @@ export const backupRestoreJobPayloadSchema = z.object({
     backupId: z.uuid(),
     confirmation: z.uuid(),
     mode: backupRestoreModeSchema.default(BACKUP_RESTORE_MODE.PRESERVE_HOST),
+})
+
+export const secretRotateJobPayloadSchema = z.object({
+    confirmation: z.literal('ROTATE ENCRYPTION KEYS'),
+})
+
+export const secretRotateJobResultSchema = z.object({
+    deploymentKeyVersion: z.number().int().positive(),
+    deploymentRotatedCount: z.number().int().nonnegative(),
+    notificationKeyVersion: z.number().int().positive(),
+    notificationRotatedCount: z.number().int().nonnegative(),
 })
 
 export const systemPruneJobPayloadSchema = z.object({

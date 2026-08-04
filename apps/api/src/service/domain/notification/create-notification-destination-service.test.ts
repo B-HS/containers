@@ -34,7 +34,7 @@ const createTestContext = async () => {
     })
     const service = createNotificationDestinationService({
         db: buildNotificationDestinationServiceDb(database.db),
-        masterSecret: 'test-master-secret-that-is-longer-than-thirty-two-characters',
+        keyring: { activeVersion: 1, keys: new Map([[1, 'test-master-secret-that-is-longer-than-thirty-two-characters']]) },
         now: () => timestamp,
     })
     return { ...database, actorId, service, timestamp }
@@ -88,7 +88,7 @@ describe('notification destination service', () => {
         const created = await service.upsert(actorId, upsertInput())
         const brokenService = createNotificationDestinationService({
             db: buildNotificationDestinationServiceDb(db),
-            masterSecret: 'another-master-secret-that-is-longer-than-thirty-two',
+            keyring: { activeVersion: 1, keys: new Map([[1, 'another-master-secret-that-is-longer-than-thirty-two']]) },
             now: () => new Date('2026-08-01T00:00:00.000Z'),
         })
 

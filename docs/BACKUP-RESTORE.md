@@ -7,7 +7,7 @@
 - `control.sqlite`: 사용자, 세션, API key hash, audit, artifact metadata, Nginx route, deployment manifest·release, AES-GCM ciphertext secret, migration 기록(`__drizzle_migrations`)
 - `traffic.sqlite`: Nginx raw traffic event
 - `nginx.conf`: Engine Agent가 관리하는 Nginx `current.conf` 사본 (Engine Agent 조회 실패 시 생략되고 manifest에 `nginxSha256: null`로 남는다)
-- `secrets.enc`: `deployment-secret-key`·`notification-secret-key` 2종 마스터 키를 운영자 passphrase로 envelope 암호화한 봉투 (passphrase를 주지 않으면 생성되지 않는다)
+- `secrets.enc`: `deployment-secret-key`·`notification-secret-key` keyring **전 버전**을 운영자 passphrase로 envelope 암호화한 봉투 (passphrase를 주지 않으면 생성되지 않는다). v1 은 기존 필드에도 그대로 담아 구버전 복원 경로와 호환된다
 - `manifest.json`: schema version, 생성 시각, label, 각 파일 byte 수와 SHA-256, 키 포함 여부(`secretsIncluded`)
 
 파일은 `containers_backups` Docker named volume의 UUID 디렉터리에 저장된다. API와 Traffic Worker만 `/backups`로 mount한다. host path나 임의 backup 경로를 API 입력으로 받지 않는다.
@@ -38,7 +38,7 @@
 3. Worker가 자신의 SQLite connection에서 `VACUUM INTO` 로 임시 파일에 snapshot을 쓰고 원자 rename한다.
 4. API가 control DB를 같은 방식으로 snapshot한다. byte 수와 SHA-256은 완성된 파일을 스트리밍으로 읽어 계산하므로 DB 전체가 메모리에 올라오지 않는다.
 5. Engine Agent에서 Nginx `current.conf`를 받아 `nginx.conf`로 저장한다(실패해도 backup은 계속된다).
-6. passphrase가 있으면 마스터 키 2종을 봉인해 `secrets.enc`로 저장한다.
+6. passphrase가 있으면 두 keyring 의 전 키 버전을 봉인해 `secrets.enc`로 저장한다.
 7. byte 수와 SHA-256을 기록한 manifest를 마지막에 원자 rename한다.
 8. 완료 manifest 기준 최신 `BACKUP_RETENTION_COUNT`개만 남긴다. 기본값은 7이다.
 

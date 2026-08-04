@@ -5,6 +5,7 @@ import {
     deployReleaseJobPayloadSchema,
     deployRollbackJobPayloadSchema,
     OPERATION_JOB_KIND,
+    secretRotateJobPayloadSchema,
     systemPruneJobPayloadSchema,
     trafficExportJobPayloadSchema,
     uploadFinalizeJobPayloadSchema,
@@ -15,6 +16,7 @@ import type { DeploymentReleaseService } from '../deployment/create-deployment-r
 import type { DeploymentService } from '../deployment/create-deployment-service'
 import type { MaintenanceService } from '../maintenance/create-maintenance-service'
 import type { NotificationDeliveryService } from '../notification/create-notification-delivery-service'
+import type { SecretRotationService } from '../deployment/create-secret-rotation-service'
 import type { OperationJobHandler } from './create-operation-job-service'
 import { createAppError } from '../../../lib/error'
 import type { TrafficWorkerClient } from '../../../service/shared/traffic-worker-client/create-traffic-worker-client'
@@ -36,6 +38,7 @@ type JobHandlersDependencies = {
     >
     maintenanceService: Pick<MaintenanceService, 'disable' | 'drain' | 'enable'>
     notificationDeliveryService: Pick<NotificationDeliveryService, 'handleDeliver'>
+    secretRotationService: Pick<SecretRotationService, 'rotate'>
     trafficWorkerClient?: Pick<TrafficWorkerClient, 'createExport'>
     uploadService: Pick<UploadService, 'finalizeSession'>
 }
@@ -47,6 +50,7 @@ export const createJobHandlers = ({
     engineAgentClient,
     maintenanceService,
     notificationDeliveryService,
+    secretRotationService,
     trafficWorkerClient,
     uploadService,
 }: JobHandlersDependencies) => {
@@ -204,6 +208,11 @@ export const createJobHandlers = ({
         }
     }
 
+    const handleSecretRotate: OperationJobHandler = async ({ job }) => {
+        secretRotateJobPayloadSchema.parse(job.payload)
+        return secretRotationService.rotate()
+    }
+
     return {
         [OPERATION_JOB_KIND.BACKUP_CREATE]: handleBackupCreate,
         [OPERATION_JOB_KIND.BACKUP_RESTORE]: handleBackupRestore,
@@ -212,6 +221,7 @@ export const createJobHandlers = ({
         [OPERATION_JOB_KIND.DEPLOY_ROLLBACK]: handleDeployRollback,
         [OPERATION_JOB_KIND.IMAGE_PULL]: handleImagePull,
         [OPERATION_JOB_KIND.NOTIFICATION_DELIVER]: notificationDeliveryService.handleDeliver,
+        [OPERATION_JOB_KIND.SECRET_ROTATE]: handleSecretRotate,
         [OPERATION_JOB_KIND.SYSTEM_PRUNE]: handleSystemPrune,
         [OPERATION_JOB_KIND.TRAFFIC_EXPORT]: handleTrafficExport,
         [OPERATION_JOB_KIND.UPLOAD_FINALIZE]: handleUploadFinalize,

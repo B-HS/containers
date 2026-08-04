@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from 'node:crypto'
-import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
     BACKUP_MANIFEST_SCHEMA_VERSION,
@@ -16,6 +16,7 @@ import {
     type BackupSecretBundle,
 } from '@containers/contracts/backup'
 import { createAppError } from '../../../lib/error'
+import { loadKeyring } from '@containers/config/keyring'
 import { hashFile } from '../../../lib/hash-file'
 import type { TrafficWorkerClient } from '../../../service/shared/traffic-worker-client/create-traffic-worker-client'
 
@@ -234,16 +235,23 @@ export const createBackupService = ({
         }
     }
 
+    const readKeyVersions = async (filePath: string) => {
+        const keyring = await loadKeyring(filePath)
+        return Object.fromEntries([...keyring.keys].map(([version, secret]) => [String(version), secret]))
+    }
+
     const captureSecretBundle = async (id: string, passphrase: string) => {
         let bundle: BackupSecretBundle
         try {
-            const [deploymentSecretKey, notificationSecretKey] = await Promise.all([
-                readFile(secretKeyFiles.deployment, 'utf8'),
-                readFile(secretKeyFiles.notification, 'utf8'),
+            const [deploymentSecretKeys, notificationSecretKeys] = await Promise.all([
+                readKeyVersions(secretKeyFiles.deployment),
+                readKeyVersions(secretKeyFiles.notification),
             ])
             bundle = backupSecretBundleSchema.parse({
-                deploymentSecretKey: deploymentSecretKey.trim(),
-                notificationSecretKey: notificationSecretKey.trim(),
+                deploymentSecretKey: deploymentSecretKeys['1'],
+                deploymentSecretKeys,
+                notificationSecretKey: notificationSecretKeys['1'],
+                notificationSecretKeys,
             })
         } catch {
             throw createAppError('BACKUP_SECRET_UNAVAILABLE')
@@ -253,12 +261,17 @@ export const createBackupService = ({
         return { bytes: envelope.byteLength, sha256: createHash('sha256').update(envelope).digest('hex') }
     }
 
+    const writeKeyVersions = async (filePath: string, versions: Record<string, string>) => {
+        for (const [version, secret] of Object.entries(versions)) {
+            const destination = version === '1' ? filePath : `${filePath}.v${version}`
+            await writeFile(destination, secret, { encoding: 'utf8', mode: SECRET_KEY_FILE_MODE })
+            await chmod(destination, SECRET_KEY_FILE_MODE)
+        }
+    }
+
     const writeSecretKeyFiles = async (bundle: BackupSecretBundle) => {
-        await Promise.all([
-            writeFile(secretKeyFiles.deployment, bundle.deploymentSecretKey, { encoding: 'utf8', mode: SECRET_KEY_FILE_MODE }),
-            writeFile(secretKeyFiles.notification, bundle.notificationSecretKey, { encoding: 'utf8', mode: SECRET_KEY_FILE_MODE }),
-        ])
-        await Promise.all([chmod(secretKeyFiles.deployment, SECRET_KEY_FILE_MODE), chmod(secretKeyFiles.notification, SECRET_KEY_FILE_MODE)])
+        await writeKeyVersions(secretKeyFiles.deployment, bundle.deploymentSecretKeys ?? { 1: bundle.deploymentSecretKey })
+        await writeKeyVersions(secretKeyFiles.notification, bundle.notificationSecretKeys ?? { 1: bundle.notificationSecretKey })
     }
 
     const writeControlSnapshot = async (id: string) => {

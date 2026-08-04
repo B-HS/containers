@@ -1,3 +1,4 @@
+import type { SecretKeyring } from '@containers/config/keyring'
 import { asc, desc, eq } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { notificationDelivery, notificationDestination } from '@containers/db-schema/schema'
@@ -8,7 +9,7 @@ import {
 
 type ComposeNotificationDestinationDependencies = {
     db: ControlDatabase
-    masterSecret: string
+    keyring: SecretKeyring
 }
 
 export const buildNotificationDestinationServiceDb = (db: ControlDatabase): NotificationDestinationServiceDb => ({
@@ -44,10 +45,10 @@ export const buildNotificationDestinationServiceDb = (db: ControlDatabase): Noti
     },
 })
 
-export const composeNotificationDestination = ({ db, masterSecret }: ComposeNotificationDestinationDependencies) => ({
+export const composeNotificationDestination = ({ db, keyring }: ComposeNotificationDestinationDependencies) => ({
     notificationDestinationService: createNotificationDestinationService({
         db: buildNotificationDestinationServiceDb(db),
-        masterSecret,
+        keyring,
         now: () => new Date(),
     }),
 })
