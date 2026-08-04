@@ -1,4 +1,6 @@
-export const ERROR_CODE = {
+import { ENGINE_AGENT_ERROR_CODE } from '@containers/contracts/engine-error'
+
+const API_ERROR_CODE = {
     API_KEY_CREATE_FAILED: 'API_KEY_CREATE_FAILED',
     API_KEY_LIST_FAILED: 'API_KEY_LIST_FAILED',
     API_KEY_NOT_FOUND: 'API_KEY_NOT_FOUND',
@@ -158,5 +160,7 @@ export const ERROR_CODE = {
     USER_NOT_FOUND: 'USER_NOT_FOUND',
     VALIDATION_ERROR: 'VALIDATION_ERROR',
 } as const
+
+export const ERROR_CODE = { ...ENGINE_AGENT_ERROR_CODE, ...API_ERROR_CODE } as const
 
 export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE]

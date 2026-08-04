@@ -1,6 +1,7 @@
+import { ENGINE_AGENT_ERROR_MESSAGE } from '@containers/contracts/engine-error'
 import { ERROR_CODE, type ErrorCode } from './error-code'
 
-export const ERROR_MESSAGE: Record<ErrorCode, string> = {
+const API_ERROR_MESSAGE = {
     [ERROR_CODE.API_KEY_CREATE_FAILED]: 'API 키를 생성할 수 없습니다.',
     [ERROR_CODE.API_KEY_LIST_FAILED]: 'API 키를 조회할 수 없습니다.',
     [ERROR_CODE.API_KEY_NOT_FOUND]: 'API 키를 찾을 수 없습니다.',
@@ -160,3 +161,5 @@ export const ERROR_MESSAGE: Record<ErrorCode, string> = {
     [ERROR_CODE.USER_NOT_FOUND]: '사용자를 찾을 수 없습니다.',
     [ERROR_CODE.VALIDATION_ERROR]: '요청 검증에 실패했습니다.',
 }
+
+export const ERROR_MESSAGE: Record<ErrorCode, string> = { ...ENGINE_AGENT_ERROR_MESSAGE, ...API_ERROR_MESSAGE }

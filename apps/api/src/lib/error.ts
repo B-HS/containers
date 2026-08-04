@@ -1,14 +1,15 @@
+import { ENGINE_AGENT_ERROR_STATUS, splitErrorCode } from '@containers/contracts/engine-error'
+import { ERROR_CODE } from './error-code'
 import { ERROR_MESSAGE } from './error-message'
 import type { ErrorCode } from './error-code'
 
-export type AppError = {
+export type AppError = Error & {
     code: ErrorCode
-    message: string
     statusCode: number
     details?: Record<string, unknown>
 }
 
-export const STATUS_MAP: Record<ErrorCode, number> = {
+const API_STATUS_MAP = {
     API_KEY_CREATE_FAILED: 400,
     API_KEY_LIST_FAILED: 400,
     API_KEY_NOT_FOUND: 404,
@@ -169,9 +170,32 @@ export const STATUS_MAP: Record<ErrorCode, number> = {
     VALIDATION_ERROR: 400,
 }
 
+export const STATUS_MAP: Record<ErrorCode, number> = { ...ENGINE_AGENT_ERROR_STATUS, ...API_STATUS_MAP }
+
 export const getStatusCode = (code: ErrorCode): number => STATUS_MAP[code]
 
-export const createAppError = (code: string, cause?: unknown) => new Error(code, cause === undefined ? undefined : { cause })
+export const resolveErrorCode = (rawCode: string): { code: ErrorCode; detail: string | undefined } => {
+    if (rawCode in STATUS_MAP) {
+        return { code: rawCode as ErrorCode, detail: undefined }
+    }
+
+    const { code, detail } = splitErrorCode(rawCode)
+    return code in STATUS_MAP ? { code: code as ErrorCode, detail } : { code: ERROR_CODE.INTERNAL_ERROR, detail: undefined }
+}
+
+export const createAppError = (code: string, cause?: unknown, details?: Record<string, unknown>): AppError => {
+    const error = new Error(code, cause === undefined ? undefined : { cause }) as AppError
+    const resolved = resolveErrorCode(code)
+    const resolvedDetails = resolved.detail === undefined ? details : { detail: resolved.detail, ...details }
+
+    error.code = resolved.code
+    error.statusCode = STATUS_MAP[resolved.code]
+    if (resolvedDetails !== undefined) {
+        error.details = resolvedDetails
+    }
+
+    return error
+}
 
 export const isAppError = (error: unknown): error is AppError =>
     typeof error === 'object' &&
@@ -182,4 +206,4 @@ export const isAppError = (error: unknown): error is AppError =>
     typeof error.statusCode === 'number'
 
 export type { ErrorCode }
-export { ERROR_MESSAGE }
+export { ERROR_CODE, ERROR_MESSAGE }

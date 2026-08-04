@@ -3,7 +3,7 @@ import type { HandlerResponse } from 'hono/types'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { ERROR_CODE, type ErrorCode } from './error-code'
 import { ERROR_MESSAGE } from './error-message'
-import { getStatusCode, isAppError, STATUS_MAP } from './error'
+import { getStatusCode, isAppError, resolveErrorCode } from './error'
 import { errorResponse } from './response'
 
 export type ApiEnv = { Variables: { requestId: string } }
@@ -11,15 +11,14 @@ export type ApiContext = Context<ApiEnv>
 
 const INTERNAL_ERROR_MESSAGE = ERROR_MESSAGE[ERROR_CODE.INTERNAL_ERROR]
 
-const getErrorCode = (error: unknown): ErrorCode => {
+const resolveThrown = (error: unknown): { code: ErrorCode; detail: string | undefined } => {
     if (typeof error !== 'object' || error === null) {
-        return ERROR_CODE.INTERNAL_ERROR
+        return { code: ERROR_CODE.INTERNAL_ERROR, detail: undefined }
     }
 
     const candidate = (error as Record<string, unknown>).message
-    const code = typeof candidate === 'string' ? candidate : undefined
 
-    return code !== undefined && code in STATUS_MAP ? (code as ErrorCode) : ERROR_CODE.INTERNAL_ERROR
+    return typeof candidate === 'string' ? resolveErrorCode(candidate) : { code: ERROR_CODE.INTERNAL_ERROR, detail: undefined }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC 타입 보존을 위한 hono Handler 제네릭 기본값
@@ -35,15 +34,15 @@ export const withErrorHandling = <E extends Env = any, P extends string = any, I
             if (isAppError(error)) {
                 console.error(`[api] request failed: code=${error.code} message=${error.message}`)
                 return context.json(
-                    errorResponse(error.code, ERROR_MESSAGE[error.code] ?? error.message, requestId),
+                    errorResponse(error.code, ERROR_MESSAGE[error.code] ?? INTERNAL_ERROR_MESSAGE, requestId, error.details),
                     error.statusCode as ContentfulStatusCode,
                 ) as unknown as R
             }
 
-            const code = getErrorCode(error)
+            const { code, detail } = resolveThrown(error)
             console.error(`[api] request failed: code=${code}`, error)
             return context.json(
-                errorResponse(code, ERROR_MESSAGE[code] ?? INTERNAL_ERROR_MESSAGE, requestId),
+                errorResponse(code, ERROR_MESSAGE[code] ?? INTERNAL_ERROR_MESSAGE, requestId, detail === undefined ? undefined : { detail }),
                 getStatusCode(code) as ContentfulStatusCode,
             ) as unknown as R
         }
