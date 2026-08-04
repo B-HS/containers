@@ -1,0 +1,2 @@
+ALTER TABLE `operation_job` ADD `worker_id` text;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS `operation_job_active_resource_unique` ON `operation_job` (`kind`,`resource_key`) WHERE "operation_job"."resource_key" IS NOT NULL AND "operation_job"."status" IN ('queued','running','cancelling');

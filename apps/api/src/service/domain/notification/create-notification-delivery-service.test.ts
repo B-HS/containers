@@ -73,6 +73,7 @@ const createTestContext = async (fetchStatus: number | ((url: string) => Promise
             return null
         }
     jobService = createOperationJobService({
+        workerId: 'test-worker',
         db: buildOperationJobServiceDb(database.db),
         handlers: {
             'backup.create': failableHandler('BACKUP_ENGINE_FAILED'),

@@ -8,6 +8,7 @@ type ComposeOperationJobDependencies = {
     db: ControlDatabase
     handlers: Partial<Record<OperationJobKind, OperationJobHandler>>
     onFinished?: (job: OperationJob) => Promise<void>
+    workerId: string
 }
 
 export const buildOperationJobServiceDb = (db: ControlDatabase): OperationJobServiceDb => ({
@@ -75,11 +76,16 @@ export const buildOperationJobServiceDb = (db: ControlDatabase): OperationJobSer
             .set(values as never)
             .where(eq(operationJob.id, id))
     },
-    listInterrupted: async () =>
+    listInterrupted: async (workerId) =>
         db
             .select()
             .from(operationJob)
-            .where(inArray(operationJob.status, ['running', 'cancelling'] as never)),
+            .where(
+                and(
+                    inArray(operationJob.status, ['running', 'cancelling'] as never),
+                    or(isNull(operationJob.workerId), eq(operationJob.workerId, workerId)),
+                ),
+            ),
     listStalled: async (heartbeatBefore) =>
         db
             .select()
@@ -95,11 +101,12 @@ export const buildOperationJobServiceDb = (db: ControlDatabase): OperationJobSer
     },
 })
 
-export const composeOperationJob = ({ db, handlers, onFinished }: ComposeOperationJobDependencies) => ({
+export const composeOperationJob = ({ db, handlers, onFinished, workerId }: ComposeOperationJobDependencies) => ({
     operationJobService: createOperationJobService({
         db: buildOperationJobServiceDb(db),
         handlers,
         now: () => new Date(),
+        workerId,
         ...(onFinished === undefined ? {} : { onFinished }),
     }),
 })

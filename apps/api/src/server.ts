@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { websocket } from 'hono/bun'
 import { openAPIRouteHandler } from 'hono-openapi'
@@ -115,6 +116,7 @@ const composed = compose({
         artifactRetentionDays: env.ARTIFACT_RETENTION_DAYS,
         artifactRetentionMinimumCount: env.ARTIFACT_RETENTION_MINIMUM_COUNT,
         uploadTotalQuotaBytes: env.UPLOAD_TOTAL_QUOTA_BYTES,
+        workerId: randomUUID(),
         apiKeyRateLimitPerMinute: env.API_KEY_RATE_LIMIT_PER_MINUTE,
     },
     clients: { engineAgentClient, nginxStatusClient, nginxRouteProbeClient, trafficWorkerClient },

@@ -123,10 +123,10 @@ type OperationJobServiceDb = {
     claimNext: (now: Date) => Promise<OperationJobRow | undefined>
     claim: (
         id: string,
-        values: { attempt: number; heartbeatAt: Date; startedAt: Date; status: string; updatedAt: Date },
+        values: { attempt: number; heartbeatAt: Date; startedAt: Date; status: string; updatedAt: Date; workerId: string },
     ) => Promise<OperationJobRow | undefined>
     update: (id: string, values: Partial<Omit<OperationJobRow, 'id'>> & { updatedAt: Date }) => Promise<void>
-    listInterrupted: () => Promise<OperationJobRow[]>
+    listInterrupted: (workerId: string) => Promise<OperationJobRow[]>
     listStalled: (heartbeatBefore: Date) => Promise<OperationJobRow[]>
     deleteFinishedBefore: (threshold: Date, statuses: string[]) => Promise<void>
 }
@@ -136,6 +136,7 @@ type OperationJobServiceDependencies = {
     handlers: Partial<Record<OperationJobKind, OperationJobHandler>>
     now: () => Date
     onFinished?: (job: OperationJob) => Promise<void>
+    workerId: string
 }
 
 export type { OperationJobServiceDb }
@@ -155,7 +156,7 @@ const toJob = (record: OperationJobRow) =>
         updatedAt: record.updatedAt.toISOString(),
     })
 
-export const createOperationJobService = ({ db, handlers, now, onFinished }: OperationJobServiceDependencies) => {
+export const createOperationJobService = ({ db, handlers, now, onFinished, workerId }: OperationJobServiceDependencies) => {
     const recordEvent = async (jobId: string, event: string, detail?: Record<string, unknown>) => {
         await db.insertEvent({
             createdAt: now(),
@@ -223,6 +224,7 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
             startedAt: now(),
             status: 'running',
             updatedAt: now(),
+            workerId,
         })
         if (claimed === undefined) {
             return null
@@ -381,7 +383,7 @@ export const createOperationJobService = ({ db, handlers, now, onFinished }: Ope
         return records.length
     }
 
-    const reconcileInterrupted = async () => recoverAbandoned(await db.listInterrupted(), 'JOB_INTERRUPTED')
+    const reconcileInterrupted = async () => recoverAbandoned(await db.listInterrupted(workerId), 'JOB_INTERRUPTED')
 
     const sweepStalled = async () => recoverAbandoned(await db.listStalled(new Date(now().getTime() - STALL_THRESHOLD_MS)), 'JOB_STALLED')
 

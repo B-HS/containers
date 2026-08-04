@@ -95,6 +95,8 @@ Hono Route가 인증·DTO 검증·인가·위험도 판정을 수행하고 job�
 - `api` 장애: Nginx와 workload는 계속 동작하고 변경 작업만 중단된다.
 - `engine-agent` 장애: Docker 변경·stream 기능만 중단되고 조회 화면은 명시적 degraded 상태가 된다.
 - `traffic-worker` 장애: 프록시는 계속 동작하고 raw log가 volume에 쌓인다. 복구 후 offset부터 재처리한다.
+- **API 다중 인스턴스 전제**: durable job queue 는 다중 인스턴스에서 안전하도록 세 겹으로 막는다. ① claim 은 `WHERE id = ? AND status = 'queued'` 조건부 UPDATE 라 두 인스턴스가 같은 job 을 잡을 수 없다. ② claim 시 프로세스마다 부팅 때 만든 `worker_id` 를 기록하고, 부팅 회수(`reconcileInterrupted`)는 **자기 worker_id 또는 NULL(구버전) 행만** 되돌린다 — 다른 인스턴스가 실행 중인 job 을 죽이지 않는다. ③ `(kind, resource_key)` 활성 상태 부분 유니크 인덱스가 리소스 잠금을 DB 레벨에서 강제한다(애플리케이션 조회만으로는 경합에서 새어나갈 수 있다). 죽은 인스턴스의 job 은 heartbeat 기준 stall sweep 이 회수한다.
+- 그 외 상태(점검 모드는 DB 영속화, rate limit·SSE 구독자 목록은 프로세스 메모리)는 여전히 인스턴스별이다. rate limit 은 인스턴스 수만큼 느슨해지고 SSE 는 연결된 인스턴스에서만 이벤트를 받는다.
 - `traffic-worker` 는 쓰기(수집·보존 정리)와 읽기(분석·export)를 분리한다. 분석·export 조회는 읽기 전용 SQLite 연결을 가진 별도 Worker thread 에서 실행한다. `bun:sqlite` 가 동기 API 라 같은 스레드에서 돌면 큰 범위 조회가 이벤트 루프를 막아 `/health` 응답까지 지연되기 때문이다. export 는 keyset pagination 으로 5,000행씩 읽어 파일에 이어 쓰고 sha256 을 증분 계산한다.
 - Nginx reload 실패: 기존 worker와 설정을 유지하고 새 revision을 failed로 표시한다.
 - SQLite 손상·disk full: 변경 작업을 fail-closed하고 기존 라우팅은 유지한다.

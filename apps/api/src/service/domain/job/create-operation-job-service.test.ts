@@ -24,6 +24,7 @@ const createTestContext = async (handler: OperationJobHandler) => {
     })
     const clock = { value: Date.parse('2026-08-01T00:00:00.000Z') }
     const service = createOperationJobService({
+        workerId: 'test-worker',
         db: buildOperationJobServiceDb(database.db),
         handlers: { 'backup.create': handler },
         now: () => new Date(clock.value),
@@ -178,6 +179,7 @@ describe('operation job 서비스', () => {
         const clock = { value: Date.parse('2026-08-01T00:00:00.000Z') }
         const finishedKinds: string[] = []
         const service = createOperationJobService({
+            workerId: 'test-worker',
             db: buildOperationJobServiceDb(database.db),
             handlers: {
                 'backup.create': async ({ job }) => {
@@ -297,5 +299,29 @@ describe('operation job 서비스', () => {
         expect(finished.result).toEqual({ restored: true })
         expect(finished.failureCode).toBeNull()
         expect((await service.listEvents(job.id)).map((event) => event.event)).toEqual(['queued', 'started', 'cancel-requested', 'cancelled'])
+    })
+    test('다른 인스턴스가 잡은 running job 은 부팅 회수 대상에서 제외합니다', async () => {
+        const { database, service } = await createTestContext(async () => null)
+        const mine = await service.enqueue({ kind: 'backup.create', payload: {} })
+        const theirs = await service.enqueue({ kind: 'backup.restore', payload: {} })
+        await database.db.update(operationJob).set({ status: 'running', workerId: 'test-worker' }).where(eq(operationJob.id, mine.id))
+        await database.db.update(operationJob).set({ status: 'running', workerId: 'another-worker' }).where(eq(operationJob.id, theirs.id))
+
+        expect(await service.reconcileInterrupted()).toBe(1)
+        expect((await service.get(theirs.id)).status).toBe('running')
+        expect((await service.get(mine.id)).status).toBe('queued')
+    })
+
+    test('같은 kind·resource key 활성 job 은 DB 유니크 인덱스로도 중복 삽입이 막힙니다', async () => {
+        const { database, service } = await createTestContext(async () => null)
+        const first = await service.enqueue({ kind: 'backup.create', payload: {}, uniqueResourceKey: 'resource-1' })
+
+        expect(() =>
+            database.sqlite.run(
+                'INSERT INTO operation_job (id, kind, status, payload, attempt, max_attempts, resource_key, scheduled_at, created_at, updated_at) VALUES (?1,?2,?3,?4,0,1,?5,?6,?6,?6)',
+                ['duplicate-job', 'backup.create', 'queued', '{}', 'resource-1', Math.floor(Date.now() / 1000)],
+            ),
+        ).toThrow()
+        expect(first.id).not.toBe('duplicate-job')
     })
 })

@@ -65,6 +65,7 @@ type ComposeEnv = {
     protectedHostnames: string[]
     trafficWorkerInternalUrl: string
     uploadTotalQuotaBytes: number
+    workerId: string
     apiKeyRateLimitPerMinute?: number
 }
 
@@ -207,6 +208,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
             uploadService,
         }),
         onFinished: (job) => notificationDeliveryService.onFinished(job),
+        workerId: env.workerId,
     })
     operationJobService = operationJobResult.operationJobService
 

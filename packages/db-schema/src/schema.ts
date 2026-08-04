@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const USER_ROLE = {
@@ -341,6 +342,7 @@ export const operationJob = sqliteTable(
         payload: text('payload').notNull(),
         result: text('result'),
         resourceKey: text('resource_key'),
+        workerId: text('worker_id'),
         failureCode: text('failure_code'),
         attempt: integer('attempt').notNull(),
         maxAttempts: integer('max_attempts').notNull(),
@@ -358,6 +360,9 @@ export const operationJob = sqliteTable(
         index('operation_job_status_scheduled_at_idx').on(table.status, table.scheduledAt),
         index('operation_job_kind_idx').on(table.kind),
         index('operation_job_kind_resource_key_idx').on(table.kind, table.resourceKey),
+        uniqueIndex('operation_job_active_resource_unique')
+            .on(table.kind, table.resourceKey)
+            .where(sql`${table.resourceKey} IS NOT NULL AND ${table.status} IN ('queued','running','cancelling')`),
         index('operation_job_created_at_idx').on(table.createdAt),
     ],
 )
