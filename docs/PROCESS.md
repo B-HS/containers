@@ -495,8 +495,20 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] b. 종합 판정과 로드맵 확정 — 리포트: [quality-assurance/2026-08-04-production-readiness.md](./quality-assurance/2026-08-04-production-readiness.md)
 - [x] c. blocker 핵심 4건 메인 세션 재확인 — ① `compose.yaml` restart 정책 0건(실측 5개 컨테이너 `restart=no`) ② `PRESERVED_TABLES`에 `__drizzle_migrations` 부재 + `deployment.artifactId`가 보존 대상 `artifact`를 `onDelete: restrict` 참조 ③ `infra/nginx/nginx.conf`에 `real_ip` 설정 없음 ④ 백업 세트가 `control.sqlite`·`traffic.sqlite`·`manifest.json` 3개뿐이고 `/data`의 암호화 키 2종 미포함
 - [x] d. CI 운용 관문 확인 — 업로드·image load·manifest·release·rollback은 API key 경로가 있으나 `create-job-route.ts`는 `apiKeyService` 의존성이 없어 **job 성패 판정이 세션 전용**. `API_KEY_SCOPE` 9종에 job 계열 scope 부재
-- [ ] e. 1단계(실운영 개시 전 필수) 구현 — 사용자 승인 대기
-- [ ] f. 2단계(무인 운용·무음 실패 제거) 구현 — 사용자 승인 대기
-- [ ] g. 3단계(장기 운영 안정화) 구현 — 사용자 승인 대기
+- [x] e. 1단계(실운영 개시 전 필수) 구현 완료 — compose restart·로그 로테이션·자원 상한·origin/포트/DOCKER_GID 외부화, 백업 복구 모드 2종과 암호화 키 envelope 백업, nginx real_ip·catch-all·외부 노출 opt-in 경로, 부팅 단계 격리와 migration dry-run, 신뢰 origin 정규화와 setup 스크립트 일반화
+- [x] e-2. 1단계 실측 중 회귀 1건 발견·수정 — access log 로테이션으로 entrypoint가 nginx를 백그라운드로 돌리며 PID 1이 셸이 되어, 컨테이너로 보낸 HUP이 nginx master에 닿지 않았다. **설정 적용이 성공으로 보고되면서 실제로는 리로드되지 않던 상태**(워커 나이가 마스터와 동일). HUP·USR1·QUIT 전달 추가 후 apply 시 워커 PID 교체 실측 확인
+- [x] f. 2단계(무인 운용·무음 실패 제거) 구현 완료 — `job:read`·`job:write`·`engine:read`·`control-plane:read` scope 신설과 API key 분기, manifest 멱등화, 실패 알림을 job 전반으로 확장, `/api/readyz` 심층 헬스, 백업 디스크 가드·총량 상한, 점검 모드 DB 영속화, CI 배포 워크플로 예제와 RUNBOOK
+- [ ] g. 3단계(장기 운영 안정화) — **미착수**. 컨텍스트 한계로 이번 세션에서 중단. 항목은 [quality-assurance/2026-08-04-production-readiness.md](./quality-assurance/2026-08-04-production-readiness.md) §3 3단계 참조
+
+### 2단계 실측 (2026-08-04)
+
+- 게이트: typecheck 8/8, lint 0, **test 292 pass**, format:check, build 8/8
+- Compose 5개 healthy. 신규 scope API key 발급 후 `/api/jobs`·`/api/system/engine`·`/api/control-plane/status`·`/api/containers`·`/api/deployment-manifests` **전부 200**(이전에는 job 조회가 세션 전용이라 CI가 성패를 판정할 수 없었다). scope 밖은 `GET /api/audit` 401·`POST /api/backups` 403으로 차단. 검증 후 키 회수 확인(회수 즉시 401)
+- `/api/readyz` 무인증 200 — engine-agent·traffic-worker·control DB integrity·백업 신선도·job 적체·점검 모드 종합 보고
+- nginx 설정 apply 시 워커 PID 교체 확인, catch-all이 알 수 없는 Host를 444로 차단, 패널·미인증 401 정상
+
+### 정정
+
+이전 기록의 "라우트 생성 후 프록시 응답 307"은 **오판이었다.** 당시 패널 server 블록이 `default_server`여서 요청이 패널로 흘러 Next.js가 307을 반환한 것이고, 라우트 블록은 타지 않았다. catch-all 도입 후에는 라우트 블록으로 정확히 들어가며, 대상 컨테이너가 edge 네트워크에 없으면 upstream 해석에 실패한다(배포 파이프라인이 붙이는 컨테이너는 해당 없음).
 
 판정: 실운영 **no-go**(조건 충족 전), CI API 운용 **부분 가능**(시작은 되나 성패 판정·검증·교착 해소 불가).
