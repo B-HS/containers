@@ -8,11 +8,13 @@
         "name": "名前",
         "ownerAction": "Ownerアカウントを作成",
         "ownerDescription": "このサーバーの最初のOwnerを作成します。公開登録は引き続き無効です。",
+        "ownerLocalOnlyDescription": "このサーバーにはまだ owner アカウントがありません。最初のアカウントはサーバー上の http://127.0.0.1:18080 から作成してください。",
+        "ownerLocalOnlyTitle": "初期設定待ち",
         "ownerTitle": "初期設定",
         "password": "パスワード",
         "pending": "処理中",
-        "unknownError": "リクエストを処理できません。しばらくしてから再試行してください。",
-        "signedIn": "ログインしました。"
+        "signedIn": "ログインしました。",
+        "unknownError": "リクエストを処理できません。しばらくしてから再試行してください。"
     },
     "Invitation": {
         "accept": "運用者アカウントを作成",

@@ -10,7 +10,7 @@ import type { AuthPanelLabels } from '@features/auth-panel/auth-panel'
 
 type AuthPanelWidgetProps = {
     labels: AuthPanelLabels
-    mode: 'bootstrap' | 'login'
+    mode: 'bootstrap' | 'bootstrap-local-only' | 'login'
 }
 
 export const AuthPanelWidget: FC<AuthPanelWidgetProps> = ({ labels, mode }) => {

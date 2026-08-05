@@ -8,11 +8,13 @@
         "name": "이름",
         "ownerAction": "Owner 계정 생성",
         "ownerDescription": "이 서버의 첫 owner 계정을 생성합니다. 완료 후 공개 가입은 계속 차단됩니다.",
+        "ownerLocalOnlyDescription": "이 서버에는 아직 owner 계정이 없습니다. 최초 계정은 서버에서 http://127.0.0.1:18080 으로 접속해 만들어야 합니다.",
+        "ownerLocalOnlyTitle": "초기 설정 대기 중",
         "ownerTitle": "초기 설정",
         "password": "비밀번호",
         "pending": "처리 중",
-        "unknownError": "요청을 처리할 수 없습니다. 잠시 후 다시 시도하세요.",
-        "signedIn": "로그인되었습니다."
+        "signedIn": "로그인되었습니다.",
+        "unknownError": "요청을 처리할 수 없습니다. 잠시 후 다시 시도하세요."
     },
     "Invitation": {
         "accept": "운영자 계정 생성",

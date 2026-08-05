@@ -4,6 +4,7 @@
     "private": true,
     "type": "module",
     "exports": {
+        "./bootstrap-origin": "./src/bootstrap-origin.ts",
         "./compose-security": "./src/compose-security.ts",
         "./env": "./src/env.ts",
         "./keyring": "./src/keyring.ts",

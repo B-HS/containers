@@ -8,11 +8,13 @@
         "name": "Name",
         "ownerAction": "Create owner account",
         "ownerDescription": "Create the first owner for this server. Public sign-up remains disabled afterward.",
+        "ownerLocalOnlyDescription": "This server has no owner account yet. The first account must be created from the server itself at http://127.0.0.1:18080.",
+        "ownerLocalOnlyTitle": "Waiting for initial setup",
         "ownerTitle": "Initial setup",
         "password": "Password",
         "pending": "Working",
-        "unknownError": "The request could not be completed. Try again shortly.",
-        "signedIn": "Signed in."
+        "signedIn": "Signed in.",
+        "unknownError": "The request could not be completed. Try again shortly."
     },
     "Invitation": {
         "accept": "Create operator account",

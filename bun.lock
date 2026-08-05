@@ -66,6 +66,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@containers/api": "workspace:*",
+        "@containers/config": "workspace:*",
         "@containers/contracts": "workspace:*",
         "@containers/nginx-config": "workspace:*",
         "@tailwindcss/postcss": "4.3.3",

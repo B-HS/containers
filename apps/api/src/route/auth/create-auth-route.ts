@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
+import { isInternalBootstrapHost } from '@containers/config/bootstrap-origin'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { managedUserUpdateSchema } from '@containers/contracts/user-management'
 import { createAppError } from '../../lib/error'
@@ -68,9 +69,23 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
                 tags: ['Auth'],
             }),
             validator('json', ownerBootstrapSchema),
-            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof ownerBootstrapSchema> }>) =>
-                context.json(successResponse(await authService.bootstrapOwner(context.req.valid('json'))), 201),
-            ),
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof ownerBootstrapSchema> }>) => {
+                if (!isInternalBootstrapHost(context.req.raw.headers)) {
+                    throw createAppError('BOOTSTRAP_ORIGIN_FORBIDDEN')
+                }
+                const result = await authService.bootstrapOwner(context.req.valid('json'))
+                await auditService.record({
+                    actorId: result.user.id,
+                    authMethod: 'bootstrap',
+                    operation: 'bootstrap.owner',
+                    requestId: context.get('requestId'),
+                    result: 'success',
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId: result.user.id,
+                    targetType: 'user',
+                })
+                return context.json(successResponse(result), 201)
+            }),
         )
         .get(
             '/session',

@@ -17,6 +17,8 @@ type AuthPanelLabels = {
     name: string
     ownerAction: string
     ownerDescription: string
+    ownerLocalOnlyDescription: string
+    ownerLocalOnlyTitle: string
     ownerTitle: string
     password: string
     pending: string
@@ -25,7 +27,7 @@ type AuthPanelLabels = {
 
 type AuthPanelProps = {
     labels: AuthPanelLabels
-    mode: 'bootstrap' | 'login'
+    mode: 'bootstrap' | 'bootstrap-local-only' | 'login'
     onAuthenticate: (input: { email: string; mode: 'bootstrap' | 'login'; name?: string | undefined; password: string }) => Promise<void>
 }
 
@@ -46,12 +48,26 @@ export const AuthPanel: FC<AuthPanelProps> = ({ labels, mode, onAuthenticate }) 
         const name = isBootstrap ? String(formData.get('name') ?? '') : undefined
 
         try {
-            await onAuthenticate({ email, mode, name, password })
+            await onAuthenticate({ email, mode: isBootstrap ? 'bootstrap' : 'login', name, password })
         } catch {
             setError(labels.unknownError)
         } finally {
             setPending(false)
         }
+    }
+
+    if (mode === 'bootstrap-local-only') {
+        return (
+            <main className="grid min-h-screen place-items-center bg-background p-4 text-foreground">
+                <Card className="w-full max-w-md gap-6 py-8">
+                    <CardHeader className="gap-3">
+                        <p className="text-xs font-medium tracking-[0.18em] text-text-subtle uppercase">Containers</p>
+                        <CardTitle className="text-2xl tracking-tight">{labels.ownerLocalOnlyTitle}</CardTitle>
+                        <CardDescription className="leading-6">{labels.ownerLocalOnlyDescription}</CardDescription>
+                    </CardHeader>
+                </Card>
+            </main>
+        )
     }
 
     return (

@@ -138,6 +138,7 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.NOTIFICATION_TEST_FAILED]: '알림 전송 테스트에 실패했습니다.',
     [ERROR_CODE.OCI_BLOB_DIGEST_INVALID]: 'OCI blob digest가 올바르지 않습니다.',
     [ERROR_CODE.OFFSET_MISMATCH]: '업로드 offset이 일치하지 않습니다.',
+    [ERROR_CODE.BOOTSTRAP_ORIGIN_FORBIDDEN]: '최초 owner 계정은 로컬 주소에서만 만들 수 있습니다.',
     [ERROR_CODE.SELF_MODIFICATION_FORBIDDEN]: '자기 자신의 계정은 변경하거나 삭제할 수 없습니다.',
     [ERROR_CODE.PRUNE_NOTHING_TO_DELETE]: '삭제할 항목이 없습니다.',
     [ERROR_CODE.PRUNE_PREVIEW_INVALID]: 'prune preview가 올바르지 않습니다.',

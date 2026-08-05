@@ -28,6 +28,8 @@ const PanelLayout = async ({ children }: PanelLayoutProps) => {
                     name: authTranslations('name'),
                     ownerAction: authTranslations('ownerAction'),
                     ownerDescription: authTranslations('ownerDescription'),
+                    ownerLocalOnlyDescription: authTranslations('ownerLocalOnlyDescription'),
+                    ownerLocalOnlyTitle: authTranslations('ownerLocalOnlyTitle'),
                     ownerTitle: authTranslations('ownerTitle'),
                     password: authTranslations('password'),
                     pending: authTranslations('pending'),

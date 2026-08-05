@@ -60,7 +60,7 @@ type AuditServiceDb = {
 
 type AuditRecord = {
     actorId: string
-    authMethod?: 'api-key' | 'invitation' | 'session'
+    authMethod?: 'api-key' | 'bootstrap' | 'invitation' | 'session'
     detail?: Record<string, unknown>
     operation: string
     requestId: string

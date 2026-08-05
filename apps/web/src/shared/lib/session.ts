@@ -1,4 +1,5 @@
 import { cache } from 'react'
+import { isInternalBootstrapHost } from '@containers/config/bootstrap-origin'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { headers } from 'next/headers'
 import { getAuthGate } from '@entities/auth/auth.api'
@@ -9,6 +10,7 @@ export type PanelSession = AuthenticatedGate['session']
 
 type SessionResult =
     | { mode: 'bootstrap' }
+    | { mode: 'bootstrap-local-only' }
     | { mode: 'login' }
     | {
           mode: 'authenticated'
@@ -24,6 +26,10 @@ export const getSession = cache(async (): Promise<SessionResult> => {
     const requestHeaders = await headers()
     const cookie = requestHeaders.get('cookie') ?? ''
     const authGate = await getAuthGate(API_INTERNAL_URL, cookie)
+
+    if (authGate.mode === 'bootstrap') {
+        return { mode: isInternalBootstrapHost(requestHeaders) ? 'bootstrap' : 'bootstrap-local-only' }
+    }
 
     if (authGate.mode !== 'authenticated') {
         return { mode: authGate.mode }
