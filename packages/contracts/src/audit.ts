@@ -15,6 +15,7 @@ export const AUDIT_TARGET_TYPES = [
     'nginx-config',
     'nginx-route',
     'notification-destination',
+    'panel-setting',
     'registry-credential',
     'system',
     'user',

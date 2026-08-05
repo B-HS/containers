@@ -22,6 +22,8 @@ import { createHealthRoute } from '../route/health/create-health-route'
 import { createReadinessRoute } from '../route/health/create-readiness-route'
 import { createJobRoute } from '../route/job/create-job-route'
 import { createMaintenanceRoute } from '../route/maintenance/create-maintenance-route'
+import { createPanelSettingRoute } from '../route/panel-setting/create-panel-setting-route'
+import type { PanelSettingService } from '../service/domain/panel-setting/create-panel-setting-service'
 import { createNginxRoute } from '../route/nginx/create-nginx-route'
 import { createTrafficRoute } from '../route/traffic/create-traffic-route'
 import { createUploadRoute } from '../route/upload/create-upload-route'
@@ -75,6 +77,7 @@ type AppDependencies = {
     deploymentService: Pick<DeploymentService, 'getLoaded'>
     engineAgentClient: EngineAgentClient
     nginxStatusClient: NginxStatusClient
+    panelSettingService: Pick<PanelSettingService, 'get' | 'update'>
     maintenanceService: Pick<MaintenanceService, 'disable' | 'enable' | 'enter' | 'getStatus' | 'isEnabled' | 'leave'>
     nginxProxyRouteService: Pick<NginxProxyRouteService, 'create' | 'list' | 'remove'>
     controlPlaneStatusService: Pick<ControlPlaneStatusService, 'getStatus'>
@@ -106,6 +109,7 @@ export const createApp = ({
     maintenanceService,
     nginxStatusClient,
     nginxProxyRouteService,
+    panelSettingService,
     notificationDeliveryService,
     notificationDestinationService,
     controlPlaneStatusService,
@@ -159,6 +163,7 @@ export const createApp = ({
     })
     const jobRoute = createJobRoute({ apiKeyService, auditService, authService, backupScheduleService, operationJobService })
     const maintenanceRoute = createMaintenanceRoute({ auditService, authService, maintenanceService })
+    const panelSettingRoute = createPanelSettingRoute({ auditService, authService, panelSettingService })
     const controlPlaneRoute = createControlPlaneRoute({ apiKeyService, authService, controlPlaneStatusService })
     const loginRateWindows = new Map<string, { count: number; startedAt: number }>()
     const isLoginRateLimited = (headers: Headers) => {
@@ -201,6 +206,7 @@ export const createApp = ({
             }
         })
         .route('/api', maintenanceRoute)
+        .route('/api', panelSettingRoute)
         .route('/api/health', healthRoute)
         .route('/api', readinessRoute)
         .route('/api', engineRoute)

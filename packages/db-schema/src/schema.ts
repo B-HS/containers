@@ -400,6 +400,15 @@ export const nginxRoute = sqliteTable(
     ],
 )
 
+export const panelSetting = sqliteTable('panel_setting', {
+    id: text('id').primaryKey(),
+    publicOrigin: text('public_origin'),
+    extraTrustedOrigins: text('extra_trusted_origins'),
+    nginxHostname: text('nginx_hostname'),
+    updatedBy: text('updated_by').references(() => user.id, { onDelete: 'set null' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
 export const maintenanceState = sqliteTable('maintenance_state', {
     id: text('id').primaryKey(),
     enabled: integer('enabled', { mode: 'boolean' }).notNull(),
@@ -468,6 +477,7 @@ export const schema = {
     deploymentSecret,
     invitation,
     maintenanceState,
+    panelSetting,
     nginxRoute,
     notificationDelivery,
     notificationDestination,

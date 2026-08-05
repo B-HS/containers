@@ -17,6 +17,7 @@ COPY apps/api apps/api
 COPY packages/config packages/config
 COPY packages/contracts packages/contracts
 COPY packages/db-schema packages/db-schema
+COPY packages/nginx-config packages/nginx-config
 RUN bun run --filter @containers/api build
 
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0

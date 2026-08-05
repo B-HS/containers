@@ -27,6 +27,7 @@ import { composeNginxProxyRoute } from './compose-nginx'
 import { composeNotificationDelivery } from './compose-notification-delivery'
 import { composeNotificationDestination } from './compose-notification'
 import { composeOperationJob } from './compose-operation-job'
+import { composePanelSetting } from './compose-panel-setting'
 import { composeUpload } from './compose-upload'
 
 type ComposeCore = {
@@ -103,11 +104,18 @@ const PROTECTED_NETWORKS = ['containers_control', 'containers_ingress', 'contain
 export const compose = ({ core, secrets, env, clients }: ComposeDependencies) => {
     const { db, sqlite } = core
     const now = () => new Date()
+    const { panelSettingService } = composePanelSetting({
+        bootOrigin: env.authBaseUrl,
+        db,
+        environmentTrustedOrigins: env.authTrustedOrigins,
+        nginxClient: clients.engineAgentClient,
+        now,
+    })
     const auth = createAuth({
         baseUrl: env.authBaseUrl,
         db,
         secret: secrets.authSecret,
-        trustedOrigins: env.authTrustedOrigins,
+        trustedOrigins: () => panelSettingService.getTrustedOrigins(),
     })
 
     const { apiKeyService } = composeApiKey({
@@ -247,6 +255,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         engineAgentClient: clients.engineAgentClient,
         maintenanceService,
         nginxStatusClient: clients.nginxStatusClient,
+        panelSettingService,
         nginxProxyRouteService,
         notificationDeliveryService,
         notificationDestinationService,

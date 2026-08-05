@@ -26,7 +26,7 @@ const createTestService = async () => {
         baseUrl: 'http://localhost:3001',
         db: database.db,
         secret: 'test-secret-that-is-at-least-thirty-two-characters-long',
-        trustedOrigins: ['http://localhost:8080'],
+        trustedOrigins: () => ['http://localhost:8080'],
     })
     const service = createAuthService({
         auth,

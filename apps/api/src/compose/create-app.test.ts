@@ -277,6 +277,21 @@ const createAppTestDependencies = () => ({
         isEnabled: () => false,
         leave: () => undefined,
     },
+    panelSettingService: {
+        get: () => ({
+            bootOrigin: 'http://127.0.0.1:18080',
+            effectiveTrustedOrigins: ['http://127.0.0.1:18080'],
+            environmentTrustedOrigins: ['http://127.0.0.1:18080'],
+            extraTrustedOrigins: [],
+            nginxHostname: null,
+            publicOrigin: null,
+            restartRequired: false,
+            updatedAt: null,
+        }),
+        update: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+    },
     controlPlaneStatusService: {
         getStatus: async () => ({
             activeJobCount: 0,

@@ -10,7 +10,7 @@ type AuthDependencies = {
     baseUrl: string
     db: ControlDatabase
     secret: string
-    trustedOrigins: string[]
+    trustedOrigins: () => readonly string[]
 }
 
 export const createAuth = ({ baseUrl, db, secret, trustedOrigins }: AuthDependencies) =>
@@ -25,7 +25,7 @@ export const createAuth = ({ baseUrl, db, secret, trustedOrigins }: AuthDependen
             minPasswordLength: 12,
         },
         secret,
-        trustedOrigins: resolveTrustedOrigins({ baseUrl, origins: trustedOrigins }),
+        trustedOrigins: () => resolveTrustedOrigins({ baseUrl, origins: trustedOrigins() }),
     })
 
 export type Auth = ReturnType<typeof createAuth>
