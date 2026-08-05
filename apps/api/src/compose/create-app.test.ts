@@ -184,8 +184,12 @@ const createAppTestDependencies = () => ({
         createInvitation: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
+        deleteUser: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
         getBootstrapStatus: async () => ({ required: true }),
         getSession: async () => undefined,
+        getSessionSummary: async () => undefined,
         isEmailDisabled: async () => false,
         listUsers: async () => [],
         requireRecentRole: async () => {

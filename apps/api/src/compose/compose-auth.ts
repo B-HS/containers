@@ -1,13 +1,13 @@
 import { and, asc, count, eq, gt, isNull } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
-import { invitation, apiKey as apiKeyTable, session as sessionTable, user, userRole } from '@containers/db-schema/schema'
+import { account, invitation, apiKey as apiKeyTable, session as sessionTable, user, userRole } from '@containers/db-schema/schema'
 import type { Auth } from '../auth/create-auth'
 import { createAuthService, type AuthServiceDb } from '../service/domain/auth/create-auth-service'
 
 type ComposeAuthDependencies = {
     auth: Auth
     db: ControlDatabase
-    invitationBaseUrl: string
+    invitationBaseUrl: () => string
 }
 
 type AuthRole = 'admin' | 'auditor' | 'operator' | 'owner' | 'viewer'
@@ -16,6 +16,15 @@ export const buildAuthServiceDb = (db: ControlDatabase): AuthServiceDb => ({
     countUsers: async () => {
         const [existing] = await db.select({ value: count() }).from(user)
         return existing?.value ?? 0
+    },
+    deleteUser: async (userId) => {
+        await db.transaction(async (transaction) => {
+            await transaction.update(apiKeyTable).set({ revokedAt: new Date() }).where(eq(apiKeyTable.createdBy, userId))
+            await transaction.delete(sessionTable).where(eq(sessionTable.userId, userId))
+            await transaction.delete(account).where(eq(account.userId, userId))
+            await transaction.delete(userRole).where(eq(userRole.userId, userId))
+            await transaction.delete(user).where(eq(user.id, userId))
+        })
     },
     findRoleByUser: async (userId) => {
         const [roleRecord] = await db.select().from(userRole).where(eq(userRole.userId, userId)).limit(1)

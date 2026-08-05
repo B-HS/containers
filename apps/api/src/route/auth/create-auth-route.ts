@@ -27,13 +27,23 @@ const invitationAcceptSchema = z.object({
     token: z.string().min(32).max(256),
 })
 
-const userIdParamSchema = z.object({ id: z.uuid() })
+const USER_ID_MAX_LENGTH = 255
+
+const userIdParamSchema = z.object({ id: z.string().trim().min(1).max(USER_ID_MAX_LENGTH) })
 
 type AuthRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
     authService: Pick<
         AuthService,
-        'acceptInvitation' | 'bootstrapOwner' | 'createInvitation' | 'getBootstrapStatus' | 'getSession' | 'listUsers' | 'updateUser'
+        | 'acceptInvitation'
+        | 'bootstrapOwner'
+        | 'createInvitation'
+        | 'deleteUser'
+        | 'getBootstrapStatus'
+        | 'getSession'
+        | 'getSessionSummary'
+        | 'listUsers'
+        | 'updateUser'
     >
 }
 
@@ -70,7 +80,7 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
                 tags: ['Auth'],
             }),
             withErrorHandling(async (context) => {
-                const session = await authService.getSession(context.req.raw.headers)
+                const session = await authService.getSessionSummary(context.req.raw.headers)
                 if (!session) {
                     throw createAppError('AUTH_REQUIRED')
                 }
@@ -196,4 +206,37 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
                     }
                 },
             ),
+        )
+        .delete(
+            '/users/:id',
+            describeRoute({
+                responses: { 200: { description: '사용자 삭제' } },
+                summary: '사용자 삭제',
+                tags: ['Auth'],
+            }),
+            validator('param', userIdParamSchema),
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof userIdParamSchema> }>) => {
+                const targetId = context.req.valid('param').id
+                const actor = await authService.getSession(context.req.raw.headers)
+                if (!actor) {
+                    throw createAppError('AUTH_REQUIRED')
+                }
+                const audit = {
+                    actorId: actor.user.id,
+                    operation: 'user.delete',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId,
+                    targetType: 'user' as const,
+                }
+                try {
+                    const result = await authService.deleteUser(context.req.raw.headers, targetId)
+                    await auditService.record({ ...audit, detail: { email: result.email, role: result.role }, result: 'success' })
+                    return context.json(successResponse(result), 200)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'UNKNOWN_ERROR'
+                    await auditService.record({ ...audit, detail: { code }, result: 'failure' })
+                    throw error
+                }
+            }),
         )

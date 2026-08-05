@@ -26,6 +26,16 @@ export const managedUserSchema = z.object({
 
 export const managedUserListSchema = z.array(managedUserSchema)
 
+export const sessionSummarySchema = z.object({
+    expiresAt: z.iso.datetime(),
+    role: managedUserRoleSchema,
+    user: z.object({
+        email: z.email(),
+        id: z.string().min(1),
+        name: z.string().min(1),
+    }),
+})
+
 export const managedUserUpdateSchema = z
     .object({
         disabled: z.boolean().optional(),

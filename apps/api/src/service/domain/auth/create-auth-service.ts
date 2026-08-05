@@ -1,7 +1,7 @@
 import { USER_ROLE } from '@containers/contracts/user-management'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { managedUserListSchema, managedUserSchema, managedUserUpdateSchema } from '@containers/contracts/user-management'
+import { managedUserListSchema, managedUserSchema, managedUserUpdateSchema, sessionSummarySchema } from '@containers/contracts/user-management'
 import type { Auth } from '../../../auth/create-auth'
 import { createAppError } from '../../../lib/error'
 
@@ -51,6 +51,7 @@ type UserWithRole = UserRow & { disabledAt: Date | null; role: string; updatedAt
 
 type AuthServiceDb = {
     countUsers: () => Promise<number>
+    deleteUser: (userId: string) => Promise<void>
     findRoleByUser: (userId: string) => Promise<RoleRecord | undefined>
     findInvitationByTokenHash: (tokenHash: string, now: Date) => Promise<InvitationRecord | undefined>
     findUserByEmail: (email: string) => Promise<{ disabledAt: Date | null } | undefined>
@@ -77,11 +78,13 @@ type AuthServiceDb = {
 type AuthServiceDependencies = {
     auth: Auth
     db: AuthServiceDb
-    invitationBaseUrl: string
+    invitationBaseUrl: () => string
     now: () => Date
 }
 
 export type { AuthServiceDb }
+
+const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 
@@ -189,7 +192,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             }
         },
         createInvitation: async (headers: Headers, input: unknown) => {
-            const session = await requireRecentRole(headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN], 15 * 60 * 1_000)
+            const session = await requireRecentRole(headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN], RECENT_AUTH_MAX_AGE_MS)
             const payload = invitationCreateSchema.parse(input)
             const token = randomBytes(32).toString('base64url')
             const createdAt = now()
@@ -211,7 +214,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
                 email: payload.email,
                 expiresAt: expiresAt.toISOString(),
                 id,
-                invitationUrl: `${invitationBaseUrl}/accept-invitation?token=${encodeURIComponent(token)}`,
+                invitationUrl: `${invitationBaseUrl()}/accept-invitation?token=${encodeURIComponent(token)}`,
                 role: payload.role,
             }
         },
@@ -220,6 +223,17 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             return { required: userCount === 0 }
         },
         getSession,
+        getSessionSummary: async (headers: Headers) => {
+            const session = await getSession(headers)
+            if (!session) {
+                return undefined
+            }
+            return sessionSummarySchema.parse({
+                expiresAt: new Date(session.session.expiresAt).toISOString(),
+                role: session.role,
+                user: { email: session.user.email, id: session.user.id, name: session.user.name },
+            })
+        },
         isEmailDisabled: async (emailInput: unknown) => {
             const email = z.email().parse(emailInput)
             const record = await db.findUserByEmail(email)
@@ -238,18 +252,32 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
                 })),
             )
         },
+        deleteUser: async (headers: Headers, targetUserId: string) => {
+            const actor = await requireRecentRole(headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
+            const target = await db.findUserWithRole(targetUserId)
+
+            if (!target) {
+                throw createAppError('USER_NOT_FOUND')
+            }
+            if (target.id === actor.user.id) {
+                throw createAppError('SELF_MODIFICATION_FORBIDDEN')
+            }
+            await db.deleteUser(target.id)
+
+            return { email: target.email, id: target.id, role: target.role }
+        },
         requireRecentRole,
         requireRole,
         updateUser: async (headers: Headers, targetUserId: string, input: unknown) => {
-            const actor = await requireRecentRole(headers, [USER_ROLE.OWNER], 15 * 60 * 1_000)
+            const actor = await requireRecentRole(headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
             const payload = managedUserUpdateSchema.parse(input)
             const target = await db.findUserWithRole(targetUserId)
 
             if (!target) {
                 throw createAppError('USER_NOT_FOUND')
             }
-            if (target.role === USER_ROLE.OWNER || target.id === actor.user.id) {
-                throw createAppError('OWNER_IMMUTABLE')
+            if (target.id === actor.user.id) {
+                throw createAppError('SELF_MODIFICATION_FORBIDDEN')
             }
 
             const updatedAt = now()
