@@ -5,7 +5,7 @@
 | 경로            | 사용 시점                                  | TLS 종단            | 켜는 방법                                       |
 | --------------- | ------------------------------------------ | ------------------- | ----------------------------------------------- |
 | 로컬 전용(기본) | 단일 호스트에서 브라우저로만 접속          | 없음(평문 loopback) | 아무것도 하지 않는다                            |
-| Cloudflare 터널 | 공인 IP·포트 개방 없이 도메인으로 노출     | Cloudflare edge     | `--profile cloudflared`                         |
+| Cloudflare 터널 | 공인 IP·포트 개방 없이 도메인으로 노출     | Cloudflare edge     | 호스트에서 `cloudflared` 실행 + 패널에서 승인   |
 | 직접 TLS 종단   | 터널을 쓸 수 없고 443을 직접 열 수 있을 때 | 이 스택의 nginx     | `infra/nginx/compose.tls.example.yaml` override |
 
 ## 1. 기본값 — 로컬 전용
@@ -26,57 +26,46 @@ nginx는 알 수 없는 Host로 온 요청을 catch-all `default_server`에서 `
 
 1. Cloudflare 대시보드에서 remotely-managed named tunnel을 만들고 tunnel token을 발급한다.
 2. public hostname 두 개를 tunnel에 연결한다.
-    - `panel.example.com` → service `http://nginx:8080`
-    - `api.example.com` → service `http://nginx:8080`
+    - `panel.example.com` → service `http://127.0.0.1:18080`
+    - `api.example.com` → service `http://127.0.0.1:18080`
     - 두 경로 모두 origin으로 원본 Host 헤더를 그대로 전달해야 한다. Host를 덮어쓰면 catch-all이 `444`로 끊는다.
 3. 패널 hostname은 Cloudflare Access로 한 번 더 감싸는 것을 권장한다.
 
-### 2.2 호스트에서 돌리던 터널을 옮기기
+### 2.2 토큰 주입
 
-`cloudflared tunnel run --token <TOKEN>` 을 호스트에서 직접 돌리고 있으면 두 가지 문제가 생긴다.
-
-- **rate limit 이 외부 전원에게 공유된다.** 요청이 edge 게이트웨이(`10.89.0.1`)로 들어와 `set_real_ip_from 10.89.0.10/32` 에 걸리지 않으므로 `CF-Connecting-IP` 가 무시된다. 한 클라이언트가 로그인 5r/m 을 소진하면 전원이 막히고, 감사 로그 `sourceIp` 도 전부 게이트웨이로 찍힌다.
-- **토큰이 `ps` 출력에 노출된다.** 로컬의 어떤 프로세스든 읽을 수 있고, 그 토큰은 터널 전체 제어 권한이다.
-
-`scripts/migrate-tunnel-to-compose.sh` 가 이 둘을 한 번에 해소한다.
+터널은 **이 스택 밖에서** 돌린다. compose 는 터널 토큰을 알 필요가 없고 알아서도 안 된다. `cloudflared service install` 로 호스트 서비스로 등록하면 토큰이 cloudflared 자체 설정에 저장되고 `ps` 출력에도 남지 않는다.
 
 ```sh
-read -rs CLOUDFLARE_TUNNEL_TOKEN && export CLOUDFLARE_TUNNEL_TOKEN
-./scripts/migrate-tunnel-to-compose.sh --public-url https://panel.example.com --stop-host-tunnel
+cloudflared service install <대시보드에서 발급한 토큰>
 ```
 
-스크립트는 토큰을 인자로 받지 않고(인자는 `ps` 에 남는다) 환경변수로만 읽는다. 호스트 프로세스를 정리하고 compose 프로필로 기동한 뒤, **외부로 프로브 요청을 보내 nginx access log 의 `client_ip` 가 실제 클라이언트 주소인지 확인**하고 실패하면 종료 코드로 알린다.
+`cloudflared tunnel run --token <TOKEN>` 으로 직접 띄우면 **토큰이 `ps` 출력에 그대로 보인다.** 로컬의 어떤 프로세스든 읽을 수 있고 그 토큰은 터널 전체 제어 권한이다.
 
-**대시보드에서 먼저 바꿔야 하는 것**: public hostname 의 service 를 `http://127.0.0.1:18080` 이 아니라 `http://nginx:8080` 으로 바꾼다. compose 안의 cloudflared 는 edge 네트워크에 있어 호스트 loopback 에 도달할 수 없다. Host 헤더는 덮어쓰지 않는다.
+public hostname 의 service 는 호스트에서 도달 가능한 주소여야 한다 — 기본값은 `http://127.0.0.1:18080` 이다. 원본 Host 헤더는 그대로 전달한다. Host 를 덮어쓰면 nginx catch-all 이 `444` 로 끊고 Cloudflare 는 `502` 를 표시한다.
 
-### 2.3 토큰 주입
+### 2.3 앞단 프록시를 패널에서 승인한다
 
-토큰은 저장소에 넣지 않는다. `CLOUDFLARE_TUNNEL_TOKEN`을 compose를 실행하는 셸 환경 또는 호스트의 secret store에서만 주입한다. 이 값은 tunnel의 전체 제어 권한이므로 로그·문서·이슈에 붙여넣지 않는다.
+터널을 붙이면 nginx 는 그 프록시의 주소에서 요청을 받는다. 그 주소를 신뢰해야 `CF-Connecting-IP` 가 인정되고 rate limit·감사 로그가 클라이언트별로 동작한다. **이 목록은 설정 파일이 아니라 패널에서 관리한다**(4절).
 
-```sh
-export CLOUDFLARE_TUNNEL_TOKEN=<대시보드에서 발급한 토큰>
-docker compose --profile cloudflared up -d
-```
+1. 외부에서 한 번 접속한다.
+2. owner 로 로그인해 **신뢰 프록시** 화면(`/trusted-proxies`)을 연다.
+3. access log 에서 관찰된 미승인 source 주소가 역방향 DNS·요청 수·요청 host 와 함께 뜬다. 터널 주소를 승인한다.
+4. **실제 클라이언트 IP 를 승인하면 안 된다.** 승인하면 그 클라이언트가 헤더를 위조해 아무 IP나 주장할 수 있다.
+
+같은 방식으로 **공개 주소** 화면(`/panel-settings`)에는 접근이 시도됐지만 아직 이 패널이 응답하지 않거나 인증 origin 에 없는 host 가 후보로 뜬다. 상세는 [acknowledge/0034](./acknowledge/0034-panel-public-origin-setting.md), [acknowledge/0035](./acknowledge/0035-trusted-proxy-approval.md).
 
 ### 2.4 스택 설정
 
-`cloudflared` 서비스는 `profiles: [cloudflared]`라 기본 `docker compose up`에는 포함되지 않는다.
-
-- `edge` 네트워크에만 붙는다. `control`·`ingress`·`probe`는 `internal: true`라 Cloudflare로 나가는 outbound 연결을 만들 수 없어 쓸 수 없다.
-- Docker socket을 마운트하지 않는다. `cap_drop: ALL`, `read_only: true`, `no-new-privileges`로 실행한다.
-- `edge` 네트워크 안의 고정 IP(`${CLOUDFLARED_ADDRESS:-10.89.0.10}`)를 받는다. 이 IP가 nginx real_ip의 유일한 신뢰 대역이다(4절).
-- nginx가 healthy가 된 뒤에 기동한다.
-
-터널을 쓰는 동안 호스트 publish는 loopback으로 유지한다(`PANEL_BIND_ADDRESS=127.0.0.1`). 외부 진입은 터널 하나로 좁힌다.
+터널을 쓰는 동안에도 호스트 publish 는 loopback 으로 유지한다(`PANEL_BIND_ADDRESS=127.0.0.1`). 외부 진입은 터널 하나로 좁힌다. compose 에는 cloudflared 서비스가 없다 — 터널은 이 스택의 관심사가 아니고, 스택이 토큰을 들고 있을 이유도 없다.
 
 ### 2.5 함께 바꿔야 하는 값
 
-| 변수                   | 값 예시                                                              |
-| ---------------------- | -------------------------------------------------------------------- |
-| `PANEL_PUBLIC_ORIGIN`  | `https://panel.example.com`                                          |
-| `AUTH_TRUSTED_ORIGINS` | `https://panel.example.com`                                          |
-| `PANEL_BIND_ADDRESS`   | `127.0.0.1` (유지)                                                   |
-| nginx `server_name`    | 패널 server 블록에 `panel.example.com`, api 블록에 `api.example.com` |
+| 값                      | 어디서 바꾸나                                                                |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| 공개 주소               | 패널 **공개 주소** 화면. nginx `server_name` 과 신뢰 origin 이 함께 적용된다 |
+| 쿠키 `Secure`·생성 링크 | 같은 화면에 저장 후 **API 재시작**(부팅 시 `AUTH_BASE_URL` 로 고정된다)      |
+| 신뢰 프록시             | 패널 **신뢰 프록시** 화면에서 승인                                           |
+| `PANEL_BIND_ADDRESS`    | `compose.override.yaml` — `127.0.0.1` 유지                                   |
 
 ## 3. 노출 경로 B — 직접 TLS 종단
 
@@ -111,15 +100,15 @@ docker compose -f compose.yaml -f infra/nginx/compose.tls.example.yaml up -d
 `nginx.conf`는 다음 세 줄로 프록시 뒤 원본 IP를 복구한다.
 
 ```nginx
-set_real_ip_from 10.89.0.10/32;
+set_real_ip_from 127.0.0.1/32;
 real_ip_header CF-Connecting-IP;
 real_ip_recursive on;
 ```
 
-- 신뢰 대역은 `edge` 네트워크의 cloudflared 고정 IP **하나**다. 게이트웨이(`10.89.0.1`)도, 다른 컨테이너도 포함하지 않는다. 이 대역 밖에서 온 요청의 `CF-Connecting-IP`는 무시되므로 헤더 위조로 rate limit 키를 바꿀 수 없다.
+- **기본값은 loopback 하나뿐이다.** 실제 신뢰 목록은 패널의 신뢰 프록시 화면에서 승인한 주소로 채워지고, 승인 시 `set_real_ip_from` 이 그 목록으로 교체된다. 승인하지 않은 주소에서 온 `CF-Connecting-IP`는 무시되므로 헤더 위조로 rate limit 키를 바꿀 수 없다.
 - real_ip 모듈은 `$remote_addr` 자체를 치환한다. 따라서 `map $remote_addr $containers_client_ip`, `limit_req_zone $containers_client_ip`(로그인 5r/m, API 300r/m), access log `client_ip`, upstream으로 나가는 `X-Real-IP`가 모두 자동으로 원본 IP 기준이 된다.
 - Cloudflare가 아닌 다른 reverse proxy를 앞에 둔다면 `real_ip_header`를 `X-Forwarded-For`로 바꾸고 `set_real_ip_from`을 그 프록시 주소로 좁힌다.
-- `EDGE_SUBNET`이나 `CLOUDFLARED_ADDRESS`를 바꾸면 `nginx.conf`의 `set_real_ip_from`도 같이 바꿔야 한다. 바꾸지 않으면 모든 요청이 다시 게이트웨이 IP 하나로 수렴한다.
+- 예전에는 이 주소가 `compose.yaml` 의 cloudflared 고정 IP 와 `nginx.conf` 두 곳에 박혀 있어, 하나만 바꾸면 모든 요청이 게이트웨이 IP 하나로 조용히 수렴했다. 지금은 패널 승인이 단일 출처다.
 
 `infra/nginx/nginx.conf`는 `/etc/nginx/managed/current.conf`가 없을 때만 복사되는 기본값이다. 이미 기동한 적이 있는 호스트는 관리 볼륨의 기존 설정이 계속 쓰이므로, real_ip와 catch-all을 반영하려면 패널의 nginx 전체 설정 편집 화면에서 새 내용을 적용해야 한다.
 

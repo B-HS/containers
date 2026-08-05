@@ -243,6 +243,16 @@ Upload:          /api/artifacts GET (all), /api/uploads/sessions POST,
                  /api/uploads/sessions/:sessionId/chunks PUT,
                  .../finalize POST (artifact:upload or operator+, 64MiB chunks,
                  sequential offset, per-chunk sha256, final full-file hash)
+Trusted proxy:   /api/trusted-proxies GET (owner|admin), POST (owner recent),
+                 DELETE /api/trusted-proxies/{address} (owner recent).
+                 nginx set_real_ip_from is driven by this table, not by a config
+                 constant. Candidates come from the raw source addresses in the
+                 nginx access log (traffic-worker reads the file; the traffic DB
+                 masks ips so it cannot be used), enriched with reverse DNS.
+                 Approving rewrites set_real_ip_from to the approved list.
+                 Unbounded sources and CIDR notation are rejected; the last entry
+                 cannot be removed. Approving a real client address would let that
+                 client spoof any ip via the forwarded header.
 Panel setting:   /api/panel-settings GET (owner|admin), PUT (owner recent).
                  Stores the public origin and extra trusted origins in panel_setting.
                  Saving also rewrites the panel server block server_name via
@@ -251,6 +261,10 @@ Panel setting:   /api/panel-settings GET (owner|admin), PUT (owner recent).
                  function); cookie Secure and generated links need an API restart and
                  the response reports restartRequired. Env origins are always kept in
                  the effective list so a bad value cannot lock sign-in out.
+                 hostnameCandidates lists hosts seen in the access log that are not
+                 covered by a trusted origin yet, with a rejected count from the
+                 catch-all 444. The filter is the trusted origin set, not nginx
+                 server_name: a host nginx serves but auth rejects must stay visible.
 Streams:         /api/stream/containers/:id/logs|stats, /api/stream/events
                  (SSE, role-gated; management-plane events filtered)
                  Concurrency cap MAX_CONCURRENT_ENGINE_STREAMS = 20, shared by

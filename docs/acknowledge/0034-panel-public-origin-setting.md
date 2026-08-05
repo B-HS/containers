@@ -61,5 +61,5 @@
 
 ## 4. 남은 것
 
-- **호스트 cloudflared 를 compose 프로필로 옮겨야 한다.** 두 문제가 같은 원인에서 나온다: 요청이 게이트웨이(`10.89.0.1`)로 들어와 `real_ip` 가 `CF-Connecting-IP` 를 무시하므로 **rate limit 버킷을 외부 전원이 공유**하고, `--token` 이 `ps` 에 노출된다. compose 프로필은 nginx 가 신뢰하는 `10.89.0.10` 을 받고 토큰을 `TUNNEL_TOKEN` 환경변수로만 전달한다. `scripts/migrate-tunnel-to-compose.sh` 가 정리·기동·검증까지 한다 → [EXPOSURE.md](../EXPOSURE.md) §2.2.
+- ~~호스트 cloudflared 를 compose 프로필로 옮겨야 한다~~ — **[0035](./0035-trusted-proxy-approval.md) 로 대체됐다.** 당시에는 rate limit 공유와 토큰 `ps` 노출을 "터널을 compose 안으로 옮긴다"로 풀려 했으나, 그러려면 compose 가 터널 토큰을 알아야 해서 앞뒤가 바뀐 설계였다. 지금은 신뢰 프록시를 패널에서 승인하므로 터널을 어디서 돌리든 동작하고 스택은 토큰을 보지 않는다. compose 의 cloudflared 프로필과 마이그레이션 스크립트는 제거됐다.
 - 공개 노출 시 Cloudflare Access 를 앞에 두는 것을 권장한다([EXPOSURE.md](../EXPOSURE.md) §2.1).

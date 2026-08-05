@@ -626,3 +626,27 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 - 스트림: 동시 32개 → 33번째 429 → 전부 종료 → 다시 32개 전부 200(3회 반복 동일), `/api/readyz` 전 항목 `ok`, `GET /api/containers` 200
 - 전체 검증: typecheck 8/8 · lint 0 · test 320(백엔드) + 6(웹) · format:check · build 8/8
+
+## 작업: 외부 노출 설정을 패널로 이관 (2026-08-05 후반)
+
+기준: 사용자 요청 — Cloudflare 터널 502 진단에서 시작해 "설정값도 웹패널에서" 로 확장.
+결정은 [acknowledge/0034](./acknowledge/0034-panel-public-origin-setting.md)·[0035](./acknowledge/0035-trusted-proxy-approval.md).
+
+- [x] a. 터널 502 원인 규명 — nginx catch-all `444`. `hyuns.uk` 가 `server_name` 에 없었다
+- [x] b. 공개 주소 설정을 DB 로 — `panel_setting`(migration 0015), `GET/PUT /api/panel-settings`, 저장 시 nginx `server_name` AST 최소 변경
+- [x] c. 신뢰 origin 즉시 반영 — better-auth `trustedOrigins` 를 함수로 받아 재시작 없이 적용. 환경변수 origin 은 하한선으로 항상 유지(잠금 방지)
+- [x] d. 신뢰 프록시 승인 — `trusted_proxy`(migration 0016), access log 원본 source 후보 + 역방향 DNS, 승인 시 `set_real_ip_from` 교체
+- [x] e. 공개 주소 후보 — 접근 시도된 host 를 요청 수·거부 수와 함께. 제외 기준은 신뢰 origin(서버가 응답해도 인증이 막는 host 를 숨기지 않기 위해)
+- [x] f. 하드코딩 제거 — compose cloudflared 프로필·마이그레이션 스크립트·`nginx.conf` 의 `10.89.0.10` 제거
+- [x] g. 사이드바 라벨/아이콘 누락 수정 + 회귀 테스트
+- [x] h. `successResponse` 가 Promise 를 받으면 컴파일 실패하도록 타입 가드
+- [ ] i. 터널을 `cloudflared service install` 로 옮겨 토큰 `ps` 노출 제거 — 사용자 작업
+- [ ] j. `https://hyuns.uk` 를 공개 주소로 저장 — 사용자 작업(패널에서 1클릭)
+
+### 실측
+
+- 승인 → nginx `set_real_ip_from` 이 `10.89.0.1/32` 로 교체, 후보에서 제거
+- `0.0.0.0/0` 승인 400, 마지막 1개 삭제 400
+- 공개 주소 후보 최상단 `hyuns.uk | 요청 131 | 거부 39`
+- 외부 `https://hyuns.uk/` 307, access log `client_ip=1.235.152.6`(실제 클라이언트)
+- typecheck 8/8 · lint 0 · test 376 + web 20 · build 8/8 · audit:runtime 5/5

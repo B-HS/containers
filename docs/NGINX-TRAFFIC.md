@@ -28,7 +28,7 @@ Nginx는 요청의 최초 애플리케이션 계층 진입점이며 다음만 �
 프록시 뒤에서 원본 client IP를 복구하지 않으면 모든 요청이 게이트웨이 IP 하나로 수렴한다. 그 상태에서는 `limit_req_zone` 키가 전 사용자 공유가 되어 한 명의 로그인 실패가 전체를 429로 만들고, access log `client_ip`와 감사 로그 sourceIp도 전부 같은 값이 된다. `nginx.conf` http 블록은 다음을 둔다.
 
 ```nginx
-set_real_ip_from 10.89.0.10/32;
+set_real_ip_from 127.0.0.1/32;
 real_ip_header CF-Connecting-IP;
 real_ip_recursive on;
 ```
