@@ -3,6 +3,10 @@ import { websocket } from 'hono/bun'
 import { parseEnv } from '@containers/config/env'
 import { loadOrCreateSecret } from '@containers/config/secret'
 import { createAgentApp } from './compose/create-agent-app'
+import { createServerDrain, createShutdownHandler, registerShutdownSignals } from './boot/create-shutdown-handler'
+
+const SERVER_IDLE_TIMEOUT_SECONDS = 255
+const SHUTDOWN_DRAIN_TIMEOUT_MS = 8 * 1_000
 
 const env = parseEnv(
     z.object({
@@ -29,9 +33,15 @@ const app = createAgentApp({
     socketPath: env.DOCKER_SOCKET_PATH,
 })
 
-export default {
+const server = Bun.serve({
     fetch: app.fetch,
-    idleTimeout: 255,
+    idleTimeout: SERVER_IDLE_TIMEOUT_SECONDS,
     port: env.AGENT_PORT,
     websocket,
-}
+})
+
+registerShutdownSignals(
+    createShutdownHandler({
+        steps: [{ name: 'drain-http-server', run: createServerDrain({ server, timeoutMs: SHUTDOWN_DRAIN_TIMEOUT_MS }) }],
+    }),
+)

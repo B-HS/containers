@@ -4,12 +4,16 @@ import { loadOrCreateSecret } from '@containers/config/secret'
 import { createTrafficApp } from './compose/create-traffic-app'
 import { createQueryWorker } from './db/create-query-worker'
 import { createTrafficDatabase } from './db/database'
+import { createServerDrain, createShutdownHandler, registerShutdownSignals } from './boot/create-shutdown-handler'
 import { createTrafficIngestionService } from './service/domain/create-traffic-ingestion-service'
 import { createProxyCandidateService } from './service/domain/create-proxy-candidate-service'
 import { createTrafficQueryService } from './service/domain/create-traffic-query-service'
 import { createTrafficRetentionService } from './service/domain/create-traffic-retention-service'
 import { createTrafficBackupService } from './service/domain/create-traffic-backup-service'
 import { createTrafficExportService } from './service/domain/create-traffic-export-service'
+
+const INGESTION_POLL_INTERVAL_MS = 1_000
+const SHUTDOWN_DRAIN_TIMEOUT_MS = 8 * 1_000
 
 const env = parseEnv(
     z.object({
@@ -58,8 +62,8 @@ const queryWorker = createQueryWorker({ filePath: env.TRAFFIC_DB_PATH })
 const queryService = createTrafficQueryService({ now: Date.now, queryClient: queryWorker.client })
 const backupService = createTrafficBackupService({ backupRoot: env.BACKUP_ROOT, database })
 const exportService = createTrafficExportService({ exportRoot: env.TRAFFIC_EXPORT_ROOT, now: Date.now, queryClient: queryWorker.client })
-ingestionService.start(1_000)
-retentionService.start(env.TRAFFIC_RETENTION_INTERVAL_SECONDS * 1_000)
+const stopIngestion = ingestionService.start(INGESTION_POLL_INTERVAL_MS)
+const stopRetention = retentionService.start(env.TRAFFIC_RETENTION_INTERVAL_SECONDS * 1_000)
 const app = createTrafficApp({
     backupService,
     exportService,
@@ -71,7 +75,19 @@ const app = createTrafficApp({
     sharedSecret: await loadOrCreateSecret(env.TRAFFIC_SHARED_SECRET_FILE),
 })
 
-export default {
+const server = Bun.serve({
     fetch: app.fetch,
     port: env.TRAFFIC_WORKER_PORT,
-}
+})
+
+registerShutdownSignals(
+    createShutdownHandler({
+        steps: [
+            { name: 'stop-ingestion', run: () => stopIngestion() },
+            { name: 'stop-retention', run: () => stopRetention() },
+            { name: 'drain-http-server', run: createServerDrain({ server, timeoutMs: SHUTDOWN_DRAIN_TIMEOUT_MS }) },
+            { name: 'close-query-worker', run: () => queryWorker.close() },
+            { name: 'close-traffic-database', run: () => database.close() },
+        ],
+    }),
+)
