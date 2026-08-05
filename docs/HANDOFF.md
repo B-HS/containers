@@ -1,6 +1,6 @@
 # HANDOFF — 2026-08-05 세션 스냅샷
 
-- 대응 커밋: `4b58f4b` (`dev`, **미푸시**)
+- 대응 커밋: 타입 강화(`dev`, **미푸시**)
 - 최종 갱신일: 2026-08-05
 - 검증 상태: typecheck 8/8 · lint 0 · **test 314 pass / 49 files** · format:check · build 8/8 · Compose 5개 healthy
 - 이 문서가 **세션 인수인계 단일 진입점**이다. 다른 문서보다 먼저 읽는다.
@@ -123,7 +123,7 @@
 
 1. ~~관리 plane 컨테이너 은닉 여부~~ — **2026-08-05 결정: 현행 유지(노출).** 파괴적 작업은 engine-agent 가 이미 차단하고, 은닉하면 진단이 어려워진다. → [0030](./acknowledge/0030-ci-verification-surface-and-exposure-scope.md)
 2. ~~`/api/readyz` 무인증 노출 범위~~ — **2026-08-05 결정: 현행 유지.** 애초에 무인증은 check 별 status 만 받고 백업 경과시간·job 수·DB integrity 는 세션(owner·admin) 또는 `control-plane:read` 가 필요했다. 이전 기록의 "무인증이 상세를 노출한다"는 **부정확했다.**
-3. **`with-error-handling.ts`의 `any` 4개 + `eslint-disable`** — hono `Handler` 제네릭 기본값이라 제거하면 라우트 6곳의 `c.req.valid()` 타입이 붕괴한다. 컨벤션 위반이지만 유지 중. (`apps/api/src/lib/with-error-handling.ts:24-25`)
+3. ~~`with-error-handling.ts`의 `any` + `eslint-disable`~~ — **2026-08-05 제거 완료.** 라우트 context 파라미터에 `ApiRouteContext<...>` 를 주석해 `req.valid()` 실제 타입을 살렸고, RPC 응답 타입은 래퍼가 핸들러 타입 `R` 을 그대로 반환하도록 유지했다. 제품 코드의 `any`·`eslint-disable`·`as never` 는 0건이다.
 4. **origin/dev 푸시 범위** — `dev` 푸시 시 분기 전부터 있던 미푸시 커밋 18개가 함께 올라갔다(총 48). 문제 없는지 확인 필요.
 5. **3단계 범위** — 착수 전 사용자 확인이 필요하다(§8 2순위, 9개 항목·수 주 규모).
 6. **암호 포함 백업의 복구 다이얼로그 실렌더 미검증** — 암호 입력은 `secretsIncluded` 백업에만 뜨는데, 그런 백업을 만들려면 recent 세션(15분 내 재인증)이 필요해 확인하지 못했다. 다음 세션에서 로그인 직후 백업을 암호와 함께 생성해 확인한다.

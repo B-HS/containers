@@ -566,3 +566,43 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 - nginx revision 정리의 **라이브 동작**: 현재 revision 8개로 보관 수(20) 미만이라 실제 정리가 일어나지 않았고, live nginx apply 를 유발하지 않았다. 단위 테스트(보관 수 2)로만 확인했다.
 - API SSE 동시 상한 32 도달: 32개 동시 스트림을 실제로 열지 않았다.
+
+## 작업: 의존성 취약점 해소와 타입 안전성 강화 (2026-08-05)
+
+기준: 사용자 지시 — "nextjs 는 16.3.0으로 나머지도 다 올리도록하고 eslint-disable, any 타입도 다 제거해서 제대로 만들도록하고. 완벽을 노려봐. workflow도 잘 이용해서 opus medium 으로 수정 검증도 잘해보고".
+
+- [x] a. 의존성 상향 — next 16.2.12→16.3.0, hono 4.12.33→4.13.0(4개 앱), `@hono/standard-validator` `^0.2.0`→`0.2.3` 고정(hono-openapi peer 가 `^0.2.0` 이라 0.3.0 불가), 루트 `overrides: { esbuild: 0.25.12 }`. `bun audit` **7건(high 3) → 0건**
+- [x] b. `eslint-disable` 1건과 `any` 5건 제거 — 전부 `apps/api/src/lib/with-error-handling.ts` 의 hono Handler 제네릭 기본값이었다
+- [x] c. `context.req.valid('json' as never) as z.infer<typeof S>` 이중 캐스트 80건 제거 — 라우트 핸들러의 context 파라미터에 `ApiRouteContext<{ json: ... }>`(agent/traffic 판도 동일)를 주석해 `req.valid()` 가 실제 타입을 돌려주게 했다
+- [x] d. compose 계층의 drizzle `as never` 캐스트 20여 건 제거 — service 계층 필드 타입을 `string` 에서 contracts 유니온으로 좁혀 근본 해소
+- [x] e. **실제 스키마 드리프트 발견·수정** — `operation_job.kind` enum 에 `secret.rotate` 누락(5번 작업에서 추가한 job kind). `as never` 가 침묵시키고 있었다. SQLite text enum 은 타입 전용이라 migration 은 불필요
+- [x] f. 워크플로 적대적 검증(agent 29개, opus/medium) — 지적 24건 중 **19건 반증 기각, 5건 확정**
+- [x] g. 확정 지적 대응 — 아래 §반영 참조
+
+### 워크플로가 잡아낸 회귀 (자체 게이트는 전부 초록이었다)
+
+**withErrorHandling 재작성이 hono RPC 응답 타입을 지웠다.** 반환 타입을 `Promise<Response>` 로 고정하자 hono 가 `TypedResponse` 를 회수하지 못해 `AppType` 의 라우트 스키마가 통째로 비었다. `git worktree` 로 HEAD 를 따로 체크아웃해 같은 probe 로 대조 실측했다.
+
+- HEAD: `InferResponseType<client.api.traffic.summary.$get>` = `{ data: { averageResponseTimeMs, bytesSent, ... }, success: true }`
+- 회귀 상태: `{}`
+- 수정 후: HEAD 와 동일
+
+`apps/web` 의 `hc<AppType>` 소비처 14곳이 응답을 zod 로 재검증하기 때문에 typecheck·lint·test·build 가 전부 통과했고, CI 신호로는 잡히지 않는 회귀였다. 수정은 래퍼가 핸들러 타입 `R` 을 그대로 반환하도록 되돌리되(`as unknown as` 1회, `any` 없음) 이유를 JSDoc 으로 남겼다. 요청 인자 타입은 HEAD 에서도 비어 있어(동일 probe 로 확인) 회귀가 아니다.
+
+### 확정 지적 반영
+
+| 지적                                               | 조치                                                                                                                                                                                                                             |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RPC 응답 타입 소실(medium)                         | 래퍼가 `R` 을 반환하도록 복구, HEAD 대조 실측으로 확인                                                                                                                                                                           |
+| `secret.rotate` 가 실패 알림 매핑에서 누락(medium) | `FAILURE_EVENT_BY_JOB_KIND` 를 `Partial<Record<...>>` 에서 **전체 `Record<OperationJobKind, EventType \| null>`** 로 바꿔 새 job kind 누락이 컴파일 에러가 되게 했다. `notification.deliver` 는 피드백 루프 방지로 명시적 `null` |
+| `USER_ROLE` 3중 정의(medium)                       | `packages/contracts/src/user-management.ts` 를 단일 출처로 삼고 db-schema 가 이를 import·재export, api auth service 의 로컬 복제 제거. drizzle enum 도 `USER_ROLE_VALUES` 에서 유도                                              |
+| import 순서 4개 파일(low)                          | zod import 를 hono 다음으로 이동                                                                                                                                                                                                 |
+| `RouteInput` 이 검증 없는 수동 단언(low)           | 구조적 한계로 수용. 변환 시점의 100곳은 validator 와 전수 대조해 일치를 확인했고, 워크플로 독립 재검증에서도 불일치 0건                                                                                                          |
+
+### 실측 (2026-08-05)
+
+- `bun audit` **0건**, typecheck 8/8, lint 0, format:check, test 314 pass, build 8/8, Compose 이미지 5개 재빌드 후 5개 healthy
+- 제품 코드의 `any`·`eslint-disable`·`as never` **0건**(테스트 스텁 2건만 잔존)
+- 미인증 API 23개 전수 401, 패널 9개 라우트 200, console error 0
+- 토큰 전용 경로 7개 200, validator 400 응답 2종, 에러 봉투 형태 동일
+- `drizzle-kit generate` 결과 "No schema changes" — enum 정리는 마이그레이션 무영향
