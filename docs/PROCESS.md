@@ -721,7 +721,8 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] 1. `containerSummarySchema` 확장(`exposedPorts`·`networks`) — 완료
 - [ ] 2. 라우트 폼 `Input+datalist` → `Select` + 서버 대상 존재·네트워크 검증
 - [ ] 3. job 실패 분기(`job.query.ts`) + 소비 위젯 3곳
-- [ ] 4. 배포 런타임 제약 — `readOnlyRootFilesystem` 하드코딩 해소, 실패 진단 노출 (§13)
+- [x] 4a. 런타임 프로필 도입 — 표준 이미지가 기본으로 뜬다 (실측 완료)
+- [ ] 4b. 배포 실패 진단 노출 (§13)
 
 ### P1 — 마찰
 

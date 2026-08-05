@@ -4,6 +4,7 @@ import { stat } from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import type { Duplex, Readable } from 'node:stream'
 import { z } from 'zod'
+import { CONTAINER_RUNTIME_PROFILE } from '@containers/contracts/container-runtime'
 import type {
     ContainerAction,
     ContainerCreateRequest,
@@ -526,6 +527,35 @@ const parseMultiplexedOutput = (buffer: Buffer) => {
     }
 }
 
+const TMPFS_OPTIONS = 'rw,noexec,nosuid,size=67108864'
+const HARDENED_TMPFS_PATH = '/tmp'
+
+/**
+ * Translates the runtime profile into Docker HostConfig fields. The standard profile keeps
+ * Docker's own default capability set so images that create directories and drop privileges at
+ * startup still run; the hardened profile drops everything and mounts the declared paths as
+ * tmpfs on a read-only root. Capabilities the caller asks for are already validated against the
+ * forbidden list by the contract.
+ */
+const buildRuntimeHostConfig = (runtime: ContainerCreateRequest['runtime']) => {
+    const capAdd = runtime.capabilities.length > 0 ? runtime.capabilities : undefined
+    if (runtime.profile === CONTAINER_RUNTIME_PROFILE.STANDARD) {
+        const tmpfs = Object.fromEntries(runtime.writablePaths.map((path) => [path, TMPFS_OPTIONS]))
+        return {
+            CapAdd: capAdd,
+            ReadonlyRootfs: false,
+            Tmpfs: runtime.writablePaths.length > 0 ? tmpfs : undefined,
+        }
+    }
+    const paths = [HARDENED_TMPFS_PATH, ...runtime.writablePaths]
+    return {
+        CapAdd: capAdd,
+        CapDrop: ['ALL'],
+        ReadonlyRootfs: true,
+        Tmpfs: Object.fromEntries(paths.map((path) => [path, TMPFS_OPTIONS])),
+    }
+}
+
 export const createDockerEngineClient = ({ socketPath }: DockerEngineClientDependencies) => {
     let apiVersion: string | undefined
 
@@ -551,15 +581,13 @@ export const createDockerEngineClient = ({ socketPath }: DockerEngineClientDepen
                         HostConfig: {
                             AutoRemove: false,
                             Binds: input.volumes.map((volume) => `${volume.name}:${volume.mountPath}:${volume.readOnly ? 'ro' : 'rw'}`),
-                            CapDrop: ['ALL'],
+                            ...buildRuntimeHostConfig(input.runtime),
                             Memory: input.memoryBytes,
                             NanoCpus: input.nanoCpus,
                             NetworkMode: input.network,
                             PidsLimit: input.pidsLimit,
-                            ReadonlyRootfs: input.readOnlyRootFilesystem,
                             RestartPolicy: { Name: input.restartPolicy },
                             SecurityOpt: ['no-new-privileges:true'],
-                            Tmpfs: input.readOnlyRootFilesystem ? { '/tmp': 'rw,noexec,nosuid,size=67108864' } : undefined,
                         },
                         Image: input.image,
                         Labels: input.labels,

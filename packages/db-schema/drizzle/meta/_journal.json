@@ -127,6 +127,13 @@
             "when": 1785910000000,
             "tag": "0017_repair_millisecond_timestamps",
             "breakpoints": true
+        },
+        {
+            "idx": 18,
+            "version": "6",
+            "when": 1785917518499,
+            "tag": "0018_manifest_runtime",
+            "breakpoints": true
         }
     ]
 }

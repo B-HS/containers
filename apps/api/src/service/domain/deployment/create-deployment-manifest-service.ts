@@ -31,6 +31,7 @@ type ManifestRow = {
     protocol: DeploymentManifest['protocol']
     restartPolicy: DeploymentManifest['restartPolicy']
     rolloutObservationSeconds: number
+    runtimeJson: string
     rolloutRollbackRetentionSeconds: number
     routeHostname: string
     routePath: string
@@ -101,6 +102,7 @@ const toManifest = (row: ManifestRow) =>
             path: row.routePath,
             stripPrefix: row.routeStripPrefix,
         },
+        runtime: JSON.parse(row.runtimeJson),
         secrets: JSON.parse(row.secretsJson),
         updatedAt: row.updatedAt.toISOString(),
         version: row.version,
@@ -133,6 +135,7 @@ const toRow = (id: string, actorId: string, timestamp: Date, input: DeploymentMa
     routeHostname: input.route.hostname,
     routePath: input.route.path,
     routeStripPrefix: input.route.stripPrefix,
+    runtimeJson: JSON.stringify(input.runtime),
     secretsJson: JSON.stringify(input.secrets),
     updatedAt: timestamp,
     version: input.version,

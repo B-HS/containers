@@ -58,6 +58,7 @@ const MANIFEST = {
     updatedAt: BASE_TIME.toISOString(),
     version: '1.0.0',
     volumes: [],
+    runtime: { capabilities: [], profile: 'standard' as const, writablePaths: [] },
 }
 
 const MANIFEST_INPUT = {

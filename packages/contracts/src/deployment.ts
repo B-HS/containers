@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { deploymentSecretBindingSchema } from './deployment-secret'
+import { containerRuntimeSchema } from './container-runtime'
 
 const deploymentNameSchema = z.string().regex(/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/)
 const deploymentVersionSchema = z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,62}[A-Za-z0-9])?$/)
@@ -37,6 +38,7 @@ export const deploymentManifestInputSchema = z
         pidsLimit: z.number().int().min(16).max(4_096).default(256),
         protocol: z.enum(['http', 'websocket']).default('http'),
         restartPolicy: z.enum(['no', 'on-failure', 'unless-stopped']).default('unless-stopped'),
+        runtime: containerRuntimeSchema.prefault({}),
         rollout: z.object({
             observationSeconds: z.number().int().min(10).max(3_600).default(60),
             rollbackRetentionSeconds: z.number().int().min(60).max(604_800).default(86_400),

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { containerRuntimeSchema } from './container-runtime'
 
 const timeoutSecondsSchema = z.number().int().min(0).max(300).default(10)
 
@@ -125,7 +126,7 @@ export const containerCreateRequestSchema = z.object({
         .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/)
         .default('containers_edge'),
     pidsLimit: z.number().int().min(16).max(4_096).default(256),
-    readOnlyRootFilesystem: z.boolean().default(true),
+    runtime: containerRuntimeSchema.prefault({}),
     restartPolicy: z.enum(['no', 'on-failure', 'unless-stopped']).default('unless-stopped'),
     user: z.string().max(128).optional(),
     volumes: z

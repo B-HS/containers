@@ -241,6 +241,7 @@ export const deploymentManifest = sqliteTable(
         memoryBytes: integer('memory_bytes').notNull(),
         pidsLimit: integer('pids_limit').notNull(),
         restartPolicy: text('restart_policy', { enum: ['no', 'on-failure', 'unless-stopped'] }).notNull(),
+        runtimeJson: text('runtime_json').notNull().default('{"capabilities":[],"profile":"hardened","writablePaths":[]}'),
         network: text('network').notNull(),
         healthcheckPath: text('healthcheck_path').notNull(),
         healthcheckIntervalSeconds: integer('healthcheck_interval_seconds').notNull(),

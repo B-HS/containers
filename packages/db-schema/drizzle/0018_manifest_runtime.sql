@@ -1,0 +1,1 @@
+ALTER TABLE `deployment_manifest` ADD `runtime_json` text DEFAULT '{"capabilities":[],"profile":"hardened","writablePaths":[]}' NOT NULL;

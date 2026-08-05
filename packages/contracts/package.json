@@ -7,6 +7,7 @@
         "./api-key": "./src/api-key.ts",
         "./audit": "./src/audit.ts",
         "./backup": "./src/backup.ts",
+        "./container-runtime": "./src/container-runtime.ts",
         "./control-plane": "./src/control-plane.ts",
         "./deployment": "./src/deployment.ts",
         "./deployment-secret": "./src/deployment-secret.ts",

@@ -505,7 +505,7 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                         memoryBytes: input.memoryBytes,
                         nanoCpus: input.nanoCpus,
                         network: input.network,
-                        readOnlyRootFilesystem: input.readOnlyRootFilesystem,
+                        runtimeProfile: input.runtime.profile,
                     },
                     operation: 'container.create',
                     requestId: context.get('requestId'),

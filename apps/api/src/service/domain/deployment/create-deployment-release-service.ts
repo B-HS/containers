@@ -397,7 +397,7 @@ export const createDeploymentReleaseService = ({
                     nanoCpus: manifest.nanoCpus,
                     network: probeNetwork,
                     pidsLimit: manifest.pidsLimit,
-                    readOnlyRootFilesystem: true,
+                    runtime: manifest.runtime,
                     restartPolicy: manifest.restartPolicy,
                     volumes: manifest.volumes,
                 })

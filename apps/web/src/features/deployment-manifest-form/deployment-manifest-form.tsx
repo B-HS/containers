@@ -11,10 +11,13 @@ import { Label } from '@shared/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
 import { Textarea } from '@shared/ui/textarea'
 
+import { CONTAINER_RUNTIME_PROFILE } from '@containers/contracts/container-runtime'
+
 const BYTES_PER_MIB = 1_048_576
 const NANO_CPUS_PER_CORE = 1_000_000_000
 const DEFAULT_NETWORK = 'containers_edge'
 const DEFAULT_HEALTHCHECK = { intervalSeconds: 5, retries: 6, startPeriodSeconds: 5, timeoutSeconds: 3 }
+const DEFAULT_RUNTIME = { capabilities: [], profile: CONTAINER_RUNTIME_PROFILE.STANDARD, writablePaths: [] }
 const DEFAULT_PIDS_LIMIT = 256
 const DEFAULT_ROLLBACK_RETENTION_SECONDS = 86_400
 
@@ -66,6 +69,7 @@ export const DeploymentManifestForm: FC<DeploymentManifestFormProps> = ({ images
                 rollbackRetentionSeconds: DEFAULT_ROLLBACK_RETENTION_SECONDS,
             },
             route: { hostname: String(form.get('hostname') ?? ''), path: String(form.get('routePath') ?? '/'), stripPrefix: false },
+            runtime: DEFAULT_RUNTIME,
             secrets: splitSecretBindings(form.get('secretBindings')),
             version: String(form.get('version') ?? ''),
             volumes: [],

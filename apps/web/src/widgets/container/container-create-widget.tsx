@@ -18,7 +18,14 @@ import { Skeleton } from '@shared/ui/skeleton'
 import { Spinner } from '@shared/ui/spinner'
 import { Textarea } from '@shared/ui/textarea'
 import { WidgetSection } from '@shared/common/widget-section'
+import { CONTAINER_RUNTIME_PROFILE } from '@containers/contracts/container-runtime'
 import { Link, useRouter } from '../../i18n/navigation'
+
+const splitLines = (value: string) =>
+    value
+        .split('\n')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
 
 const CREATE_ROLES = ['owner', 'admin']
 const DEFAULT_NETWORK = 'containers_edge'
@@ -36,7 +43,8 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) 
     const [errors, setErrors] = useState<{ image?: string; name?: string }>({})
     const [image, setImage] = useState('')
     const [network, setNetwork] = useState(DEFAULT_NETWORK)
-    const [readOnly, setReadOnly] = useState(true)
+    const [hardened, setHardened] = useState(false)
+    const [writablePaths, setWritablePaths] = useState('')
     const t = useTranslations('Dashboard')
     const router = useRouter()
     const imageList = useGetImages()
@@ -66,17 +74,18 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) 
         createContainer.mutate(
             {
                 autoStart,
-                command: String(formData.get('command') ?? '')
-                    .split('\n')
-                    .map((part) => part.trim())
-                    .filter((part) => part.length > 0),
+                command: splitLines(String(formData.get('command') ?? '')),
                 containerPort: port ? Number(port) : undefined,
                 image: selectedImage,
                 memoryBytes: Number(formData.get('memoryMiB')) * MEBIBYTE,
                 name,
                 nanoCpus: Number(formData.get('cpu')) * NANO_CPU,
                 network,
-                readOnlyRootFilesystem: readOnly,
+                runtime: {
+                    capabilities: [],
+                    profile: hardened ? CONTAINER_RUNTIME_PROFILE.HARDENED : CONTAINER_RUNTIME_PROFILE.STANDARD,
+                    writablePaths: splitLines(writablePaths),
+                },
             },
             {
                 onError: () => toast.error(t('containerCreateFailed')),
@@ -234,16 +243,29 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) 
                     </div>
                     <div className="grid gap-3">
                         <div className="grid gap-1 bg-overlay-subtle p-3">
-                            <Label htmlFor="container-create-read-only">
+                            <Label htmlFor="container-create-hardened">
                                 <Checkbox
-                                    id="container-create-read-only"
-                                    checked={readOnly}
-                                    onCheckedChange={(checked) => setReadOnly(checked === true)}
+                                    id="container-create-hardened"
+                                    checked={hardened}
+                                    onCheckedChange={(checked) => setHardened(checked === true)}
                                 />
-                                {t('containerReadOnly')}
+                                {t('containerHardened')}
                             </Label>
-                            <p className="pl-6 text-xs text-text-subtle">{t('containerReadOnlyHelp')}</p>
+                            <p className="pl-6 text-xs text-text-subtle">{t('containerHardenedHelp')}</p>
                         </div>
+                        {hardened && (
+                            <div className="grid gap-2 bg-overlay-subtle p-3">
+                                <Label htmlFor="container-create-writable-paths">{t('containerWritablePaths')}</Label>
+                                <Textarea
+                                    id="container-create-writable-paths"
+                                    rows={3}
+                                    placeholder={'/var/cache/nginx\n/run'}
+                                    value={writablePaths}
+                                    onChange={(event) => setWritablePaths(event.target.value)}
+                                />
+                                <p className="text-xs text-text-subtle">{t('containerWritablePathsHelp')}</p>
+                            </div>
+                        )}
                         <div className="grid gap-1 bg-overlay-subtle p-3">
                             <Label htmlFor="container-create-auto-start">
                                 <Checkbox
