@@ -277,6 +277,8 @@
         "jobControl": "Job queue",
         "jobEmpty": "No jobs recorded.",
         "jobEmptyDescription": "Scheduled backups and manual operations appear here once they run.",
+        "jobFailedTitle": "The job failed",
+        "jobFailedUnknown": "No failure code was reported.",
         "jobFinished": "Finished",
         "jobInterval": "Interval",
         "jobKind": "Kind",

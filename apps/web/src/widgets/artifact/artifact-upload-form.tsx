@@ -11,7 +11,7 @@ import { useOperationJobPolling } from '@entities/job/job.query'
 import { ArtifactFileDrop } from '@features/artifact-file-drop/artifact-file-drop'
 import { UploadProgress } from '@features/upload-progress/upload-progress'
 import { QUERY_KEY } from '@shared/lib/query-key'
-import { Alert, AlertTitle } from '@shared/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@shared/ui/alert'
 import { Button } from '@shared/ui/button'
 import { Label } from '@shared/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
@@ -27,9 +27,16 @@ export const ArtifactUploadForm: FC = () => {
     const translations = useTranslations('Dashboard')
     const queryClient = useQueryClient()
     const uploadArtifact = useUploadArtifact()
-    const { isJobActive, trackJob } = useOperationJobPolling({
+    const { failureCode, isJobActive, trackJob } = useOperationJobPolling({
         failureLabel: translations('uploadFailed'),
-        onSucceeded: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY.ARTIFACT.ALL }),
+        onFailed: (code) => {
+            setProgress(0)
+            toast.error(code ?? translations('uploadFailed'))
+        },
+        onSucceeded: () => {
+            setProgress(0)
+            return queryClient.invalidateQueries({ queryKey: QUERY_KEY.ARTIFACT.ALL })
+        },
     })
 
     const busy = uploadArtifact.isPending || isJobActive
@@ -92,6 +99,14 @@ export const ArtifactUploadForm: FC = () => {
             {storageWarning ? (
                 <Alert variant="warning" className="md:col-span-3">
                     <AlertTitle>{translations('uploadStorageWarning')}</AlertTitle>
+                </Alert>
+            ) : null}
+            {failureCode !== undefined ? (
+                <Alert aria-live="polite" variant="destructive" className="md:col-span-3">
+                    <AlertTitle>{translations('jobFailedTitle')}</AlertTitle>
+                    <AlertDescription>
+                        <span className="font-mono break-all">{failureCode ?? translations('jobFailedUnknown')}</span>
+                    </AlertDescription>
                 </Alert>
             ) : null}
         </form>

@@ -10,6 +10,7 @@ import { useOperationJobPolling } from '@entities/job/job.query'
 import { formatBytes } from '@shared/lib/format-bytes'
 import { formatDateTime } from '@shared/lib/format-date-time'
 import { QUERY_KEY } from '@shared/lib/query-key'
+import { Alert, AlertDescription, AlertTitle } from '@shared/ui/alert'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
@@ -34,8 +35,11 @@ export const ArtifactWidget: FC<ArtifactWidgetProps> = ({ role }) => {
     const queryClient = useQueryClient()
     const artifacts = useGetArtifacts()
     const loadArtifact = useLoadArtifact()
-    const { isJobActive, trackJob } = useOperationJobPolling({
+    const { failureCode, isJobActive, trackJob } = useOperationJobPolling({
         failureLabel: translations('uploadFailed'),
+        onFailed: (code) => {
+            toast.error(code ?? translations('jobFailedUnknown'))
+        },
         onSucceeded: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY.ARTIFACT.ALL }),
     })
 
@@ -62,6 +66,14 @@ export const ArtifactWidget: FC<ArtifactWidgetProps> = ({ role }) => {
     return (
         <WidgetSection id="artifact-control-title" title={translations('artifactControl')} badge={items.length}>
             {UPLOAD_ROLES.includes(role) ? <ArtifactUploadForm /> : null}
+            {failureCode !== undefined ? (
+                <Alert aria-live="polite" variant="destructive" className="mx-6">
+                    <AlertTitle>{translations('jobFailedTitle')}</AlertTitle>
+                    <AlertDescription>
+                        <span className="font-mono break-all">{failureCode ?? translations('jobFailedUnknown')}</span>
+                    </AlertDescription>
+                </Alert>
+            ) : null}
             {artifacts.isPending ? (
                 <div className="grid gap-2 p-6">
                     {Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (

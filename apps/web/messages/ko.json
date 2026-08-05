@@ -277,6 +277,8 @@
         "jobControl": "작업 큐",
         "jobEmpty": "기록된 작업이 없습니다.",
         "jobEmptyDescription": "예약된 백업이나 수동 작업이 실행되면 여기에 표시됩니다.",
+        "jobFailedTitle": "작업이 실패했습니다",
+        "jobFailedUnknown": "실패 코드가 없습니다.",
         "jobFinished": "종료",
         "jobInterval": "주기",
         "jobKind": "종류",

@@ -277,6 +277,8 @@
         "jobControl": "ジョブキュー",
         "jobEmpty": "記録されたジョブはありません。",
         "jobEmptyDescription": "予約バックアップや手動操作が実行されると、ここに表示されます。",
+        "jobFailedTitle": "ジョブが失敗しました",
+        "jobFailedUnknown": "失敗コードがありません。",
         "jobFinished": "終了",
         "jobInterval": "間隔",
         "jobKind": "種別",
