@@ -1,3 +1,4 @@
+import { SSE_STREAM_OPEN_COMMENT } from '@containers/contracts/engine-stream'
 import type { TrafficLiveEvent } from '@containers/contracts/traffic'
 
 const HEARTBEAT_INTERVAL_MS = 15_000
@@ -17,6 +18,7 @@ export const createTrafficSseStream = ({ subscribe }: TrafficSseStreamDependenci
                 unsubscribe?.()
             },
             start: (controller) => {
+                controller.enqueue(encoder.encode(SSE_STREAM_OPEN_COMMENT))
                 unsubscribe = subscribe(query, (event) => {
                     if ((controller.desiredSize ?? 0) > 0) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
                 })
