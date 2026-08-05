@@ -710,3 +710,38 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - `Host: a.hyuns.uk` → `<h1>A SITE</h1>`, `Host: b.hyuns.uk` → `<h1>B SITE</h1>`
 - `Host: c.hyuns.uk` → 연결 종료(catch-all 444)
 - nginx `containers-routes` 블록에 server 2개가 각각 다른 컨테이너로 proxy_pass
+
+## 작업: 패널 UX 감사 후속 (2026-08-05 야간)
+
+기준: 사용자 지시 — "결과 나오면 우선순위대로 다 고치고 commit / push, 테스트도 hyuns.uk 로 와일드카드 확인".
+감사 정본: [quality-assurance/2026-08-05-panel-ux-audit.md](./quality-assurance/2026-08-05-panel-ux-audit.md) (원본 64건 → 검증 통과 44건 → 원인 12개).
+
+### P0 — 흐름을 실제로 깨뜨림
+
+- [ ] 1. `containerSummarySchema` 확장(`exposedPorts`·`networks`) — P0 1·2 를 동시에 푸는 단일 변경점
+- [ ] 2. 라우트 폼 `Input+datalist` → `Select` + 서버 대상 존재·네트워크 검증
+- [ ] 3. job 실패 분기(`job.query.ts`) + 소비 위젯 3곳
+- [ ] 4. 배포 런타임 제약 — `readOnlyRootFilesystem` 하드코딩 해소, 실패 진단 노출 (§13)
+
+### P1 — 마찰
+
+- [ ] 5. `parse-api-error.ts` 배열 지원 + `onError` 인자 사용 통일
+- [ ] 6. 단계 간 CTA 링크 4곳
+- [ ] 7. 라우트 수정(`PUT /nginx/routes/:id`) + `pathMode`·`enabled` UI 노출
+- [ ] 8. 배포 관리 라우트 소유권 표시(`managedBy`)
+- [ ] 9. job 진행 폴링·이벤트 타임라인·전역 배지
+- [ ] 10. 업로드 재개·취소
+
+### P2 — 품질·접근성
+
+- [ ] 11. nginx 편집기 컨테이너 인지, 두 nginx 화면 역할 안내
+- [ ] 12. 접근성 4건(directive 편집기 label, 표 키보드 스크롤, 컨트롤 없는 Label, aria-live)
+- [ ] 13. 삭제 확인 다이얼로그 피드백
+
+### 결정 필요
+
+- [ ] compose 지원 여부 — (a) manifest `group` 최소안 / (b) `compose.yml` 업로드 변환. 안 할 경우 최소한 manifest 폼 하드코딩(볼륨·protocol·healthcheck 타이밍) 해소
+
+### 오탐 기록
+
+- "관리 plane 컨테이너가 라우트 대상 목록에 노출" — 반증 검증을 통과했으나 실제로는 engine-agent 가 이미 필터한다. 실 API 응답으로 확인.
