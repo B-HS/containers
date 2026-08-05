@@ -34,6 +34,16 @@ const createFixture = (initial: PanelSettingRecord | null = null) => {
             },
         },
         environmentTrustedOrigins: [BOOT_ORIGIN, 'http://localhost:18080'],
+        listHostnameCandidates: async (excluded) =>
+            [
+                {
+                    firstSeenAt: '2026-08-05T00:00:00+00:00',
+                    hostname: 'new.example.com',
+                    lastSeenAt: '2026-08-05T00:01:00+00:00',
+                    rejectedCount: 3,
+                    requestCount: 4,
+                },
+            ].filter((candidate) => !excluded.includes(candidate.hostname)),
         nginxClient: {
             applyNginxConfig: async (input) => {
                 applied.push(input)
@@ -49,12 +59,30 @@ const createFixture = (initial: PanelSettingRecord | null = null) => {
 }
 
 describe('패널 설정 서비스', () => {
-    test('저장값이 없으면 환경변수 origin 만 신뢰한다', () => {
+    test('저장값이 없으면 환경변수 origin 만 신뢰한다', async () => {
         const { service } = createFixture()
 
         expect(service.getTrustedOrigins()).toEqual([BOOT_ORIGIN, 'http://localhost:18080'])
-        expect(service.get().publicOrigin).toBeNull()
-        expect(service.get().restartRequired).toBe(false)
+        expect((await service.get()).publicOrigin).toBeNull()
+        expect((await service.get()).restartRequired).toBe(false)
+    })
+
+    test('access log 에서 관찰된 미등록 host 를 후보로 보여준다', async () => {
+        const { service } = createFixture()
+
+        const setting = await service.get()
+
+        expect(setting.hostnameCandidates.map((candidate) => candidate.hostname)).toEqual(['new.example.com'])
+        expect(setting.hostnameCandidates[0]?.rejectedCount).toBe(3)
+    })
+
+    test('이미 server_name 에 있는 host 는 후보에서 빠진다', async () => {
+        const { service } = createFixture()
+
+        await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://new.example.com' })
+        const setting = await service.get()
+
+        expect(setting.hostnameCandidates).toEqual([])
     })
 
     test('공개 주소를 저장하면 신뢰 origin 에 더해지고 nginx server_name 이 갱신된다', async () => {

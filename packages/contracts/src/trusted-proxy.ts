@@ -32,6 +32,16 @@ export const proxyCandidateSchema = z.object({
 
 export const proxyCandidateListSchema = z.array(proxyCandidateSchema)
 
+export const hostnameCandidateSchema = z.object({
+    firstSeenAt: z.string(),
+    hostname: z.string(),
+    lastSeenAt: z.string(),
+    rejectedCount: z.number().int().nonnegative(),
+    requestCount: z.number().int().nonnegative(),
+})
+
+export const hostnameCandidateListSchema = z.array(hostnameCandidateSchema)
+
 export const trustedProxySchema = z.object({
     address: z.string(),
     approvedAt: z.iso.datetime(),
@@ -60,6 +70,7 @@ export const toRealIpSource = (address: string) => `${address}/${address.include
  */
 export const fromRealIpSource = (source: string) => source.split('/')[0] ?? source
 
+export type HostnameCandidate = z.infer<typeof hostnameCandidateSchema>
 export type ProxyCandidate = z.infer<typeof proxyCandidateSchema>
 export type TrustedProxy = z.infer<typeof trustedProxySchema>
 export type TrustedProxyState = z.infer<typeof trustedProxyStateSchema>

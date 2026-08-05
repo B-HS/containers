@@ -109,6 +109,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         bootOrigin: env.authBaseUrl,
         db,
         environmentTrustedOrigins: env.authTrustedOrigins,
+        listHostnameCandidates: (excluded) => clients.trafficWorkerClient.getHostnameCandidates(excluded),
         nginxClient: clients.engineAgentClient,
         now,
     })

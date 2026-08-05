@@ -14,6 +14,7 @@ type ComposePanelSettingDependencies = {
     bootOrigin: string
     db: ControlDatabase
     environmentTrustedOrigins: readonly string[]
+    listHostnameCandidates: (excluded: readonly string[]) => Promise<unknown>
     nginxClient: Parameters<typeof createPanelSettingService>[0]['nginxClient']
     now: () => Date
 }
@@ -50,11 +51,19 @@ export const buildPanelSettingServiceDb = (db: ControlDatabase): PanelSettingSer
     },
 })
 
-export const composePanelSetting = ({ bootOrigin, db, environmentTrustedOrigins, nginxClient, now }: ComposePanelSettingDependencies) => ({
+export const composePanelSetting = ({
+    bootOrigin,
+    db,
+    environmentTrustedOrigins,
+    listHostnameCandidates,
+    nginxClient,
+    now,
+}: ComposePanelSettingDependencies) => ({
     panelSettingService: createPanelSettingService({
         bootOrigin,
         db: buildPanelSettingServiceDb(db),
         environmentTrustedOrigins,
+        listHostnameCandidates,
         nginxClient,
         now,
     }),

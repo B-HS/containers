@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server'
 import { AuthPanelWidget } from '@widgets/auth/auth-panel-widget'
 import { getEngineOverview } from '@entities/engine/engine.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
-import { getNavigationSections } from '@shared/lib/navigation'
+import { getNavigationSections, NAV_SECTIONS } from '@shared/lib/navigation'
 import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
 import { PanelShell } from '@widgets/panel-shell/panel-shell'
@@ -60,34 +60,9 @@ const PanelLayout = async ({ children }: PanelLayoutProps) => {
                     logout: authTranslations('logout'),
                     menu: translations('menu'),
                     items: Object.fromEntries(
-                        [
-                            'apiKeys',
-                            'artifacts',
-                            'audit',
-                            'backups',
-                            'containers',
-                            'controlPlane',
-                            'deploymentSecrets',
-                            'deployments',
-                            'images',
-                            'infrastructure',
-                            'invitations',
-                            'jobs',
-                            'nginx',
-                            'nginxRoutes',
-                            'notifications',
-                            'overview',
-                            'registry',
-                            'traffic',
-                            'users',
-                        ].map((key) => [key, translations(`items.${key}`)]),
+                        NAV_SECTIONS.flatMap((section) => section.items).map((item) => [item.key, translations(`items.${item.key}`)]),
                     ),
-                    sections: Object.fromEntries(
-                        ['administration', 'containers', 'dashboard', 'deployments', 'images', 'infrastructure', 'nginx', 'operations'].map((key) => [
-                            key,
-                            translations(`sections.${key}`),
-                        ]),
-                    ),
+                    sections: Object.fromEntries(NAV_SECTIONS.map((section) => [section.key, translations(`sections.${section.key}`)])),
                 }}
                 navigation={navigation}
                 sessionName={session.session.user.name}

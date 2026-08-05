@@ -1,6 +1,7 @@
 import { resolveTrustedOrigins, toOrigin } from '@containers/config/origin'
 import { panelSettingSchema, panelSettingUpdateSchema } from '@containers/contracts/panel-setting'
-import { applyPanelHostname } from '@containers/nginx-config/panel-hostname'
+import { hostnameCandidateListSchema } from '@containers/contracts/trusted-proxy'
+import { applyPanelHostname, readPanelServerNames } from '@containers/nginx-config/panel-hostname'
 import { createAppError } from '../../../lib/error'
 
 type PanelSettingRecord = {
@@ -24,6 +25,7 @@ type PanelSettingServiceDependencies = {
     bootOrigin: string
     db: PanelSettingServiceDb
     environmentTrustedOrigins: readonly string[]
+    listHostnameCandidates: (excluded: readonly string[]) => Promise<unknown>
     nginxClient: NginxConfigClient
     now: () => Date
 }
@@ -33,7 +35,14 @@ const hostnameOf = (origin: string) => {
     return parsed === null ? null : parsed.hostname
 }
 
-export const createPanelSettingService = ({ bootOrigin, db, environmentTrustedOrigins, nginxClient, now }: PanelSettingServiceDependencies) => {
+export const createPanelSettingService = ({
+    bootOrigin,
+    db,
+    environmentTrustedOrigins,
+    listHostnameCandidates,
+    nginxClient,
+    now,
+}: PanelSettingServiceDependencies) => {
     const environmentOrigins = resolveTrustedOrigins({ baseUrl: bootOrigin, origins: environmentTrustedOrigins })
 
     let state = db.load()
@@ -43,9 +52,10 @@ export const createPanelSettingService = ({ bootOrigin, db, environmentTrustedOr
         return Array.from(new Set([...environmentOrigins, ...stored.map((origin) => toOrigin(origin) ?? origin)]))
     }
 
-    const toResponse = () =>
+    const toResponse = (hostnameCandidates: unknown = []) =>
         panelSettingSchema.parse({
             bootOrigin,
+            hostnameCandidates,
             effectiveTrustedOrigins: effectiveTrustedOrigins(),
             environmentTrustedOrigins: environmentOrigins,
             extraTrustedOrigins: state?.extraTrustedOrigins ?? [],
@@ -67,8 +77,13 @@ export const createPanelSettingService = ({ bootOrigin, db, environmentTrustedOr
         return nextHostname
     }
 
+    const readHostnameCandidates = async () => {
+        const served = readPanelServerNames((await nginxClient.getNginxConfig()).config) ?? []
+        return hostnameCandidateListSchema.parse(await listHostnameCandidates(served))
+    }
+
     return {
-        get: () => toResponse(),
+        get: async () => toResponse(await readHostnameCandidates()),
         getTrustedOrigins: () => effectiveTrustedOrigins(),
         update: async (actorId: string | null, input: unknown) => {
             const payload = panelSettingUpdateSchema.parse(input)
@@ -88,7 +103,7 @@ export const createPanelSettingService = ({ bootOrigin, db, environmentTrustedOr
             db.save({ ...record, updatedBy: actorId })
             state = record
 
-            return toResponse()
+            return toResponse(await readHostnameCandidates())
         },
     }
 }

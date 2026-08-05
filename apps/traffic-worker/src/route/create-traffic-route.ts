@@ -21,7 +21,7 @@ import { withErrorHandling, type TrafficRouteContext } from '../lib/with-error-h
 type TrafficRouteDependencies = {
     exportService: TrafficExportService
     ingestionService: Pick<TrafficIngestionService, 'getState'>
-    proxyCandidateService: Pick<ProxyCandidateService, 'list'>
+    proxyCandidateService: Pick<ProxyCandidateService, 'list' | 'listHostnames'>
     queryService: TrafficQueryService
     retentionService: Pick<TrafficRetentionService, 'getState'>
     sseStream: TrafficSseStream
@@ -49,6 +49,14 @@ export const createTrafficRoute = ({
             validator('query', proxyCandidateQuerySchema),
             withErrorHandling(async (context: TrafficRouteContext<{ query: z.infer<typeof proxyCandidateQuerySchema> }>) =>
                 context.json(await proxyCandidateService.list(context.req.valid('query').excluded), 200),
+            ),
+        )
+        .get(
+            '/hostname-candidates',
+            describeRoute({ summary: 'access log 의 요청 host 후보', tags: ['traffic'], responses: { 200: { description: '후보 목록' } } }),
+            validator('query', proxyCandidateQuerySchema),
+            withErrorHandling(async (context: TrafficRouteContext<{ query: z.infer<typeof proxyCandidateQuerySchema> }>) =>
+                context.json(await proxyCandidateService.listHostnames(context.req.valid('query').excluded), 200),
             ),
         )
         .get(

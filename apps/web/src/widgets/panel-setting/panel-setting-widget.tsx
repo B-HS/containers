@@ -14,6 +14,7 @@ import { Button } from '@shared/ui/button'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
 import { Skeleton } from '@shared/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@shared/ui/table'
 import { Textarea } from '@shared/ui/textarea'
 import { WidgetSection } from '@shared/common/widget-section'
 
@@ -85,6 +86,36 @@ export const PanelSettingWidget: FC<PanelSettingWidgetProps> = ({ canManage }) =
                     <Alert>
                         <AlertTitle>{translations('panelSettingRestartRequired')}</AlertTitle>
                     </Alert>
+                )}
+                {(setting.data?.hostnameCandidates.length ?? 0) > 0 && (
+                    <div className="grid gap-2">
+                        <Label>{translations('panelSettingHostnameCandidates')}</Label>
+                        <p className="text-xs text-text-subtle">{translations('panelSettingHostnameCandidatesDescription')}</p>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>{translations('panelSettingHostname')}</TableHead>
+                                    <TableHead>{translations('panelSettingRejected')}</TableHead>
+                                    <TableHead>{translations('trustedProxyRequests')}</TableHead>
+                                    <TableHead className="text-right">{translations('panelSettingUseHostname')}</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {setting.data?.hostnameCandidates.map((candidate) => (
+                                    <TableRow key={candidate.hostname}>
+                                        <TableCell className="font-mono text-xs">{candidate.hostname}</TableCell>
+                                        <TableCell className="text-xs">{candidate.rejectedCount}</TableCell>
+                                        <TableCell className="text-xs">{candidate.requestCount}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button size="sm" variant="ghost" onClick={() => setPublicOrigin(`https://${candidate.hostname}`)}>
+                                                {translations('panelSettingUseHostname')}
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
                 )}
                 <div className="grid gap-2">
                     <Label htmlFor="panel-public-origin">{translations('panelSettingPublicOrigin')}</Label>

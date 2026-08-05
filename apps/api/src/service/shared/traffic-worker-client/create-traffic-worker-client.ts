@@ -12,7 +12,7 @@ import {
 import { backupIdSchema, backupSnapshotResultSchema } from '@containers/contracts/backup'
 import { trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import { trafficExportResultSchema } from '@containers/contracts/traffic'
-import { proxyCandidateListSchema } from '@containers/contracts/trusted-proxy'
+import { hostnameCandidateListSchema, proxyCandidateListSchema } from '@containers/contracts/trusted-proxy'
 import { createAppError } from '../../../lib/error'
 
 const TRAFFIC_REQUEST_TIMEOUT_MS = 5_000
@@ -72,6 +72,24 @@ export const createTrafficWorkerClient = ({ baseUrl, fetcher = fetch, secret }: 
         })
         if (!response.ok) throw createAppError('TRAFFIC_EXPORT_FAILED')
         return trafficExportResultSchema.parse(await response.json())
+    },
+    getHostnameCandidates: async (excluded: readonly string[]) => {
+        const search = new URLSearchParams(excluded.length === 0 ? {} : { excluded: excluded.join(',') })
+        const path = `/v1/traffic/hostname-candidates${search.size === 0 ? '' : `?${search.toString()}`}`
+        const timestamp = Date.now().toString()
+        const nonce = randomUUID()
+        const signature = createInternalRequestSignature({ body: '', method: 'GET', nonce, path, secret, timestamp })
+        const response = await fetcher(`${baseUrl}${path}`, {
+            headers: {
+                [INTERNAL_AUTH_HEADERS.NONCE]: nonce,
+                [INTERNAL_AUTH_HEADERS.SIGNATURE]: signature,
+                [INTERNAL_AUTH_HEADERS.TIMESTAMP]: timestamp,
+            },
+            signal: AbortSignal.timeout(TRAFFIC_REQUEST_TIMEOUT_MS),
+        })
+
+        if (!response.ok) throw createAppError('TRAFFIC_UNAVAILABLE')
+        return hostnameCandidateListSchema.parse(await response.json())
     },
     getProxyCandidates: async (excluded: readonly string[]) => {
         const search = new URLSearchParams(excluded.length === 0 ? {} : { excluded: excluded.join(',') })

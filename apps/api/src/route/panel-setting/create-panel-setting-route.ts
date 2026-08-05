@@ -32,7 +32,7 @@ export const createPanelSettingRoute = ({ auditService, authService, panelSettin
             }),
             withErrorHandling(async (context) => {
                 await authService.requireRole(context.req.raw.headers, READ_ROLES)
-                return context.json(successResponse(panelSettingService.get()), 200)
+                return context.json(successResponse(await panelSettingService.get()), 200)
             }),
         )
         .put(

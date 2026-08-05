@@ -278,8 +278,9 @@ const createAppTestDependencies = () => ({
         leave: () => undefined,
     },
     panelSettingService: {
-        get: () => ({
+        get: async () => ({
             bootOrigin: 'http://127.0.0.1:18080',
+            hostnameCandidates: [],
             effectiveTrustedOrigins: ['http://127.0.0.1:18080'],
             environmentTrustedOrigins: ['http://127.0.0.1:18080'],
             extraTrustedOrigins: [],

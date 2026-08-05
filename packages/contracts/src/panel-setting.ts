@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { hostnameCandidateSchema } from './trusted-proxy'
 
 export const PANEL_SETTING_ID = 'panel'
 export const MAX_EXTRA_TRUSTED_ORIGINS = 20
@@ -19,6 +20,7 @@ export const panelSettingUpdateSchema = z.object({
 
 export const panelSettingSchema = z.object({
     bootOrigin: z.string(),
+    hostnameCandidates: z.array(hostnameCandidateSchema),
     effectiveTrustedOrigins: z.array(z.string()),
     environmentTrustedOrigins: z.array(z.string()),
     extraTrustedOrigins: z.array(z.string()),

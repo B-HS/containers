@@ -16,7 +16,7 @@ type TrafficAppDependencies = {
     exportService: TrafficExportService
     ingestionService: Pick<TrafficIngestionService, 'getState' | 'subscribe'>
     now: () => Date
-    proxyCandidateService: Pick<ProxyCandidateService, 'list'>
+    proxyCandidateService: Pick<ProxyCandidateService, 'list' | 'listHostnames'>
     queryService: TrafficQueryService
     retentionService: Pick<TrafficRetentionService, 'getState'>
     sharedSecret: string

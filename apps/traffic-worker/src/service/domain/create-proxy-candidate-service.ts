@@ -1,7 +1,9 @@
-import { proxyCandidateListSchema } from '@containers/contracts/trusted-proxy'
+import { hostnameCandidateListSchema, proxyCandidateListSchema } from '@containers/contracts/trusted-proxy'
 
 const DEFAULT_SCAN_BYTES = 2 * 1_024 * 1_024
 const MAX_CANDIDATES = 50
+
+const REJECTED_STATUS = 444
 
 type AccessLogLine = {
     client_ip?: unknown
@@ -34,6 +36,14 @@ const parseLine = (line: string): AccessLogLine | null => {
 }
 
 const asText = (value: unknown) => (typeof value === 'string' && value.length > 0 ? value : null)
+
+type AccumulatedHost = {
+    firstSeenAt: string
+    hostname: string
+    lastSeenAt: string
+    rejectedCount: number
+    requestCount: number
+}
 
 /**
  * Derives the distinct source addresses seen in the recent nginx access log. These are the raw
@@ -83,6 +93,37 @@ export const createProxyCandidateService = ({ accessLogPath, readTail, scanBytes
                     lastSeenAt: candidate.lastSeenAt,
                     requestCount: candidate.requestCount,
                 })),
+        )
+    },
+    listHostnames: async (excluded: readonly string[]) => {
+        const excludedHostnames = new Set(excluded)
+        const content = await readTail(accessLogPath, scanBytes).catch(() => '')
+        const accumulated = new Map<string, AccumulatedHost>()
+
+        for (const line of content.split('\n')) {
+            const parsed = line.length === 0 ? null : parseLine(line)
+            if (parsed === null) continue
+
+            const hostname = asText(parsed.host)
+            const timestamp = asText(parsed.timestamp)
+            if (hostname === null || timestamp === null || excludedHostnames.has(hostname)) continue
+
+            const rejected = parsed.status === REJECTED_STATUS ? 1 : 0
+            const existing = accumulated.get(hostname)
+            if (existing === undefined) {
+                accumulated.set(hostname, { firstSeenAt: timestamp, hostname, lastSeenAt: timestamp, rejectedCount: rejected, requestCount: 1 })
+                continue
+            }
+
+            existing.lastSeenAt = timestamp
+            existing.requestCount += 1
+            existing.rejectedCount += rejected
+        }
+
+        return hostnameCandidateListSchema.parse(
+            Array.from(accumulated.values())
+                .sort((left, right) => right.rejectedCount - left.rejectedCount || right.requestCount - left.requestCount)
+                .slice(0, MAX_CANDIDATES),
         )
     },
 })
