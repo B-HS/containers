@@ -35,8 +35,14 @@
 - 운영 nginx 설정의 정본은 저장소의 `infra/nginx/nginx.conf` 가 아니라 **관리 볼륨의 `current.conf`** 다. 저장소 파일만 고치고 반영됐다고 판단하지 않는다.
 - 새 workspace 패키지를 추가하면 `apps/*/Dockerfile` 4개에 `COPY` 2줄씩 추가한다.
 
-## 4. 검증
+## 4. 보안 불변식은 테스트가 강제한다
 
-종료 전 `bun run typecheck` → `lint` → `test` → `build` 를 통과시킨다. **정적 검사 통과는 완료가 아니다** — 런타임 동작은 Compose 재빌드 후 실측한다. 이 저장소에서 정적 검사를 전부 통과한 채로 프로덕션 결함이 발견된 사례가 여러 건 있다(`docs/bug/`).
+`packages/config/src/compose-security.ts` 가 배포 compose 의 불변식을 정의하고 테스트 10건이 이를 강제한다. `scripts/audit-runtime-security.ts`(`bun run audit:runtime`)는 **실제 실행 중인 컨테이너**를 같은 기준으로 검사해 위반 시 exit 1 이다.
+
+특권·호스트 네임스페이스·docker socket 범위·loopback publish·`read_only`·`no-new-privileges`·위험 capability·호스트 루트 마운트를 바꾸려면 이 테스트를 먼저 통과시켜야 한다. **테스트를 고쳐서 통과시키지 말 것** — 불변식을 바꿔야 한다고 판단되면 사용자에게 근거와 함께 확인받는다.
+
+## 5. 검증
+
+종료 전 `bun run typecheck` → `lint` → `test` → `build` 를 통과시킨다. 스택을 띄운 상태면 `bun run audit:runtime` 도 돌린다. **정적 검사 통과는 완료가 아니다** — 런타임 동작은 Compose 재빌드 후 실측한다. 이 저장소에서 정적 검사를 전부 통과한 채로 프로덕션 결함이 발견된 사례가 여러 건 있다(`docs/bug/`).
 
 E2E 로그인이 필요하면 사용자에게 계정을 묻지 말고 `bun scripts/seed-e2e.ts` 를 쓴다. 출력된 비밀번호는 저장소·문서에 기록하지 않는다.

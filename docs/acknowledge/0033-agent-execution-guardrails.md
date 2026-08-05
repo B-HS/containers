@@ -58,10 +58,29 @@
 
 ## 3. 검증 (2026-08-05)
 
-훅 스크립트에 명령 문자열을 직접 흘려 넣어 확인했다.
+**훅** — 명령 문자열을 직접 흘려 넣어 확인했다.
 
-- **차단 10/10**: `--privileged`, `--pid=host`, `--network host`, `nsenter`, `nsenter1` 이미지, `docker.sock` 마운트, LAN IP publish, `0.0.0.0` publish, 호스트 IP 생략 publish, `--cap-add=ALL`
-- **통과 10/10**: loopback publish, `compose up`/`build`/`exec`, `docker ps`/`inspect`, `--network containers_edge`, `--network container:<name>`, `bun run test`, `git push`
+- 차단 10/10: `--privileged`, `--pid=host`, `--network host`, `nsenter`, `nsenter1` 이미지, `docker.sock` 마운트, LAN IP publish, `0.0.0.0` publish, 호스트 IP 생략 publish, `--cap-add=ALL`
+- 통과 10/10: loopback publish, `compose up`/`build`/`exec`, `docker ps`/`inspect`, `--network containers_edge`, `--network container:<name>`, `bun run test`, `git push`
+
+**compose 불변식 테스트** — 10건 통과. 배포되는 `compose.yaml` 위반 0건이고, 나머지 8건은 **위반을 넣었을 때 실제로 잡는지** 검사한다(privileged, 호스트 네임스페이스 2종, socket 범위, loopback publish, publish 범위, read_only·no-new-privileges, 위험 capability, 호스트 루트 마운트).
+
+**런타임 감사** — 실행 중 5개 컨테이너 전부 `ok`. 탐지력 확인을 위해 `read_only`·`no-new-privileges` 없는 컨테이너를 같은 compose 라벨로 띄웠더니 해당 컨테이너를 지목하고 **exit 1** 로 실패했다. 확인 후 삭제했다.
+
+### 2.5 세션에 의존하지 않는 층을 따로 둔다
+
+훅에는 치명적 한계가 있다: **프로젝트 `.claude/settings.json` 은 세션 시작 시 로드되므로 이미 떠 있는 세션에는 적용되지 않는다.** 라이브 프로브로 확인했다(§4). 즉 훅만으로는 "지금 이 순간" 강제되지 않는다.
+
+그래서 **에이전트 런타임과 무관하게 강제되는 층**을 별도로 둔다 — 테스트 스위트와 감사 스크립트다. 이 둘은 세션·에이전트·사람을 가리지 않고 `bun run test` / `bun run audit:runtime` 을 돌리는 누구에게나 동일하게 실패한다.
+
+| 층                                                      | 무엇을 강제하나                                                                                                                                           | 언제 유효한가                       |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `packages/config/src/compose-security.ts` + 테스트 10건 | **배포되는 compose.yaml** 의 불변식(특권·호스트 네임스페이스·socket 범위·loopback publish·read_only·no-new-privileges·위험 capability·호스트 루트 마운트) | `bun run test` 마다 — 세션 무관     |
+| `scripts/audit-runtime-security.ts`                     | **실제 실행 중인 컨테이너**의 같은 불변식. compose 와 런타임의 드리프트(override, 수동 기동)를 잡는다                                                     | `bun run audit:runtime` — 세션 무관 |
+| `.claude/hooks/guard-container-escape.sh`               | 에이전트가 위험 명령을 **실행하기 전에** 거부                                                                                                             | 다음 세션부터                       |
+| `CLAUDE.md`                                             | 훅이 없는 도구에도 규칙 전달                                                                                                                              | 항상(단 강제력 없음)                |
+
+앞의 두 층이 지키는 것은 **제품의 보안 자세**이고, 훅이 지키는 것은 **에이전트의 행동**이다. 전자는 지금 즉시 유효하다.
 
 ## 4. 적용 시점 (중요)
 

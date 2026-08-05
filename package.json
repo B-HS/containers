@@ -11,14 +11,15 @@
         "esbuild": "0.25.12"
     },
     "scripts": {
+        "audit:runtime": "bun scripts/audit-runtime-security.ts",
         "build": "bun run --filter '*' build",
+        "check": "bun run typecheck && bun run lint && bun run test && bun run build",
         "dev": "bun run --filter '*' dev",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "lint": "eslint .",
         "test": "bun test apps/api apps/engine-agent apps/traffic-worker packages && bun run --filter '@containers/web' test",
-        "typecheck": "bun run --filter '*' typecheck",
-        "check": "bun run typecheck && bun run lint && bun run test && bun run build"
+        "typecheck": "bun run --filter '*' typecheck"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
