@@ -46,6 +46,11 @@ http {
     limit_req_zone $containers_client_ip zone=containers_auth_rate:10m rate=5r/m;
     limit_req_status 429;
 
+    map $http_x_forwarded_proto $containers_forwarded_proto {
+        default $scheme;
+        https https;
+    }
+
     map $http_upgrade $connection_upgrade {
         default upgrade;
         '' close;
@@ -96,7 +101,7 @@ http {
         add_header Cross-Origin-Opener-Policy "same-origin" always;
         add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
 
@@ -109,7 +114,7 @@ http {
             proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Proto $containers_forwarded_proto;
             proxy_buffering off;
         }
 
@@ -122,7 +127,7 @@ http {
             proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Proto $containers_forwarded_proto;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection $connection_upgrade;
             proxy_buffering off;
@@ -135,7 +140,7 @@ http {
             proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Proto $containers_forwarded_proto;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection $connection_upgrade;
             proxy_buffering off;
@@ -149,7 +154,7 @@ http {
         server_name api.containers.local api.example.com;
 
         add_header Referrer-Policy "no-referrer" always;
-        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
 
@@ -162,7 +167,7 @@ http {
             proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Proto $containers_forwarded_proto;
             proxy_buffering off;
         }
 
@@ -175,7 +180,7 @@ http {
             proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Proto $containers_forwarded_proto;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection $connection_upgrade;
             proxy_buffering off;

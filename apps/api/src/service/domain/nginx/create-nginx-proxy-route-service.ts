@@ -41,7 +41,7 @@ type NginxProxyRouteServiceDependencies = {
     engineAgentClient: Pick<EngineAgentClient, 'applyNginxConfig' | 'getNginxConfig'>
     now: () => Date
     protectedContainers: string[]
-    protectedHostnames: string[]
+    protectedHostnames: () => string[]
 }
 
 export type { NginxProxyRouteServiceDb }
@@ -56,7 +56,7 @@ const renderLocation = (route: NginxProxyRoute) => {
     const rewrite = route.stripPrefix && route.path !== '/' ? `rewrite ^${escapeRegex(route.path)}/?(.*)$ /$1 break;` : ''
     const websocket = route.protocol === 'websocket' ? 'proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection $connection_upgrade;' : ''
 
-    return `location ${modifier}${route.path} { client_max_body_size ${route.bodySizeMegabytes}m; proxy_connect_timeout ${route.timeoutSeconds}s; proxy_read_timeout ${route.timeoutSeconds}s; proxy_send_timeout ${route.timeoutSeconds}s; ${rewrite} set $containers_route_upstream "http://${route.targetContainer}:${route.targetPort}"; proxy_pass $containers_route_upstream; proxy_http_version 1.1; proxy_set_header Host $host; proxy_set_header X-Request-ID $request_id; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header Cookie ""; proxy_set_header Authorization ""; ${websocket} proxy_buffering off; }`
+    return `location ${modifier}${route.path} { client_max_body_size ${route.bodySizeMegabytes}m; proxy_connect_timeout ${route.timeoutSeconds}s; proxy_read_timeout ${route.timeoutSeconds}s; proxy_send_timeout ${route.timeoutSeconds}s; ${rewrite} set $containers_route_upstream "http://${route.targetContainer}:${route.targetPort}"; proxy_pass $containers_route_upstream; proxy_http_version 1.1; proxy_set_header Host $host; proxy_set_header X-Request-ID $request_id; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto $containers_forwarded_proto; proxy_set_header Cookie ""; proxy_set_header Authorization ""; ${websocket} proxy_buffering off; }`
 }
 
 export const renderNginxProxyRoutes = (currentConfig: string, routes: NginxProxyRoute[]) => {
@@ -178,7 +178,7 @@ export const createNginxProxyRouteService = ({
         create: async (input: unknown) =>
             serialize(async () => {
                 const payload = nginxProxyRouteInputSchema.parse(input)
-                if (protectedHostnames.includes(payload.hostname)) {
+                if (protectedHostnames().includes(payload.hostname)) {
                     throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
                 }
                 assertProtectedTarget(payload)
@@ -231,7 +231,7 @@ export const createNginxProxyRouteService = ({
         upsert: async (input: unknown) =>
             serialize(async () => {
                 const payload = nginxProxyRouteInputSchema.parse(input)
-                if (protectedHostnames.includes(payload.hostname)) {
+                if (protectedHostnames().includes(payload.hostname)) {
                     throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
                 }
                 assertProtectedTarget(payload)

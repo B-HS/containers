@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { requestId } from 'hono/request-id'
 import type { EngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
 import type { Auth } from '../auth/create-auth'
+import { applySecureCookies, isForwardedHttps } from '../lib/secure-cookie'
 import { errorResponse } from '../lib/response'
 import type { NginxStatusClient } from '../service/shared/nginx/create-nginx-status-client'
 import { createAuditRoute } from '../route/audit/create-audit-route'
@@ -65,8 +66,10 @@ type AppDependencies = {
         | 'acceptInvitation'
         | 'bootstrapOwner'
         | 'createInvitation'
+        | 'deleteUser'
         | 'getBootstrapStatus'
         | 'getSession'
+        | 'getSessionSummary'
         | 'isEmailDisabled'
         | 'listUsers'
         | 'requireRecentRole'
@@ -195,6 +198,12 @@ export const createApp = ({
 
     return new Hono()
         .use('*', requestId())
+        .use('*', async (context, next) => {
+            await next()
+            if (isForwardedHttps(context.req.raw.headers)) {
+                applySecureCookies(context.res.headers)
+            }
+        })
         .use('/api/*', async (context, next) => {
             if (!MUTATING_METHODS.includes(context.req.method) || context.req.path === '/api/maintenance') {
                 return next()

@@ -4,8 +4,6 @@ import type { ControlDatabase } from '@containers/db-schema/database'
 import { schema } from '@containers/db-schema/schema'
 import { betterAuth } from 'better-auth'
 
-const HTTPS_PREFIX = 'https://'
-
 type AuthDependencies = {
     baseUrl: string
     db: ControlDatabase
@@ -13,9 +11,14 @@ type AuthDependencies = {
     trustedOrigins: () => readonly string[]
 }
 
+/**
+ * Better Auth resolves cookie security once at construction, which cannot serve the panel over
+ * both loopback http and a public https origin. The Secure attribute is therefore added per
+ * request by the response middleware in create-app, based on the forwarded protocol.
+ */
 export const createAuth = ({ baseUrl, db, secret, trustedOrigins }: AuthDependencies) =>
     betterAuth({
-        advanced: { useSecureCookies: baseUrl.startsWith(HTTPS_PREFIX) },
+        advanced: { useSecureCookies: false },
         baseURL: baseUrl,
         database: drizzleAdapter(db, { provider: 'sqlite', schema }),
         emailAndPassword: {
