@@ -19,7 +19,7 @@
         "@containers/db-schema": "workspace:*",
         "better-auth": "1.6.25",
         "drizzle-orm": "0.45.2",
-        "hono": "4.12.33",
+        "hono": "4.13.0",
         "hono-openapi": "1.3.1",
         "tar-stream": "3.2.0",
         "zod": "4.4.3"

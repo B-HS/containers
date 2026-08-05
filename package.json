@@ -7,6 +7,9 @@
         "apps/*",
         "packages/*"
     ],
+    "overrides": {
+        "esbuild": "0.25.12"
+    },
     "scripts": {
         "build": "bun run --filter '*' build",
         "dev": "bun run --filter '*' dev",
