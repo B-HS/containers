@@ -52,13 +52,6 @@ API 32 / engine-agent 20 이라 API 가 받아들인 12개는 반드시 실패�
 
 DOM preload 가 백엔드 테스트에 새지 않도록 루트 `test` 스크립트를 `bun test apps/api apps/engine-agent apps/traffic-worker packages && bun run --filter '@containers/web' test` 로 분리했다.
 
-## 3. 검증 (2026-08-05)
-
-- 스트림: 동시 32개 → 33번째 429 → 전부 종료 → 다시 32개 전부 200. 3회 반복 동일. `/api/readyz` 전 항목 `ok`
-- 백업 암호 UI: 브라우저에서 `secretsIncluded=true` 백업은 암호 입력 렌더, `false` 백업은 미렌더 실확인 + 위젯 테스트 2건으로 고정
-- 다크 모드: 개요·컨테이너 제어·네트워크/볼륨·Nginx 설정·트래픽 분석·백업 다이얼로그 6화면 판독 문제 0건. `dark:` 변형 0건·Tailwind 기본 팔레트 0건을 테스트로 고정
-- typecheck 8/8 · lint 0 · test 320 + web 6 · format:check · build 8/8
-
 ### 2.7 패널 published 포트 기본값을 18080 으로 옮긴다
 
 macOS 호스트에서 `127.0.0.1:8080` 으로 접근할 때만 저속 SSE 가 도달하지 않았다. 워크플로 실험(가설 5건)으로 **결함 키가 호스트 published 포트 8080 자체**임을 확정했다 — 운영 스택과 무관한 stock socat 프로브도 8080 이면 0바이트, 18480/18481 이면 TTFB 0.002초. 상세는 [bug 문서 §7](../bug/2026-08-05-sse-stream-slot-leak.md).
@@ -68,6 +61,13 @@ macOS 호스트에서 `127.0.0.1:8080` 으로 접근할 때만 저속 SSE 가 �
 - **기각한 대안 1** — nginx 설정을 손봐 우회: 설정은 이미 면책됐다(같은 설정이 다른 포트에서 정상).
 - **기각한 대안 2** — 실시간 화면을 long-polling·수동 새로고침으로 대체: 원인이 규명된 뒤에는 제품 기능을 축소할 이유가 없다.
 - 부수 이점: 8080 은 개발 머신에서 가장 흔히 충돌하는 포트라 기본값으로서도 18080 이 낫다.
+
+## 3. 검증 (2026-08-05)
+
+- 스트림: 동시 32개 → 33번째 429 → 전부 종료 → 다시 32개 전부 200. 3회 반복 동일. `/api/readyz` 전 항목 `ok`
+- 백업 암호 UI: 브라우저에서 `secretsIncluded=true` 백업은 암호 입력 렌더, `false` 백업은 미렌더 실확인 + 위젯 테스트 2건으로 고정
+- 다크 모드: 개요·컨테이너 제어·네트워크/볼륨·Nginx 설정·트래픽 분석·백업 다이얼로그 6화면 판독 문제 0건. `dark:` 변형 0건·Tailwind 기본 팔레트 0건을 테스트로 고정
+- typecheck 8/8 · lint 0 · test 320 + web 6 · format:check · build 8/8
 
 ## 4. 남은 것
 
