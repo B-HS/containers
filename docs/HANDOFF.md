@@ -207,7 +207,7 @@
 | `UI-UX.md`                                             | 화면 규칙과 §12 구현 현황·설계 이탈                                |
 | `SHADCN-COMPONENTS.md`                                 | 컴포넌트 목록과 §6 CLI 대신 공식 소스 이식 절차                    |
 | `llm.txt`                                              | AI용 자족 레퍼런스(엔드포인트·스키마·보안·플로우)                  |
-| `acknowledge/`                                         | 결정 기록(ADR). 최신 0033                                          |
+| `acknowledge/`                                         | 결정 기록(ADR). 최신 0034                                          |
 | `bug/`                                                 | 결함 기록(증상·근본원인·수정·실측)                                 |
 | `quality-assurance/2026-08-04-ui-backend-audit.md`     | UI/UX·백엔드 6영역 감사 132건                                      |
 | `quality-assurance/2026-08-04-production-readiness.md` | 실운영·CI API 준비도 판정과 3단계 로드맵                           |

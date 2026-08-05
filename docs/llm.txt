@@ -243,6 +243,14 @@ Upload:          /api/artifacts GET (all), /api/uploads/sessions POST,
                  /api/uploads/sessions/:sessionId/chunks PUT,
                  .../finalize POST (artifact:upload or operator+, 64MiB chunks,
                  sequential offset, per-chunk sha256, final full-file hash)
+Panel setting:   /api/panel-settings GET (owner|admin), PUT (owner recent).
+                 Stores the public origin and extra trusted origins in panel_setting.
+                 Saving also rewrites the panel server block server_name via
+                 engine-agent, so a new domain never gets stuck on the catch-all 444.
+                 Trusted origins apply immediately (better-auth trustedOrigins is a
+                 function); cookie Secure and generated links need an API restart and
+                 the response reports restartRequired. Env origins are always kept in
+                 the effective list so a bad value cannot lock sign-in out.
 Streams:         /api/stream/containers/:id/logs|stats, /api/stream/events
                  (SSE, role-gated; management-plane events filtered)
                  Concurrency cap MAX_CONCURRENT_ENGINE_STREAMS = 20, shared by

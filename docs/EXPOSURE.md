@@ -10,11 +10,13 @@
 
 ## 1. 기본값 — 로컬 전용
 
-`compose.yaml`의 유일한 publish는 `${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-8080}:8080`이다. 인증서도 443 listener도 없고, 인증 origin은 `http://127.0.0.1:18080`으로 고정돼 있다. 이 상태에서 접속은 `http://127.0.0.1:18080` 또는 `http://localhost:18080`만 동작한다.
+`compose.yaml`의 유일한 publish는 `${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-18080}:8080`이다. 인증서도 443 listener도 없고, 인증 origin은 `http://127.0.0.1:18080`으로 고정돼 있다. 이 상태에서 접속은 `http://127.0.0.1:18080` 또는 `http://localhost:18080`만 동작한다.
 
 nginx는 알 수 없는 Host로 온 요청을 catch-all `default_server`에서 `444`로 끊는다. 즉 `server_name`에 등록된 이름(`panel.containers.local`, `localhost`, `127.0.0.1`)이 아닌 Host로는 패널도 `/api/*`도 응답하지 않는다. 새 도메인을 붙일 때는 반드시 `server_name`에 그 도메인을 추가해야 한다(3절·5절).
 
 **하지 말 것**: `PANEL_BIND_ADDRESS=0.0.0.0`으로 바꿔 평문 8080을 인터넷에 여는 것. 세션 쿠키와 API 키가 그대로 평문으로 흐른다. 노출이 필요하면 아래 두 경로 중 하나를 쓴다.
+
+> **패널에서 설정하는 편이 빠르다.** owner 로 로그인해 `공개 주소` 화면(`/panel-settings`)에 도메인을 넣으면 nginx `server_name` 과 신뢰 origin 이 한 번에 적용된다. 쿠키 `Secure` 와 생성 링크만 API 재시작 후 반영되며 화면이 그렇게 안내한다. 상세는 [acknowledge/0034](./acknowledge/0034-panel-public-origin-setting.md).
 
 ## 2. 노출 경로 A — Cloudflare 터널 (권장)
 
