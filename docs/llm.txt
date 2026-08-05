@@ -189,7 +189,21 @@ Auth (better-auth): /api/auth/* — sign-in/email, sign-up/email (404), session.
   /api/bootstrap/status GET (public) | /api/bootstrap/owner POST (first boot)
   /api/session GET | /api/invitations POST (owner/admin recent) |
   /api/invitations/accept POST | /api/users GET (owner/admin) |
-  /api/users/:id PATCH (owner recent, demote/disable revokes keys+sessions)
+  /api/users/:id PATCH (owner recent, demote/disable revokes keys+sessions) |
+  /api/users/:id DELETE (owner recent, cascades sessions+accounts, revokes keys)
+  Only the actor's own account is immutable (SELF_MODIFICATION_FORBIDDEN). Any
+  other user including another owner can be demoted, disabled or deleted, so a
+  lost owner has a supported remediation path. The last owner survives because
+  nobody else can act on them and self-modification is refused.
+  User ids are not uuids: better-auth generates its own id format for accounts
+  created through sign-up, so :id is a trimmed non-empty string.
+  GET /api/session returns only expiresAt, role and user (id/email/name). The
+  session token stays in the HttpOnly cookie and is never echoed in a body.
+  Cookies: better-auth decides Secure once at construction, which cannot serve
+  both loopback http and a public https origin. The Secure attribute is added
+  per response in create-app when x-forwarded-proto is https; the cookie name
+  is unchanged so existing sessions survive. nginx derives that header from
+  the front proxy value, not from $scheme (TLS terminates before nginx).
 
 API keys:        /api/api-keys GET/POST (admin recent; scopes backup:write and
                  secret:write require owner + recent), /api/api-keys/:id DELETE
@@ -253,6 +267,17 @@ Trusted proxy:   /api/trusted-proxies GET (owner|admin), POST (owner recent),
                  Unbounded sources and CIDR notation are rejected; the last entry
                  cannot be removed. Approving a real client address would let that
                  client spoof any ip via the forwarded header.
+Boot resolution: AUTH_BASE_URL and PANEL_PUBLIC_URL are fallbacks only. At boot
+                 the api reads panel_setting.publicOrigin and, when present,
+                 uses it for the auth baseURL, invitation links and the initial
+                 protected hostname set, so restartRequired actually applies.
+                 Protected hostnames are evaluated per call and always include
+                 the current effective trusted origins, so a route cannot hijack
+                 the panel's own public hostname.
+Shutdown:        SIGINT/SIGTERM stop the job worker and recurring tasks, drain
+                 in-flight requests for up to 8s, force close the rest, then
+                 close the database. compose stop_grace_period is 20s so a long
+                 lived stream cannot turn a clean exit into SIGKILL.
 Panel setting:   /api/panel-settings GET (owner|admin), PUT (owner recent).
                  Stores the public origin and extra trusted origins in panel_setting.
                  Saving also rewrites the panel server block server_name via

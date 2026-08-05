@@ -650,3 +650,23 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - 공개 주소 후보 최상단 `hyuns.uk | 요청 131 | 거부 39`
 - 외부 `https://hyuns.uk/` 307, access log `client_ip=1.235.152.6`(실제 클라이언트)
 - typecheck 8/8 · lint 0 · test 376 + web 20 · build 8/8 · audit:runtime 5/5
+
+## 작업: 실운영 점검 후속 6건 (2026-08-05 야간)
+
+기준: 사용자 지시 — "1-6까지 다 손 대고 수정 완벽하게". 결정은 [acknowledge/0036](./acknowledge/0036-public-origin-single-source-and-shutdown.md).
+
+- [x] a. seed 스크립트 timestamp 단위 오류로 손상된 auth 행 복구 (migration 0017) — `GET /api/users` 500 해소
+- [x] b. 쿠키 Secure 를 요청별로 적용 — nginx forwarded proto map + 응답 미들웨어, 쿠키 이름 유지
+- [x] c. owner 계정 제거 경로 — 자기 자신만 불변으로 축소, `DELETE /api/users/:id` 추가, `z.uuid()` 제약 제거
+- [x] d. 보호 hostname 을 호출 시점 평가로 — 공개 주소·추가 신뢰 origin 포함
+- [x] e. 초대 링크가 저장된 공개 주소를 사용
+- [x] f. `GET /api/session` 을 요약으로 축소 — 세션 토큰 미노출
+- [x] g. graceful shutdown — 8초 상한 드레인 + `stop_grace_period: 20s`
+- [x] h. 부팅 시 DB 공개 주소가 env 를 대체 — `restartRequired` 가 실제로 적용됨
+
+### 실측
+
+- 외부 HTTPS 쿠키 `Secure` + HSTS `includeSubDomains`, 로컬 HTTP 로그인 유지
+- `hyuns.uk` 프록시 라우트 409, 초대 링크 `https://hyuns.uk/...`
+- owner 삭제 200 / 자기 삭제 409, SSE 물린 SIGTERM 12초 exit 0
+- typecheck 8/8 · lint 0 · test 407 · build 8/8 · audit:runtime 5/5
