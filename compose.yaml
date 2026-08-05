@@ -59,42 +59,6 @@ services:
             - edge
             - ingress
 
-    # opt-in 외부 노출 경로: docker compose --profile cloudflared up -d
-    # 토큰은 저장소에 두지 않고 CLOUDFLARE_TUNNEL_TOKEN 환경변수로만 주입한다.
-    cloudflared:
-        profiles:
-            - cloudflared
-        restart: unless-stopped
-        logging:
-            driver: json-file
-            options:
-                max-size: '10m'
-                max-file: '3'
-        deploy:
-            resources:
-                limits:
-                    memory: 256M
-        image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.7.3}
-        command:
-            - tunnel
-            - --no-autoupdate
-            - run
-        depends_on:
-            nginx:
-                condition: service_healthy
-        environment:
-            TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
-        cap_drop:
-            - ALL
-        read_only: true
-        security_opt:
-            - no-new-privileges:true
-        tmpfs:
-            - /tmp
-        networks:
-            edge:
-                ipv4_address: ${CLOUDFLARED_ADDRESS:-10.89.0.10}
-
     web:
         restart: unless-stopped
         logging:
@@ -290,8 +254,8 @@ services:
 networks:
     control:
         internal: true
-    # nginx real_ip 신뢰 대역이 이 subnet 의 cloudflared 고정 IP 하나뿐이다.
-    # subnet 을 바꾸면 infra/nginx/nginx.conf 의 set_real_ip_from 도 함께 바꾼다.
+    # 워크로드와 외부 진입이 만나는 유일한 네트워크다.
+    # 앞단 프록시의 실제 클라이언트 IP 를 인정할 주소는 패널의 신뢰 프록시 화면에서 승인한다.
     edge:
         ipam:
             config:

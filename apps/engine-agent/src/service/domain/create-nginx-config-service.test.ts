@@ -259,8 +259,8 @@ describe('Nginx 설정 서비스', () => {
 
     test('real_ip 신뢰 대역을 제거하거나 전체 대역으로 넓히면 거부합니다', async () => {
         const { currentConfig, service } = await createTestContext()
-        const withoutTrustedSource = currentConfig.replace('    set_real_ip_from 10.89.0.10/32;\n', '')
-        const withUnboundedSource = currentConfig.replace('set_real_ip_from 10.89.0.10/32;', 'set_real_ip_from 0.0.0.0/0;')
+        const withoutTrustedSource = currentConfig.replace('    set_real_ip_from 127.0.0.1/32;\n', '')
+        const withUnboundedSource = currentConfig.replace('set_real_ip_from 127.0.0.1/32;', 'set_real_ip_from 0.0.0.0/0;')
 
         expect(withoutTrustedSource).not.toBe(currentConfig)
         await expect(service.apply({ config: withoutTrustedSource, expectedSha256: digest(currentConfig) })).rejects.toThrow(
@@ -273,7 +273,7 @@ describe('Nginx 설정 서비스', () => {
 
     test('신뢰 대역을 다른 CIDR로 바꾸는 것은 허용합니다', async () => {
         const { currentConfig, service } = await createTestContext()
-        const withOtherSource = currentConfig.replace('set_real_ip_from 10.89.0.10/32;', 'set_real_ip_from 10.90.0.0/24;')
+        const withOtherSource = currentConfig.replace('set_real_ip_from 127.0.0.1/32;', 'set_real_ip_from 10.90.0.0/24;')
 
         const result = await service.apply({ config: withOtherSource, expectedSha256: digest(currentConfig) })
 
