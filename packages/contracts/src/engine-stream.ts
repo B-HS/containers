@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+export const MAX_CONCURRENT_ENGINE_STREAMS = 20
+export const SSE_STREAM_OPEN_COMMENT = ': connected\n\n'
+
 export const engineStreamEventSchema = z.object({
     action: z.string(),
     actorId: z.string(),

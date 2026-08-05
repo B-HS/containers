@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { PassThrough } from 'node:stream'
+import { SSE_STREAM_OPEN_COMMENT } from '@containers/contracts/engine-stream'
 import { createAppError } from '../../lib/error'
 import { createEngineStreamService, normalizeContainerStats, normalizeEngineEvent } from './create-engine-stream-service'
 
@@ -95,9 +96,13 @@ describe('engine stream 서비스', () => {
             now: () => NOW,
         })
 
-        const stream = await service.openContainerLogStream('abc', 10)
+        const stream = await service.openContainerLogStream('abc', 10, new AbortController().signal)
         expect(service.getActiveStreamCount()).toBe(1)
         const reader = stream.getReader()
+        const opened = await reader.read()
+
+        expect(new TextDecoder().decode(opened.value)).toBe(SSE_STREAM_OPEN_COMMENT)
+
         source.write(frame(1, 'hello'))
         const collected = await readUntil(reader, (text) => text.includes('\n\n'))
 
@@ -123,7 +128,55 @@ describe('engine stream 서비스', () => {
             now: () => NOW,
         })
 
-        await expect(service.openEventStream()).rejects.toThrow('CONTROL_FAILED')
+        await expect(service.openEventStream(new AbortController().signal)).rejects.toThrow('CONTROL_FAILED')
+        expect(service.getActiveStreamCount()).toBe(0)
+        expect(source.destroyed).toBe(true)
+    })
+
+    test('클라이언트가 끊으면 slot 을 반납하고 source 를 정리합니다', async () => {
+        const source = new PassThrough()
+        const service = createEngineStreamService({
+            dockerEngineClient: {
+                getContainers: async () => [],
+                openContainerLogStream: async () => ({ stream: new PassThrough(), tty: true }),
+                openContainerStatsStream: async () => new PassThrough(),
+                openEventStream: async () => source,
+            },
+            now: () => NOW,
+        })
+
+        const controller = new AbortController()
+        await service.openEventStream(controller.signal)
+
+        expect(service.getActiveStreamCount()).toBe(1)
+
+        controller.abort()
+
+        expect(service.getActiveStreamCount()).toBe(0)
+        expect(source.destroyed).toBe(true)
+    })
+
+    test('source 를 여는 동안 클라이언트가 끊으면 slot 이 새지 않습니다', async () => {
+        const source = new PassThrough()
+        const controller = new AbortController()
+        let openStarted = false
+        const service = createEngineStreamService({
+            dockerEngineClient: {
+                getContainers: async () => [],
+                openContainerLogStream: async () => ({ stream: new PassThrough(), tty: true }),
+                openContainerStatsStream: async () => new PassThrough(),
+                openEventStream: async () => {
+                    openStarted = true
+                    controller.abort()
+                    return source
+                },
+            },
+            now: () => NOW,
+        })
+
+        await expect(service.openEventStream(controller.signal)).rejects.toThrow('STREAM_CLIENT_ABORTED')
+
+        expect(openStarted).toBe(true)
         expect(service.getActiveStreamCount()).toBe(0)
         expect(source.destroyed).toBe(true)
     })
@@ -138,10 +191,10 @@ describe('engine stream 서비스', () => {
             },
             now: () => NOW,
         })
-        const streams = await Promise.all(Array.from({ length: 20 }, () => service.openEventStream()))
+        const streams = await Promise.all(Array.from({ length: 20 }, () => service.openEventStream(new AbortController().signal)))
 
         expect(service.getActiveStreamCount()).toBe(20)
-        await expect(service.openEventStream()).rejects.toThrow('ENGINE_STREAM_LIMIT')
+        await expect(service.openEventStream(new AbortController().signal)).rejects.toThrow('ENGINE_STREAM_LIMIT')
 
         await Promise.all(streams.map((stream) => stream.cancel()))
         expect(service.getActiveStreamCount()).toBe(0)

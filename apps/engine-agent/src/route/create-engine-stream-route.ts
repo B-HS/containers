@@ -20,13 +20,12 @@ const containerIdParamSchema = z.object({ containerId: z.string().min(1).max(256
 export const createEngineStreamRoute = ({ engineStreamService }: EngineStreamRouteDependencies) => {
     const route = new Hono()
 
-    const streamResponse = (open: () => Promise<ReadableStream<Uint8Array>>) =>
-        withErrorHandling(async () => new Response(await open(), { headers: SSE_HEADERS, status: 200 }))
-
     route.get(
         '/streams/events',
         describeRoute({ tags: ['engine-stream'], summary: 'Docker 이벤트 실시간 stream', responses: { 200: { description: 'SSE stream' } } }),
-        streamResponse(() => engineStreamService.openEventStream()),
+        withErrorHandling(
+            async (context) => new Response(await engineStreamService.openEventStream(context.req.raw.signal), { headers: SSE_HEADERS, status: 200 }),
+        ),
     )
     route.get(
         '/streams/containers/:containerId/logs',
@@ -39,7 +38,7 @@ export const createEngineStreamRoute = ({ engineStreamService }: EngineStreamRou
             ) => {
                 const param = context.req.valid('param')
                 const query = context.req.valid('query')
-                return new Response(await engineStreamService.openContainerLogStream(param.containerId, query.tail), {
+                return new Response(await engineStreamService.openContainerLogStream(param.containerId, query.tail, context.req.raw.signal), {
                     headers: SSE_HEADERS,
                     status: 200,
                 })
@@ -52,7 +51,7 @@ export const createEngineStreamRoute = ({ engineStreamService }: EngineStreamRou
         validator('param', containerIdParamSchema),
         withErrorHandling(async (context: AgentRouteContext<{ param: z.infer<typeof containerIdParamSchema> }>) => {
             const param = context.req.valid('param')
-            return new Response(await engineStreamService.openContainerStatsStream(param.containerId), {
+            return new Response(await engineStreamService.openContainerStatsStream(param.containerId, context.req.raw.signal), {
                 headers: SSE_HEADERS,
                 status: 200,
             })

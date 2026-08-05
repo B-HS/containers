@@ -4,6 +4,8 @@ import {
     containerLogStreamChunkSchema,
     containerStatsSampleSchema,
     engineStreamEventSchema,
+    MAX_CONCURRENT_ENGINE_STREAMS,
+    SSE_STREAM_OPEN_COMMENT,
     type ContainerStatsSample,
     type EngineStreamEvent,
 } from '@containers/contracts/engine-stream'
@@ -24,7 +26,6 @@ const containerMatchesReference = (containerId: string, containerNames: string[]
 
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000
 const STREAM_MAX_DURATION_MS = 30 * 60 * 1_000
-const MAX_CONCURRENT_STREAMS = 20
 const FULL_PERCENT = 100
 
 type EngineStreamServiceDependencies = {
@@ -136,7 +137,7 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
     const encoder = new TextEncoder()
     let activeStreams = 0
 
-    const toSseStream = (source: Readable, transform: (chunk: Buffer) => unknown[]) => {
+    const toSseStream = (source: Readable, signal: AbortSignal, transform: (chunk: Buffer) => unknown[]) => {
         let closed = false
         let heartbeat: ReturnType<typeof setInterval> | undefined
         let deadline: ReturnType<typeof setTimeout> | undefined
@@ -149,11 +150,15 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
             activeStreams -= 1
             clearInterval(heartbeat)
             clearTimeout(deadline)
+            signal.removeEventListener('abort', release)
             source.destroy()
         }
 
+        signal.addEventListener('abort', release)
+
         return new ReadableStream<Uint8Array>({
             start: (controller) => {
+                controller.enqueue(encoder.encode(SSE_STREAM_OPEN_COMMENT))
                 const finish = () => {
                     const wasClosed = closed
                     release()
@@ -193,7 +198,7 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
     }
 
     const acquire = () => {
-        if (activeStreams >= MAX_CONCURRENT_STREAMS) {
+        if (activeStreams >= MAX_CONCURRENT_ENGINE_STREAMS) {
             throw createAppError('ENGINE_STREAM_LIMIT')
         }
         activeStreams += 1
@@ -213,14 +218,18 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
         }
     }
 
-    const openWithSource = async <TSource>(open: () => Promise<TSource>) => {
+    const openWithSource = async <TSource>(signal: AbortSignal, destroy: (source: TSource) => void, open: () => Promise<TSource>) => {
         acquire()
-        try {
-            return await open()
-        } catch (error) {
+        const source = await open().catch((error: unknown) => {
             activeStreams -= 1
             throw error
+        })
+        if (signal.aborted) {
+            activeStreams -= 1
+            destroy(source)
+            throw createAppError('STREAM_CLIENT_ABORTED')
         }
+        return source
     }
 
     const withSourceCleanup = async <TSource, TResult>(source: TSource, destroy: (source: TSource) => void, build: () => Promise<TResult>) => {
@@ -235,8 +244,12 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
 
     return {
         getActiveStreamCount: () => activeStreams,
-        openEventStream: async () => {
-            const source = await openWithSource(() => dockerEngineClient.openEventStream())
+        openEventStream: async (signal: AbortSignal) => {
+            const source = await openWithSource(
+                signal,
+                (stream: Readable) => stream.destroy(),
+                () => dockerEngineClient.openEventStream(),
+            )
             return withSourceCleanup(
                 source,
                 (stream) => stream.destroy(),
@@ -247,7 +260,7 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
                             .filter((container) => isManagementPlaneResource(container.Labels))
                             .map((container) => container.Id),
                     )
-                    return toSseStream(source, (chunk) =>
+                    return toSseStream(source, signal, (chunk) =>
                         parser
                             .push(chunk)
                             .map((line) => normalizeEngineEvent(line, now()))
@@ -256,22 +269,32 @@ export const createEngineStreamService = ({ dockerEngineClient, now }: EngineStr
                 },
             )
         },
-        openContainerLogStream: async (containerId: string, tail: number) => {
+        openContainerLogStream: async (containerId: string, tail: number, signal: AbortSignal) => {
             await assertNotManagementPlane(containerId)
-            const { stream, tty } = await openWithSource(() => dockerEngineClient.openContainerLogStream(containerId, tail))
+            const { stream, tty } = await openWithSource(
+                signal,
+                (source: { stream: Readable }) => source.stream.destroy(),
+                () => dockerEngineClient.openContainerLogStream(containerId, tail),
+            )
             if (tty) {
-                return toSseStream(stream, (chunk) => [
+                return toSseStream(stream, signal, (chunk) => [
                     containerLogStreamChunkSchema.parse({ kind: 'log', stream: 'stdout', text: chunk.toString('utf8'), truncated: false }),
                 ])
             }
             const parser = createMultiplexFrameParser()
-            return toSseStream(stream, (chunk) => parser.push(chunk).map((frame) => containerLogStreamChunkSchema.parse({ kind: 'log', ...frame })))
+            return toSseStream(stream, signal, (chunk) =>
+                parser.push(chunk).map((frame) => containerLogStreamChunkSchema.parse({ kind: 'log', ...frame })),
+            )
         },
-        openContainerStatsStream: async (containerId: string) => {
+        openContainerStatsStream: async (containerId: string, signal: AbortSignal) => {
             await assertNotManagementPlane(containerId)
-            const source = await openWithSource(() => dockerEngineClient.openContainerStatsStream(containerId))
+            const source = await openWithSource(
+                signal,
+                (stream: Readable) => stream.destroy(),
+                () => dockerEngineClient.openContainerStatsStream(containerId),
+            )
             const parser = createLineParser()
-            return toSseStream(source, (chunk) =>
+            return toSseStream(source, signal, (chunk) =>
                 parser
                     .push(chunk)
                     .map((line) => normalizeContainerStats(line))
