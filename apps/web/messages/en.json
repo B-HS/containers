@@ -186,6 +186,7 @@
         "deploymentFailureUnknown": "Unavailable",
         "deploymentHealthPath": "Health check path",
         "deploymentImagesRequired": "No image is available, so a manifest cannot be created.",
+        "deploymentInternalService": "Internal service (no public route)",
         "deploymentManifest": "Manifest",
         "deploymentManifestCreate": "Create immutable manifest",
         "deploymentManifestCreated": "The deployment manifest was created.",

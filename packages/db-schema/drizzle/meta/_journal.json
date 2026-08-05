@@ -134,6 +134,13 @@
             "when": 1785917518499,
             "tag": "0018_manifest_runtime",
             "breakpoints": true
+        },
+        {
+            "idx": 19,
+            "version": "6",
+            "when": 1785971405798,
+            "tag": "0019_smart_beyonder",
+            "breakpoints": true
         }
     ]
 }

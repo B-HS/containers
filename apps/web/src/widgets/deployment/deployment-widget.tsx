@@ -114,7 +114,10 @@ export const DeploymentWidget: FC<DeploymentWidgetProps> = ({ role }) => {
                     empty={null}
                     items={manifests.map((manifest) => ({
                         id: manifest.id,
-                        subtitle: `${manifest.route.hostname}${manifest.route.path} → :${manifest.internalPort}`,
+                        subtitle:
+                            manifest.route === null
+                                ? `${t('deploymentInternalService')} → :${manifest.internalPort}`
+                                : `${manifest.route.hostname}${manifest.route.path} → :${manifest.internalPort}`,
                         title: `${manifest.name} · ${manifest.version}`,
                     }))}
                     listLabel={t('deploymentManifest')}
@@ -128,8 +131,10 @@ export const DeploymentWidget: FC<DeploymentWidgetProps> = ({ role }) => {
                                     {selectedManifest.name} · {selectedManifest.version}
                                 </h3>
                                 <p className="truncate text-xs text-text-muted">
-                                    {selectedManifest.route.hostname}
-                                    {selectedManifest.route.path} → :{selectedManifest.internalPort}
+                                    {selectedManifest.route === null
+                                        ? t('deploymentInternalService')
+                                        : `${selectedManifest.route.hostname}${selectedManifest.route.path}`}{' '}
+                                    → :{selectedManifest.internalPort}
                                 </p>
                             </div>
                             <Badge variant="neutral">{t('deploymentManifest')}</Badge>

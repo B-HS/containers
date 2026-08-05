@@ -248,9 +248,9 @@ export const deploymentManifest = sqliteTable(
         healthcheckTimeoutSeconds: integer('healthcheck_timeout_seconds').notNull(),
         healthcheckRetries: integer('healthcheck_retries').notNull(),
         healthcheckStartPeriodSeconds: integer('healthcheck_start_period_seconds').notNull(),
-        routeHostname: text('route_hostname').notNull(),
-        routePath: text('route_path').notNull(),
-        routeStripPrefix: integer('route_strip_prefix', { mode: 'boolean' }).notNull(),
+        routeHostname: text('route_hostname'),
+        routePath: text('route_path'),
+        routeStripPrefix: integer('route_strip_prefix', { mode: 'boolean' }),
         rolloutObservationSeconds: integer('rollout_observation_seconds').notNull(),
         rolloutRollbackRetentionSeconds: integer('rollout_rollback_retention_seconds').notNull(),
         createdBy: text('created_by')

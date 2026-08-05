@@ -11,6 +11,7 @@
         "./control-plane": "./src/control-plane.ts",
         "./deployment": "./src/deployment.ts",
         "./deployment-secret": "./src/deployment-secret.ts",
+        "./deployment-stack": "./src/deployment-stack.ts",
         "./engine": "./src/engine.ts",
         "./engine-control": "./src/engine-control.ts",
         "./engine-error": "./src/engine-error.ts",

@@ -33,9 +33,9 @@ type ManifestRow = {
     rolloutObservationSeconds: number
     runtimeJson: string
     rolloutRollbackRetentionSeconds: number
-    routeHostname: string
-    routePath: string
-    routeStripPrefix: boolean
+    routeHostname: string | null
+    routePath: string | null
+    routeStripPrefix: boolean | null
     secretsJson: string
     updatedAt: Date
     version: string
@@ -43,8 +43,8 @@ type ManifestRow = {
 }
 
 type ManifestIdentity = {
-    routeHostname: string
-    routePath: string
+    routeHostname: string | null
+    routePath: string | null
 }
 
 type ManifestIdRecord = {
@@ -97,11 +97,14 @@ const toManifest = (row: ManifestRow) =>
             observationSeconds: row.rolloutObservationSeconds,
             rollbackRetentionSeconds: row.rolloutRollbackRetentionSeconds,
         },
-        route: {
-            hostname: row.routeHostname,
-            path: row.routePath,
-            stripPrefix: row.routeStripPrefix,
-        },
+        route:
+            row.routeHostname === null
+                ? null
+                : {
+                      hostname: row.routeHostname,
+                      path: row.routePath,
+                      stripPrefix: row.routeStripPrefix,
+                  },
         runtime: JSON.parse(row.runtimeJson),
         secrets: JSON.parse(row.secretsJson),
         updatedAt: row.updatedAt.toISOString(),
@@ -132,9 +135,9 @@ const toRow = (id: string, actorId: string, timestamp: Date, input: DeploymentMa
     restartPolicy: input.restartPolicy,
     rolloutObservationSeconds: input.rollout.observationSeconds,
     rolloutRollbackRetentionSeconds: input.rollout.rollbackRetentionSeconds,
-    routeHostname: input.route.hostname,
-    routePath: input.route.path,
-    routeStripPrefix: input.route.stripPrefix,
+    routeHostname: input.route?.hostname ?? null,
+    routePath: input.route?.path ?? null,
+    routeStripPrefix: input.route?.stripPrefix ?? null,
     runtimeJson: JSON.stringify(input.runtime),
     secretsJson: JSON.stringify(input.secrets),
     updatedAt: timestamp,
@@ -185,7 +188,7 @@ export const createDeploymentManifestService = ({
     return {
         create: async (actorId: string, input: unknown) => {
             const payload = deploymentManifestInputSchema.parse(input)
-            if (protectedHostnames().includes(payload.route.hostname)) {
+            if (payload.route !== null && protectedHostnames().includes(payload.route.hostname)) {
                 throw createAppError('DEPLOYMENT_ROUTE_PROTECTED_HOSTNAME')
             }
             if (protectedNetworks.includes(payload.network)) {
@@ -197,7 +200,7 @@ export const createDeploymentManifestService = ({
             const existingIdentity = await db.findByIdentity(payload.name)
             if (
                 existingIdentity &&
-                (existingIdentity.routeHostname !== payload.route.hostname || existingIdentity.routePath !== payload.route.path)
+                (existingIdentity.routeHostname !== (payload.route?.hostname ?? null) || existingIdentity.routePath !== (payload.route?.path ?? null))
             ) {
                 throw createAppError('DEPLOYMENT_IDENTITY_MISMATCH')
             }

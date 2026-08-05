@@ -110,7 +110,11 @@ const toRelease = (record: ReleaseRow) =>
         updatedAt: record.updatedAt.toISOString(),
     })
 
-const routeInput = (manifest: DeploymentManifest, targetContainer: string) => ({
+type PublishedManifest = DeploymentManifest & { route: NonNullable<DeploymentManifest['route']> }
+
+const isPublished = (manifest: DeploymentManifest): manifest is PublishedManifest => manifest.route !== null
+
+const routeInput = (manifest: PublishedManifest, targetContainer: string) => ({
     bodySizeMegabytes: 64,
     enabled: true,
     hostname: manifest.route.hostname,
@@ -123,7 +127,7 @@ const routeInput = (manifest: DeploymentManifest, targetContainer: string) => ({
     timeoutSeconds: 60,
 })
 
-const publicHealthPath = (manifest: DeploymentManifest) =>
+const publicHealthPath = (manifest: PublishedManifest) =>
     manifest.route.path === '/'
         ? manifest.healthcheck.path
         : `${manifest.route.path.replace(/\/$/, '')}${manifest.healthcheck.path === '/' ? '' : manifest.healthcheck.path}`
@@ -227,24 +231,26 @@ export const createDeploymentReleaseService = ({
             if (!healthy) {
                 throw createAppError('DEPLOYMENT_ROLLBACK_HEALTHCHECK_FAILED')
             }
-            await nginxProxyRouteService.upsert(routeInput(targetManifest, target.containerName))
-            routeSwitched = true
-            let routeReady = false
-            for (let attempt = 0; attempt < targetManifest.healthcheck.retries; attempt += 1) {
-                routeReady = await routeProbe({
-                    hostname: targetManifest.route.hostname,
-                    path: publicHealthPath(targetManifest),
-                    timeoutMs: targetManifest.healthcheck.timeoutSeconds * 1_000,
-                })
-                if (routeReady) {
-                    break
+            if (isPublished(targetManifest)) {
+                await nginxProxyRouteService.upsert(routeInput(targetManifest, target.containerName))
+                routeSwitched = true
+                let routeReady = false
+                for (let attempt = 0; attempt < targetManifest.healthcheck.retries; attempt += 1) {
+                    routeReady = await routeProbe({
+                        hostname: targetManifest.route.hostname,
+                        path: publicHealthPath(targetManifest),
+                        timeoutMs: targetManifest.healthcheck.timeoutSeconds * 1_000,
+                    })
+                    if (routeReady) {
+                        break
+                    }
+                    if (attempt + 1 < targetManifest.healthcheck.retries) {
+                        await sleep(targetManifest.healthcheck.intervalSeconds * 1_000)
+                    }
                 }
-                if (attempt + 1 < targetManifest.healthcheck.retries) {
-                    await sleep(targetManifest.healthcheck.intervalSeconds * 1_000)
+                if (!routeReady) {
+                    throw createAppError('DEPLOYMENT_ROLLBACK_ROUTE_PROBE_FAILED')
                 }
-            }
-            if (!routeReady) {
-                throw createAppError('DEPLOYMENT_ROLLBACK_ROUTE_PROBE_FAILED')
             }
             await engineAgentClient.disconnectContainerNetwork(target.containerId, { network: probeNetwork })
             const rolledBack = await update(id, { failureCode: 'MANUAL_ROLLBACK', finishedAt: now(), status: 'rolled-back' })
@@ -254,7 +260,7 @@ export const createDeploymentReleaseService = ({
             return rolledBack
         } catch (error) {
             const failureCode = error instanceof Error ? error.message.slice(0, 480) : 'UNKNOWN'
-            if (routeSwitched) {
+            if (routeSwitched && isPublished(manifest)) {
                 await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName)).catch(() => undefined)
             }
             if (targetStarted) {
@@ -271,7 +277,9 @@ export const createDeploymentReleaseService = ({
             const manifest = await deploymentManifestService.get(release.manifestId)
             if (release.status === 'rolling-back') {
                 try {
-                    await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName))
+                    if (isPublished(manifest)) {
+                        await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName))
+                    }
                     if (release.previousReleaseId) {
                         const target = await get(release.previousReleaseId)
                         if (target.containerId) {
@@ -301,11 +309,11 @@ export const createDeploymentReleaseService = ({
             if (release.status === 'switching' || release.status === 'observing') {
                 let routeRestored: boolean
                 try {
-                    if (release.previousReleaseId) {
-                        const previous = await get(release.previousReleaseId)
-                        const previousManifest = await deploymentManifestService.get(previous.manifestId)
+                    const previous = release.previousReleaseId ? await get(release.previousReleaseId) : undefined
+                    const previousManifest = previous ? await deploymentManifestService.get(previous.manifestId) : undefined
+                    if (previous && previousManifest && isPublished(previousManifest)) {
                         await nginxProxyRouteService.upsert(routeInput(previousManifest, previous.containerName))
-                    } else {
+                    } else if (!previous && isPublished(manifest)) {
                         const route = (await nginxProxyRouteService.list()).find(
                             (candidate) => candidate.hostname === manifest.route.hostname && candidate.path === manifest.route.path,
                         )
@@ -470,36 +478,51 @@ export const createDeploymentReleaseService = ({
                 await engineAgentClient.connectContainerNetwork(containerId, { network: manifest.network })
                 await engineAgentClient.disconnectContainerNetwork(containerId, { network: probeNetwork })
                 await update(id, { status: 'switching' })
-                const switched = await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName))
-                switchedRoute = { id: switched.route.id }
-                await update(id, { nginxConfigSha256: switched.configSha256, nginxRouteId: switched.route.id, status: 'observing' })
-                failureStage = 'route'
-                let routeReady = false
-                for (let attempt = 0; attempt < manifest.healthcheck.retries; attempt += 1) {
-                    routeReady = await routeProbe({
+                if (isPublished(manifest)) {
+                    const switched = await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName))
+                    switchedRoute = { id: switched.route.id }
+                    await update(id, { nginxConfigSha256: switched.configSha256, nginxRouteId: switched.route.id, status: 'observing' })
+                    failureStage = 'route'
+                    let routeReady = false
+                    for (let attempt = 0; attempt < manifest.healthcheck.retries; attempt += 1) {
+                        routeReady = await routeProbe({
+                            hostname: manifest.route.hostname,
+                            path: publicHealthPath(manifest),
+                            timeoutMs: manifest.healthcheck.timeoutSeconds * 1_000,
+                        })
+                        if (routeReady) {
+                            break
+                        }
+                        if (attempt + 1 < manifest.healthcheck.retries) {
+                            await sleep(manifest.healthcheck.intervalSeconds * 1_000)
+                        }
+                    }
+                    if (!routeReady) {
+                        throw createAppError('DEPLOYMENT_ROUTE_PROBE_FAILED')
+                    }
+                } else {
+                    await update(id, { status: 'observing' })
+                }
+                failureStage = 'observation'
+                await sleep(manifest.rollout.observationSeconds * 1_000)
+                if (isPublished(manifest)) {
+                    const finalProbe = await routeProbe({
                         hostname: manifest.route.hostname,
                         path: publicHealthPath(manifest),
                         timeoutMs: manifest.healthcheck.timeoutSeconds * 1_000,
                     })
-                    if (routeReady) {
-                        break
+                    if (!finalProbe) {
+                        throw createAppError('DEPLOYMENT_OBSERVATION_FAILED')
                     }
-                    if (attempt + 1 < manifest.healthcheck.retries) {
-                        await sleep(manifest.healthcheck.intervalSeconds * 1_000)
+                } else {
+                    const finalProbe = await engineAgentClient.probeContainer(containerId, {
+                        path: manifest.healthcheck.path,
+                        port: manifest.internalPort,
+                        timeoutMs: manifest.healthcheck.timeoutSeconds * 1_000,
+                    })
+                    if (!finalProbe.healthy) {
+                        throw createAppError('DEPLOYMENT_OBSERVATION_FAILED')
                     }
-                }
-                if (!routeReady) {
-                    throw createAppError('DEPLOYMENT_ROUTE_PROBE_FAILED')
-                }
-                failureStage = 'observation'
-                await sleep(manifest.rollout.observationSeconds * 1_000)
-                const finalProbe = await routeProbe({
-                    hostname: manifest.route.hostname,
-                    path: publicHealthPath(manifest),
-                    timeoutMs: manifest.healthcheck.timeoutSeconds * 1_000,
-                })
-                if (!finalProbe) {
-                    throw createAppError('DEPLOYMENT_OBSERVATION_FAILED')
                 }
                 const healthyRelease = await update(id, { activatedAt: now(), finishedAt: now(), status: 'healthy' })
                 if (previous?.containerId) {
@@ -524,9 +547,9 @@ export const createDeploymentReleaseService = ({
                 let rollbackSucceeded = false
                 if (switchedRoute) {
                     try {
-                        if (previous && previousManifest) {
+                        if (previous && previousManifest && isPublished(previousManifest)) {
                             await nginxProxyRouteService.upsert(routeInput(previousManifest, previous.containerName))
-                        } else {
+                        } else if (isPublished(manifest)) {
                             await nginxProxyRouteService.remove(switchedRoute.id, `${manifest.route.hostname}${manifest.route.path}`)
                         }
                         rollbackSucceeded = true

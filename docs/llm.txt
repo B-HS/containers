@@ -130,6 +130,11 @@ Jobs:            operation_job(id, kind, status, payload, result, resourceKey,
                  operation_job_event(id, jobId, event, detail)
                           detail.step='failure-diagnostics' → 배포 실패 진단
                           (exitCode, stateError, stage, logLines 20줄, 리댁션 적용)
+compose stack:   manifest route 는 nullable 이다. route=null 이면 내부 서비스라
+                 nginx 라우트를 만들지 않고 컨테이너 probe 로만 관찰한다.
+                 compose 변환은 패널 label(containers.route.hostname 등)로 라우팅을
+                 받고 privileged·host namespace·docker socket·호스트 bind mount·
+                 평문 environment 를 400 으로 거부한다.
 Nginx routes:    nginx_route(id, hostname, path, pathMode, targetContainer,
                           targetPort, protocol, stripPrefix, timeoutSeconds,
                           bodySizeMegabytes, enabled)

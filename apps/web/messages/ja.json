@@ -186,6 +186,7 @@
         "deploymentFailureUnknown": "確認できません",
         "deploymentHealthPath": "ヘルスチェックパス",
         "deploymentImagesRequired": "利用できるイメージがないためmanifestを作成できません。",
+        "deploymentInternalService": "内部サービス（公開ルートなし）",
         "deploymentManifest": "Manifest",
         "deploymentManifestCreate": "不変 Manifest を作成",
         "deploymentManifestCreated": "デプロイmanifestを作成しました。",

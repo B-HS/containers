@@ -2,9 +2,9 @@ import { z } from 'zod'
 import { deploymentSecretBindingSchema } from './deployment-secret'
 import { containerRuntimeSchema } from './container-runtime'
 
-const deploymentNameSchema = z.string().regex(/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/)
-const deploymentVersionSchema = z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,62}[A-Za-z0-9])?$/)
-const imageDigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
+export const deploymentNameSchema = z.string().regex(/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/)
+export const deploymentVersionSchema = z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,62}[A-Za-z0-9])?$/)
+export const imageDigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
 const environmentKeySchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/)
 const hostnameSchema = z
     .string()
@@ -43,11 +43,14 @@ export const deploymentManifestInputSchema = z
             observationSeconds: z.number().int().min(10).max(3_600).default(60),
             rollbackRetentionSeconds: z.number().int().min(60).max(604_800).default(86_400),
         }),
-        route: z.object({
-            hostname: hostnameSchema,
-            path: routePathSchema.default('/'),
-            stripPrefix: z.boolean().default(false),
-        }),
+        route: z
+            .object({
+                hostname: hostnameSchema,
+                path: routePathSchema.default('/'),
+                stripPrefix: z.boolean().default(false),
+            })
+            .nullable()
+            .default(null),
         secrets: z.array(deploymentSecretBindingSchema).max(128).default([]),
         version: deploymentVersionSchema,
         volumes: z

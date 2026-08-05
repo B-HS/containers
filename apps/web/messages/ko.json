@@ -186,6 +186,7 @@
         "deploymentFailureUnknown": "확인할 수 없음",
         "deploymentHealthPath": "Health check 경로",
         "deploymentImagesRequired": "사용할 수 있는 이미지가 없어 manifest를 만들 수 없습니다.",
+        "deploymentInternalService": "내부 서비스 (공개 라우트 없음)",
         "deploymentManifest": "Manifest",
         "deploymentManifestCreate": "불변 Manifest 생성",
         "deploymentManifestCreated": "배포 manifest를 만들었습니다.",
