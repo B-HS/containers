@@ -72,6 +72,7 @@ export const NAV_SECTIONS: NavSection[] = [
             { href: '/users', icon: 'Users', key: 'users', requiredPermission: 'isOwner' },
             { href: '/audit', icon: 'ScrollText', key: 'audit', requiredPermission: 'canViewAudit' },
             { href: '/panel-settings', icon: 'Globe', key: 'panelSettings', requiredPermission: 'isOwner' },
+            { href: '/trusted-proxies', icon: 'ShieldCheck', key: 'trustedProxies', requiredPermission: 'isOwner' },
         ],
     },
 ]

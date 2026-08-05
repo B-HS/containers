@@ -82,6 +82,10 @@ export const QUERY_KEY = {
         BACKUP_SCHEDULE: ['job', 'backup-schedule'] as const,
         DETAIL: (jobId: string) => ['job', 'detail', jobId] as const,
     },
+    TRUSTED_PROXY: {
+        ALL: ['trusted-proxy'] as const,
+        STATE: ['trusted-proxy', 'state'] as const,
+    },
     PANEL_SETTING: {
         ALL: ['panel-setting'] as const,
         DETAIL: ['panel-setting', 'detail'] as const,

@@ -680,6 +680,26 @@
         "trafficSummary": "트래픽 요약",
         "trafficTopPaths": "상위 경로",
         "trafficViewDetails": "자세히 보기",
+        "trustedProxy": "신뢰 프록시",
+        "trustedProxyAddress": "주소",
+        "trustedProxyApprove": "승인",
+        "trustedProxyApproveFailed": "승인하지 못했습니다.",
+        "trustedProxyApproveSucceeded": "승인했습니다.",
+        "trustedProxyApproved": "승인된 프록시",
+        "trustedProxyApprovedEmpty": "승인된 프록시가 없습니다.",
+        "trustedProxyCandidates": "승인 대기 후보",
+        "trustedProxyCandidatesDescription": "최근 access log 에서 관찰된, 아직 신뢰하지 않는 source 주소입니다.",
+        "trustedProxyCandidatesEmpty": "후보가 없습니다.",
+        "trustedProxyCandidatesEmptyDescription": "외부에서 한 번 접속하면 여기에 나타납니다.",
+        "trustedProxyEffective": "nginx 적용값: {sources}",
+        "trustedProxyHostname": "역방향 DNS",
+        "trustedProxyHostnameUnknown": "조회 실패",
+        "trustedProxyHosts": "요청 host",
+        "trustedProxyNote": "메모",
+        "trustedProxyNotice": "앞단 프록시에서 온 요청의 실제 클라이언트 IP 를 인정할 주소입니다. 승인해야 rate limit 과 감사 로그가 클라이언트별로 동작합니다.",
+        "trustedProxyRequests": "요청 수",
+        "trustedProxyRevokeFailed": "해제하지 못했습니다.",
+        "trustedProxyRevoked": "신뢰를 해제했습니다.",
         "unpause": "재개",
         "unreachable": "연결 실패",
         "updated": "변경되었습니다.",
@@ -748,6 +768,7 @@
             "prune": "리소스 정리",
             "registry": "Registry",
             "traffic": "트래픽 분석",
+            "trustedProxies": "신뢰 프록시",
             "users": "운영자·역할"
         },
         "subtitles": {
@@ -772,6 +793,7 @@
             "prune": "사용하지 않는 Docker 리소스 정리 작업을 시작합니다.",
             "registry": "Registry credential과 이미지 pull 작업을 관리합니다.",
             "traffic": "최근 60분간의 트래픽 요약과 실시간 요청을 확인합니다.",
+            "trustedProxies": "앞단 프록시의 실제 클라이언트 IP 를 인정할 주소를 승인합니다.",
             "users": "운영자 계정과 역할을 관리합니다."
         }
     }
