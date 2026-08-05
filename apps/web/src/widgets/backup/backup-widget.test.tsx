@@ -49,6 +49,23 @@ const openRestoreDialog = async (label: string) => {
 
 afterEach(cleanup)
 
+describe('BackupWidget 권한 게이팅', () => {
+    test('관리 권한이 없으면 목록 대신 권한 안내만 보여준다', async () => {
+        render(<BackupWidget canManage={false} />, { wrapper: Wrapper })
+
+        expect(await screen.findByText('permissionRequired')).toBeDefined()
+        expect(screen.queryByText('with-secrets')).toBeNull()
+        expect(document.querySelector('table')).toBeNull()
+    })
+
+    test('관리 권한이 있으면 백업 목록을 보여준다', async () => {
+        render(<BackupWidget canManage />, { wrapper: Wrapper })
+
+        expect(await screen.findByText('with-secrets')).toBeDefined()
+        expect(screen.queryByText('permissionRequired')).toBeNull()
+    })
+})
+
 describe('BackupWidget 복구 다이얼로그', () => {
     test('시크릿을 포함한 백업이면 암호 입력을 보여준다', async () => {
         await openRestoreDialog('with-secrets')
