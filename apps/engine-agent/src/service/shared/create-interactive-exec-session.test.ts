@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { WSContext } from 'hono/ws'
 import { createInteractiveExecSession } from './create-interactive-exec-session'
-import { createInteractiveExecService } from '../domain/create-interactive-exec-service'
+import { createInteractiveExecService, MAX_ACTIVE_INTERACTIVE_EXEC_SESSIONS } from '../domain/create-interactive-exec-service'
 
 type SocketHandlers = Map<'data' | 'end' | 'error', (chunk?: unknown) => void>
 
@@ -23,7 +23,7 @@ type FakeWebSocket = {
     bufferedAmount: number
 }
 
-const createTestFixture = async () => {
+const createTestFixture = async (handshakeTimeoutMs?: number) => {
     const sockets: FakeSocket[] = []
     const service = createInteractiveExecService({
         dockerEngineClient: {
@@ -64,6 +64,7 @@ const createTestFixture = async () => {
         interactiveExecService: service,
         ticket: ticket.ticket,
         limits: {
+            handshakeTimeoutMs: handshakeTimeoutMs ?? 30 * 1_000,
             idleTimeoutMs: 5 * 60 * 1_000,
             maxBufferedOutputBytes: 1_048_576,
             maxDurationMs: 30 * 60 * 1_000,
@@ -86,6 +87,39 @@ const createWebSocket = (): { context: WSContext; websocket: FakeWebSocket } => 
 }
 
 describe('Interactive exec session', () => {
+    test('연결이 열리지 않은 세션은 handshake 시간이 지나면 slot 을 반납합니다', async () => {
+        const { service } = await createTestFixture(1)
+        await Bun.sleep(10)
+
+        const reopened = await service.createTicket('container-id', { columns: 120, command: ['/bin/sh'], environment: [], rows: 30 })
+
+        expect(() => service.consumeTicket(reopened.ticket)).not.toThrow()
+    })
+
+    test('열리지 않은 세션이 쌓여도 동시 상한을 막지 않습니다', async () => {
+        const { service } = await createTestFixture(1)
+
+        for (let attempt = 0; attempt < MAX_ACTIVE_INTERACTIVE_EXEC_SESSIONS + 2; attempt += 1) {
+            const created = await service.createTicket('container-id', { columns: 120, command: ['/bin/sh'], environment: [], rows: 30 })
+            createInteractiveExecSession({
+                interactiveExecService: service,
+                ticket: created.ticket,
+                limits: {
+                    handshakeTimeoutMs: 1,
+                    idleTimeoutMs: 1_000,
+                    maxBufferedOutputBytes: 1_024,
+                    maxDurationMs: 1_000,
+                    maxPendingInputBytes: 1_024,
+                },
+            })
+            await Bun.sleep(3)
+        }
+
+        const final = await service.createTicket('container-id', { columns: 120, command: ['/bin/sh'], environment: [], rows: 30 })
+
+        expect(() => service.consumeTicket(final.ticket)).not.toThrow()
+    })
+
     test('onOpen은 attach 후 ready 메시지를 보냅니다', async () => {
         const { session, sockets } = await createTestFixture()
         const { context, websocket } = createWebSocket()

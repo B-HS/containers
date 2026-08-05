@@ -4,6 +4,7 @@ import type { InteractiveExecService } from '../domain/create-interactive-exec-s
 import { createInteractiveExecSessionGuard } from './create-interactive-exec-session-guard'
 
 type InteractiveExecSessionLimits = {
+    handshakeTimeoutMs: number
     idleTimeoutMs: number
     maxBufferedOutputBytes: number
     maxDurationMs: number
@@ -40,7 +41,7 @@ export const createInteractiveExecSession = ({
     limits,
 }: InteractiveExecSessionDependencies): InteractiveExecSessionHandlers => {
     const record = interactiveExecService.consumeTicket(ticket)
-    const { idleTimeoutMs, maxBufferedOutputBytes, maxDurationMs, maxPendingInputBytes } = limits
+    const { handshakeTimeoutMs, idleTimeoutMs, maxBufferedOutputBytes, maxDurationMs, maxPendingInputBytes } = limits
 
     let attachedSocket: AttachedSocket | undefined
     let execId: string | undefined
@@ -54,9 +55,12 @@ export const createInteractiveExecSession = ({
     const releaseSession = () => {
         if (!released) {
             released = true
+            clearTimeout(handshakeTimer)
             interactiveExecService.releaseSession(record.sessionId)
         }
     }
+
+    const handshakeTimer = setTimeout(releaseSession, handshakeTimeoutMs)
     const closeSession = (websocket: WSContext, message: string, code: number) => {
         closed = true
         sessionGuard?.stop()
@@ -106,6 +110,7 @@ export const createInteractiveExecSession = ({
             }
         },
         onOpen: (_event, websocket) => {
+            clearTimeout(handshakeTimer)
             sessionGuard = createInteractiveExecSessionGuard({
                 idleTimeoutMs,
                 maxDurationMs,

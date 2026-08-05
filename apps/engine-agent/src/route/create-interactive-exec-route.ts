@@ -8,6 +8,7 @@ import { createInteractiveExecSession } from '../service/shared/create-interacti
 import { withErrorHandling, type AgentRouteContext } from '../lib/with-error-handling'
 
 const { upgradeWebSocket } = createBunWebSocket()
+const INTERACTIVE_EXEC_HANDSHAKE_TIMEOUT_MS = 30 * 1_000
 const INTERACTIVE_EXEC_IDLE_TIMEOUT_MS = 5 * 60 * 1_000
 const INTERACTIVE_EXEC_MAX_DURATION_MS = 30 * 60 * 1_000
 const INTERACTIVE_EXEC_MAX_BUFFERED_OUTPUT_BYTES = 1_048_576
@@ -16,6 +17,7 @@ const INTERACTIVE_EXEC_MAX_PENDING_INPUT_BYTES = 65_536
 type InteractiveExecRouteDependencies = {
     interactiveExecService: InteractiveExecService
     limits?: {
+        handshakeTimeoutMs?: number
         idleTimeoutMs?: number
         maxBufferedOutputBytes?: number
         maxDurationMs?: number
@@ -25,6 +27,7 @@ type InteractiveExecRouteDependencies = {
 
 export const createInteractiveExecRoute = ({ interactiveExecService, limits = {} }: InteractiveExecRouteDependencies) => {
     const sessionLimits = {
+        handshakeTimeoutMs: limits.handshakeTimeoutMs ?? INTERACTIVE_EXEC_HANDSHAKE_TIMEOUT_MS,
         idleTimeoutMs: limits.idleTimeoutMs ?? INTERACTIVE_EXEC_IDLE_TIMEOUT_MS,
         maxBufferedOutputBytes: limits.maxBufferedOutputBytes ?? INTERACTIVE_EXEC_MAX_BUFFERED_OUTPUT_BYTES,
         maxDurationMs: limits.maxDurationMs ?? INTERACTIVE_EXEC_MAX_DURATION_MS,
