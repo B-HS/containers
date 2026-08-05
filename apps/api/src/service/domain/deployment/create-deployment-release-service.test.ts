@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import type { DeploymentFailureDiagnostics } from '@containers/contracts/deployment'
+import { containerLogRequestSchema } from '@containers/contracts/engine'
 import { containerActionSchema, containerCreateRequestSchema, containerNetworkAttachmentSchema } from '@containers/contracts/engine-control'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { deploymentRelease, user } from '@containers/db-schema/schema'
@@ -19,11 +21,13 @@ afterEach(async () => {
 })
 
 const createTestContext = async ({
+    containerLogStderr = 'nginx: [emerg] mkdir("/var/cache/nginx") failed (30: Read-only file system)',
     health = true,
     manifestSecrets = [],
     resolvedEnvironment = [],
     routeProbes = [true, true],
 }: {
+    containerLogStderr?: string
     health?: boolean
     manifestSecrets?: Array<{ environmentKey: string; reference: string }>
     resolvedEnvironment?: string[]
@@ -75,6 +79,39 @@ const createTestContext = async ({
     })
     const operations: string[] = []
     const createdEnvironments: string[][] = []
+    const logTails: number[] = []
+    const containerDetail = {
+        args: [],
+        command: ['/entrypoint.sh'],
+        createdAt: timestamp.toISOString(),
+        entrypoint: [],
+        environmentKeys: ['PATH'],
+        exposedPorts: ['3000/tcp'],
+        hostname: 'new-container',
+        id: 'new-container-id',
+        image: imageDigest,
+        labelKeys: [],
+        mounts: [],
+        name: 'new-container',
+        networks: [],
+        platform: 'linux',
+        restartCount: 0,
+        state: {
+            error: 'container init failed',
+            exitCode: 137,
+            finishedAt: timestamp.toISOString(),
+            health: null,
+            paused: false,
+            pid: 0,
+            restarting: false,
+            running: false,
+            startedAt: timestamp.toISOString(),
+            status: 'exited',
+        },
+        user: 'app',
+        workingDirectory: '/app',
+    }
+    const containerLogs = { stderr: containerLogStderr, stdout: '', truncated: false }
     let routeProbeIndex = 0
     const releaseService = createDeploymentReleaseService({
         probeNetwork: 'containers_probe',
@@ -101,6 +138,11 @@ const createTestContext = async ({
                 const parsedAction = containerActionSchema.parse(action)
                 operations.push(parsedAction.action)
                 return { operation: parsedAction.action, targetId: 'new-container-id' }
+            },
+            getContainer: async () => containerDetail,
+            getContainerLogs: async (_containerId, input) => {
+                logTails.push(containerLogRequestSchema.parse(input).tail)
+                return containerLogs
             },
             probeContainer: async () => ({ error: health ? null : 'HTTP_503', healthy: health, latencyMs: 1, statusCode: health ? 200 : 503 }),
         },
@@ -155,7 +197,7 @@ const createTestContext = async ({
         sleep: async () => undefined,
     })
 
-    return { ...database, actorId, createdEnvironments, manifest, manifestService, operations, releaseService }
+    return { ...database, actorId, createdEnvironments, logTails, manifest, manifestService, operations, releaseService }
 }
 
 describe('blue-green deployment release', () => {
@@ -199,6 +241,54 @@ describe('blue-green deployment release', () => {
         expect(result.status).toBe('failed')
         expect(result.failureCode).toBe('DEPLOYMENT_HEALTHCHECK_FAILED')
         expect(operations).toEqual(['create', 'stop', 'disconnect-probe'])
+        sqlite.close()
+    })
+
+    test('health 실패 시 종료 코드와 리댁션한 로그 꼬리를 진단으로 보고합니다', async () => {
+        const { actorId, logTails, manifest, releaseService, sqlite } = await createTestContext({
+            containerLogStderr: 'REGISTRY_TOKEN=super-secret\nchown("/tmp/client_temp", 101) failed (1: Operation not permitted)',
+            health: false,
+        })
+        const release = await releaseService.create(actorId, manifest.id)
+        const reported: DeploymentFailureDiagnostics[] = []
+        await releaseService.run(release.id, {
+            reportDiagnostics: async (diagnostics) => {
+                reported.push(diagnostics)
+            },
+        })
+
+        expect(reported).toHaveLength(1)
+        expect(reported[0]?.stage).toBe('probe')
+        expect(reported[0]?.exitCode).toBe(137)
+        expect(reported[0]?.stateError).toBe('container init failed')
+        expect(reported[0]?.running).toBe(false)
+        expect(reported[0]?.releaseId).toBe(release.id)
+        expect(reported[0]?.logLines).toEqual(['REGISTRY_TOKEN=[REDACTED]', 'chown("/tmp/client_temp", 101) failed (1: Operation not permitted)'])
+        expect(logTails).toEqual([20])
+        sqlite.close()
+    })
+
+    test('route observation 실패는 observation 단계로 진단합니다', async () => {
+        const { actorId, manifest, releaseService, sqlite } = await createTestContext({ routeProbes: [true, false] })
+        const release = await releaseService.create(actorId, manifest.id)
+        const reported: DeploymentFailureDiagnostics[] = []
+        await releaseService.run(release.id, {
+            reportDiagnostics: async (diagnostics) => {
+                reported.push(diagnostics)
+            },
+        })
+
+        expect(reported[0]?.stage).toBe('observation')
+        sqlite.close()
+    })
+
+    test('진단 보고자가 없으면 실패 처리를 그대로 유지합니다', async () => {
+        const { actorId, logTails, manifest, releaseService, sqlite } = await createTestContext({ health: false })
+        const release = await releaseService.create(actorId, manifest.id)
+        const result = await releaseService.run(release.id)
+
+        expect(result.status).toBe('failed')
+        expect(logTails).toEqual([])
         sqlite.close()
     })
 

@@ -113,6 +113,22 @@ export const deploymentReleaseSchema = z.object({
 
 export const deploymentReleaseListSchema = z.array(deploymentReleaseSchema)
 
+export const DEPLOYMENT_FAILURE_DIAGNOSTICS_STEP = 'failure-diagnostics'
+
+export const deploymentFailureDiagnosticsSchema = z.object({
+    containerId: z.string().min(1),
+    containerName: z.string().min(1),
+    exitCode: z.number().int().nullable(),
+    finishedAt: z.string().nullable(),
+    logLines: z.array(z.string()),
+    releaseId: z.uuid(),
+    running: z.boolean().nullable(),
+    stage: z.enum(['probe', 'route', 'observation']),
+    stateError: z.string().nullable(),
+    step: z.literal(DEPLOYMENT_FAILURE_DIAGNOSTICS_STEP),
+})
+
+export type DeploymentFailureDiagnostics = z.infer<typeof deploymentFailureDiagnosticsSchema>
 export type DeploymentManifest = z.infer<typeof deploymentManifestSchema>
 export type DeploymentManifestInput = z.infer<typeof deploymentManifestInputSchema>
 export type DeploymentRelease = z.infer<typeof deploymentReleaseSchema>

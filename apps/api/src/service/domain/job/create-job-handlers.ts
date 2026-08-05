@@ -91,9 +91,11 @@ export const createJobHandlers = ({
         return { deploymentId: deployment.id, messages: deployment.messages }
     }
 
-    const handleDeployRelease: OperationJobHandler = async ({ job }) => {
+    const handleDeployRelease: OperationJobHandler = async ({ job, reportProgress }) => {
         const payload = deployReleaseJobPayloadSchema.parse(job.payload)
-        const release = await deploymentReleaseService.run(payload.releaseId)
+        const release = await deploymentReleaseService.run(payload.releaseId, {
+            reportDiagnostics: (diagnostics) => reportProgress(diagnostics.step, { ...diagnostics }),
+        })
         if (release.status !== 'healthy') {
             throw createJobError(release.failureCode ?? 'DEPLOYMENT_RELEASE_FAILED', { terminal: true })
         }

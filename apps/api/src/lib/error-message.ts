@@ -66,6 +66,7 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.DEPLOYMENT_NETWORK_PROTECTED]: '배포 네트워크는 보호되어 변경할 수 없습니다.',
     [ERROR_CODE.DEPLOYMENT_OBSERVATION_FAILED]: '배포 관찰에 실패했습니다.',
     [ERROR_CODE.DEPLOYMENT_RELEASE_CREATE_FAILED]: '배포 릴리스를 생성할 수 없습니다.',
+    [ERROR_CODE.DEPLOYMENT_RELEASE_FAILED]: '배포 릴리스에 실패했습니다.',
     [ERROR_CODE.DEPLOYMENT_RELEASE_GET_FAILED]: '배포 릴리스를 조회할 수 없습니다.',
     [ERROR_CODE.DEPLOYMENT_RELEASE_IN_PROGRESS]: '배포 릴리스가 진행 중입니다.',
     [ERROR_CODE.DEPLOYMENT_RELEASE_LIST_FAILED]: '배포 릴리스 목록을 조회할 수 없습니다.',

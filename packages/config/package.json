@@ -9,6 +9,7 @@
         "./env": "./src/env.ts",
         "./keyring": "./src/keyring.ts",
         "./origin": "./src/origin.ts",
+        "./redact-log": "./src/redact-log.ts",
         "./secret": "./src/secret.ts"
     },
     "scripts": {

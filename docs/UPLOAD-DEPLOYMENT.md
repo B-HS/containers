@@ -100,7 +100,7 @@ critical vulnerability는 기본 차단한다. owner 예외에는 finding, 사�
 ### 6.2 실패 처리
 
 - create 이전 실패: artifact 상태만 실패로 기록한다.
-- health 실패: 신규 container log·inspect를 보존하고 route를 바꾸지 않는다.
+- health 실패: 신규 container log·inspect를 보존하고 route를 바꾸지 않는다. 보존 형태는 durable job event `detail`(`step: 'failure-diagnostics'`)이며 exit code·container error·리댁션한 로그 20줄을 담는다. 패널은 배포 화면의 실패 릴리스에서 이를 펼쳐 볼 수 있고, 조회 권한은 job event 와 같다(세션 owner·admin, API key `job:read`).
 - Nginx 적용 실패: 기존 route가 유지되어야 한다.
 - 적용 후 관찰 실패: 이전 Nginx revision을 복원하고 신규 container를 격리한다.
 - cleanup 실패: 배포 성공과 cleanup warning을 구분하고 재시도 job을 만든다.

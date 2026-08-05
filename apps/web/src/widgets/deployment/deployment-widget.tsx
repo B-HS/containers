@@ -4,6 +4,8 @@ import type { FC } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import type { DeploymentManifestInput } from '@containers/contracts/deployment'
+import { deploymentFailureDiagnosticsSchema } from '@containers/contracts/deployment'
+import { OPERATION_JOB_KIND } from '@containers/contracts/operation-job'
 import {
     useCreateDeploymentManifest,
     useCreateDeploymentRelease,
@@ -13,7 +15,9 @@ import {
 } from '@entities/deployment/deployment.query'
 import { useGetImages } from '@entities/image/image.query'
 import { useGetInfrastructure } from '@entities/infrastructure/infrastructure.query'
+import { useGetJobEvents, useGetJobsByKind } from '@entities/job/job.query'
 import { ConfirmActionDialog } from '@features/confirm-action-dialog/confirm-action-dialog'
+import { DeploymentFailureDetail } from '@features/deployment-failure-detail/deployment-failure-detail'
 import { DeploymentManifestForm } from '@features/deployment-manifest-form/deployment-manifest-form'
 import { DeploymentReleaseProgress } from '@features/deployment-release-progress/deployment-release-progress'
 import { Badge } from '@shared/ui/badge'
@@ -25,6 +29,8 @@ import { useMasterDetailSelection } from '@shared/common/master-detail/use-maste
 import { WidgetSection } from '@shared/common/widget-section'
 
 const ACTIVE_RELEASE_STATUSES: string[] = ['creating', 'observing', 'probing', 'rolling-back', 'switching']
+const FAILED_RELEASE_STATUSES: string[] = ['failed', 'rolled-back']
+const JOB_VIEWER_ROLES = ['owner', 'admin']
 
 type DeploymentWidgetProps = {
     role: string
@@ -42,8 +48,15 @@ export const DeploymentWidget: FC<DeploymentWidgetProps> = ({ role }) => {
     const createRelease = useCreateDeploymentRelease()
     const rollbackRelease = useRollbackDeploymentRelease()
     const { onSelect, selectedId, selectedItem: selectedManifest } = useMasterDetailSelection(manifests)
-    const canManage = ['owner', 'admin'].includes(role)
+    const canManage = JOB_VIEWER_ROLES.includes(role)
     const selectedRelease = releases.find((release) => release.manifestId === selectedManifest?.id)
+    const releaseFailed = selectedRelease !== undefined && FAILED_RELEASE_STATUSES.includes(selectedRelease.status)
+    const releaseJobs = useGetJobsByKind(OPERATION_JOB_KIND.DEPLOY_RELEASE, canManage && releaseFailed).data ?? []
+    const releaseJob = releaseJobs.find((job) => job.payload.releaseId === selectedRelease?.id)
+    const releaseJobEvents = useGetJobEvents(releaseJob?.id ?? '', canManage && releaseFailed).data ?? []
+    const diagnostics = releaseJobEvents
+        .map((event) => deploymentFailureDiagnosticsSchema.safeParse(event.detail))
+        .findLast((parsed) => parsed.success)?.data
     const hasActiveDeployment = releases.some(
         (release) =>
             ACTIVE_RELEASE_STATUSES.includes(release.status) &&
@@ -123,6 +136,9 @@ export const DeploymentWidget: FC<DeploymentWidgetProps> = ({ role }) => {
                         </div>
                         <p className="truncate font-mono text-xs text-text-subtle">{selectedManifest.imageDigest}</p>
                         {selectedRelease ? <DeploymentReleaseProgress release={selectedRelease} /> : null}
+                        {releaseFailed && selectedRelease ? (
+                            <DeploymentFailureDetail diagnostics={diagnostics} failureCode={selectedRelease.failureCode} />
+                        ) : null}
                         {canManage ? (
                             <div className="flex flex-wrap items-center gap-2">
                                 <Button

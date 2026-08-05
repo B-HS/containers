@@ -14,7 +14,13 @@ type ComposeDeploymentReleaseDependencies = {
     deploymentSecretService: Pick<DeploymentSecretService, 'resolve'>
     engineAgentClient: Pick<
         EngineAgentClient,
-        'connectContainerNetwork' | 'createContainer' | 'disconnectContainerNetwork' | 'performContainerAction' | 'probeContainer'
+        | 'connectContainerNetwork'
+        | 'createContainer'
+        | 'disconnectContainerNetwork'
+        | 'getContainer'
+        | 'getContainerLogs'
+        | 'performContainerAction'
+        | 'probeContainer'
     >
     nginxProxyRouteService: Pick<NginxProxyRouteService, 'list' | 'remove' | 'upsert'>
     routeProbe: (input: { hostname: string; path: string; timeoutMs: number }) => Promise<boolean>

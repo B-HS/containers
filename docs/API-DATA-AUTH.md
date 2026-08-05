@@ -172,6 +172,7 @@ snapshot은 짧게 보존하고 현재 판단에 사용하지 않는다.
 - `deployment_version`: deploymentId, artifactId, imageDigest, containerId, manifestJson, status
 - 현재 `operation_job`: id, kind, status, payload, result, resourceKey, failureCode, attempt, maxAttempts, progressStep, createdBy, scheduledAt, startedAt, heartbeatAt, cancelRequestedAt, finishedAt, createdAt, updatedAt
 - 현재 `operation_job_event`: id, jobId, event, detail, createdAt
+- `detail` 은 자유 JSON 객체다. `event: 'progress'` 중 `detail.step === 'failure-diagnostics'` 인 항목은 배포 실패 진단이며 `deploymentFailureDiagnosticsSchema`(contracts `deployment`)로 파싱된다 — exit code, container error, 리댁션한 로그 20줄. 저장 정책은 `SECURITY.md` §19.
 - resource lock은 `operation_job.resource_key`와 `(kind, resource_key)` index로 제공한다. enqueue가 같은 kind·resource의 active job이 있으면 새 job을 만들지 않고 기존 job을 반환한다.
 - 향후 범용 idempotency metadata는 operation별 계약이 확정될 때 migration으로 추가한다.
 

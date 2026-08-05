@@ -81,6 +81,8 @@ export const QUERY_KEY = {
         LIST: ['job', 'list'] as const,
         BACKUP_SCHEDULE: ['job', 'backup-schedule'] as const,
         DETAIL: (jobId: string) => ['job', 'detail', jobId] as const,
+        EVENTS: (jobId: string) => ['job', 'events', jobId] as const,
+        LIST_BY_KIND: (kind: string) => ['job', 'list', kind] as const,
     },
     TRUSTED_PROXY: {
         ALL: ['trusted-proxy'] as const,

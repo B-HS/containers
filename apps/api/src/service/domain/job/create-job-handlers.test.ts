@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import type { DeploymentRelease } from '@containers/contracts/deployment'
+import type { DeploymentFailureDiagnostics, DeploymentRelease } from '@containers/contracts/deployment'
+import { DEPLOYMENT_FAILURE_DIAGNOSTICS_STEP } from '@containers/contracts/deployment'
 import type { OperationJob } from '@containers/contracts/operation-job'
 import { createAppError } from '../../../lib/error'
 import { createJobHandlers } from './create-job-handlers'
@@ -505,6 +506,45 @@ describe('job handler factory', () => {
         )
         expect(failure?.message).toBe('DEPLOYMENT_PROBE_FAILED')
         expect(failure?.terminal).toBe(true)
+    })
+
+    test('deploy release handler 는 릴리스가 보고한 실패 진단을 job progress event 로 남깁니다', async () => {
+        const diagnostics = {
+            containerId: 'container-id',
+            containerName: 'workload-blue',
+            exitCode: 137,
+            finishedAt: '2026-08-01T00:00:00.000Z',
+            logLines: ['boom'],
+            releaseId: RELEASE_ID,
+            running: false,
+            stage: 'probe',
+            stateError: null,
+            step: DEPLOYMENT_FAILURE_DIAGNOSTICS_STEP,
+        } satisfies DeploymentFailureDiagnostics
+        const handlers = createJobHandlers({
+            ...idleDependencies,
+            deploymentReleaseService: {
+                ...unusedDependencies.deploymentReleaseService,
+                run: async (_id, options) => {
+                    await options?.reportDiagnostics?.(diagnostics)
+                    return createRelease({ failureCode: 'DEPLOYMENT_HEALTHCHECK_FAILED', status: 'failed' })
+                },
+            },
+        })
+        const reported: Array<{ detail: Record<string, unknown> | undefined; step: string }> = []
+        const job = createJob('deploy.release', { releaseId: RELEASE_ID }, ACTOR_ID)
+
+        await captureFailure(() =>
+            handlers['deploy.release']({
+                isCancelRequested: async () => false,
+                job,
+                reportProgress: async (step, detail) => {
+                    reported.push({ detail, step })
+                },
+            }),
+        )
+
+        expect(reported).toEqual([{ detail: { ...diagnostics }, step: DEPLOYMENT_FAILURE_DIAGNOSTICS_STEP }])
     })
 
     test('deploy rollback handler 는 rolled-back 만 성공으로 보고 그 외에는 failureCode 로 terminal 실패합니다', async () => {

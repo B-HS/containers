@@ -2,7 +2,14 @@
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { OPERATION_JOB_STATUS, backupScheduleSchema, operationJobListSchema, type OperationJob } from '@containers/contracts/operation-job'
+import {
+    OPERATION_JOB_STATUS,
+    backupScheduleSchema,
+    operationJobEventListSchema,
+    operationJobListSchema,
+    type OperationJob,
+    type OperationJobKind,
+} from '@containers/contracts/operation-job'
 import { ACTIVE_JOB_STATUSES, jobResponseSchema } from '@entities/job/job.api'
 import { clientFetch, clientFetchData } from '@shared/lib/client-fetch'
 import { QUERY_KEY } from '@shared/lib/query-key'
@@ -22,6 +29,20 @@ export const backupScheduleQueryOptions = () =>
     queryOptions({
         queryKey: QUERY_KEY.JOB.BACKUP_SCHEDULE,
         queryFn: async () => backupScheduleResponseSchema.parse(await clientFetch('/api/jobs/backup-schedule')).data,
+    })
+
+export const jobListByKindQueryOptions = (kind: OperationJobKind, enabled: boolean) =>
+    queryOptions({
+        queryKey: QUERY_KEY.JOB.LIST_BY_KIND(kind),
+        queryFn: () => clientFetchData<z.infer<typeof operationJobListSchema>>(`/api/jobs?kind=${encodeURIComponent(kind)}`),
+        enabled,
+    })
+
+export const jobEventsQueryOptions = (jobId: string, enabled: boolean) =>
+    queryOptions({
+        queryKey: QUERY_KEY.JOB.EVENTS(jobId),
+        queryFn: () => clientFetchData<z.infer<typeof operationJobEventListSchema>>(`/api/jobs/${encodeURIComponent(jobId)}/events`),
+        enabled: enabled && jobId.length > 0,
     })
 
 const operationJobDetailQueryOptions = (jobId: string) =>
@@ -61,6 +82,10 @@ export const useOperationJobPolling = ({ failureLabel, onSucceeded }: UseOperati
 }
 
 export const useGetJobs = () => useQuery(jobListQueryOptions())
+
+export const useGetJobsByKind = (kind: OperationJobKind, enabled: boolean) => useQuery(jobListByKindQueryOptions(kind, enabled))
+
+export const useGetJobEvents = (jobId: string, enabled: boolean) => useQuery(jobEventsQueryOptions(jobId, enabled))
 
 export const useGetBackupSchedule = () => useQuery(backupScheduleQueryOptions())
 

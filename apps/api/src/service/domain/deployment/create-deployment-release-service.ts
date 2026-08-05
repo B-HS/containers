@@ -1,6 +1,12 @@
-import type { DeploymentRelease } from '@containers/contracts/deployment'
+import type { DeploymentFailureDiagnostics, DeploymentRelease } from '@containers/contracts/deployment'
 import { randomUUID } from 'node:crypto'
-import { deploymentReleaseListSchema, deploymentReleaseSchema, type DeploymentManifest } from '@containers/contracts/deployment'
+import {
+    DEPLOYMENT_FAILURE_DIAGNOSTICS_STEP,
+    deploymentReleaseListSchema,
+    deploymentReleaseSchema,
+    type DeploymentManifest,
+} from '@containers/contracts/deployment'
+import { redactSecretLines } from '@containers/config/redact-log'
 import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
 import { createAppError } from '../../../lib/error'
 import type { NginxProxyRouteService } from '../nginx/create-nginx-proxy-route-service'
@@ -8,6 +14,7 @@ import type { DeploymentManifestService } from './create-deployment-manifest-ser
 import type { DeploymentSecretService } from './create-deployment-secret-service'
 
 const ACTIVE_RELEASE_STATUSES = ['creating', 'probing', 'switching', 'observing', 'rolling-back'] as const
+const DIAGNOSTIC_LOG_TAIL_LINES = 20
 
 type ReleaseRow = {
     activatedAt: Date | null
@@ -74,7 +81,13 @@ type DeploymentReleaseServiceDependencies = {
     deploymentSecretService: Pick<DeploymentSecretService, 'resolve'>
     engineAgentClient: Pick<
         EngineAgentClient,
-        'connectContainerNetwork' | 'createContainer' | 'disconnectContainerNetwork' | 'performContainerAction' | 'probeContainer'
+        | 'connectContainerNetwork'
+        | 'createContainer'
+        | 'disconnectContainerNetwork'
+        | 'getContainer'
+        | 'getContainerLogs'
+        | 'performContainerAction'
+        | 'probeContainer'
     >
     nginxProxyRouteService: Pick<NginxProxyRouteService, 'list' | 'remove' | 'upsert'>
     now: () => Date
@@ -82,7 +95,11 @@ type DeploymentReleaseServiceDependencies = {
     sleep: (milliseconds: number) => Promise<void>
 }
 
-export type { DeploymentReleaseServiceDb }
+type DeploymentReleaseRunOptions = {
+    reportDiagnostics?: (diagnostics: DeploymentFailureDiagnostics) => Promise<void>
+}
+
+export type { DeploymentReleaseRunOptions, DeploymentReleaseServiceDb }
 
 const toRelease = (record: ReleaseRow) =>
     deploymentReleaseSchema.parse({
@@ -132,6 +149,30 @@ export const createDeploymentReleaseService = ({
     const update = async (id: string, values: Omit<ReleaseUpdateValues, 'updatedAt'>) => {
         await db.update(id, { ...values, updatedAt: now() })
         return get(id)
+    }
+    const collectFailureDiagnostics = async (input: {
+        containerId: string
+        containerName: string
+        releaseId: string
+        stage: DeploymentFailureDiagnostics['stage']
+    }) => {
+        const [detail, logs] = await Promise.all([
+            engineAgentClient.getContainer(input.containerId).catch(() => undefined),
+            engineAgentClient.getContainerLogs(input.containerId, { tail: DIAGNOSTIC_LOG_TAIL_LINES }).catch(() => undefined),
+        ])
+        const stateError = detail?.state.error ?? ''
+        return {
+            containerId: input.containerId,
+            containerName: input.containerName,
+            exitCode: detail?.state.exitCode ?? null,
+            finishedAt: detail?.state.finishedAt ?? null,
+            logLines: redactSecretLines(`${logs?.stdout ?? ''}\n${logs?.stderr ?? ''}`, DIAGNOSTIC_LOG_TAIL_LINES),
+            releaseId: input.releaseId,
+            running: detail?.state.running ?? null,
+            stage: input.stage,
+            stateError: stateError.length > 0 ? stateError : null,
+            step: DEPLOYMENT_FAILURE_DIAGNOSTICS_STEP,
+        } satisfies DeploymentFailureDiagnostics
     }
     const prepareRollback = async (id: string) => {
         const release = await get(id)
@@ -367,7 +408,7 @@ export const createDeploymentReleaseService = ({
         list: async () => deploymentReleaseListSchema.parse((await db.list()).map(toRelease)),
         prepareRollback,
         reconcileInterrupted,
-        run: async (id: string) => {
+        run: async (id: string, options: DeploymentReleaseRunOptions = {}) => {
             const release = await get(id)
             if (release.status !== 'creating') {
                 throw createAppError('DEPLOYMENT_RELEASE_STATE_INVALID')
@@ -378,6 +419,7 @@ export const createDeploymentReleaseService = ({
             const previousManifest = previous ? await deploymentManifestService.get(previous.manifestId) : undefined
             let containerId: string | undefined
             let switchedRoute: { id: string } | undefined
+            let failureStage: DeploymentFailureDiagnostics['stage'] = 'probe'
 
             try {
                 const created = await engineAgentClient.createContainer({
@@ -431,6 +473,7 @@ export const createDeploymentReleaseService = ({
                 const switched = await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName))
                 switchedRoute = { id: switched.route.id }
                 await update(id, { nginxConfigSha256: switched.configSha256, nginxRouteId: switched.route.id, status: 'observing' })
+                failureStage = 'route'
                 let routeReady = false
                 for (let attempt = 0; attempt < manifest.healthcheck.retries; attempt += 1) {
                     routeReady = await routeProbe({
@@ -448,6 +491,7 @@ export const createDeploymentReleaseService = ({
                 if (!routeReady) {
                     throw createAppError('DEPLOYMENT_ROUTE_PROBE_FAILED')
                 }
+                failureStage = 'observation'
                 await sleep(manifest.rollout.observationSeconds * 1_000)
                 const finalProbe = await routeProbe({
                     hostname: manifest.route.hostname,
@@ -466,6 +510,17 @@ export const createDeploymentReleaseService = ({
                 return healthyRelease
             } catch (error) {
                 const failureCode = error instanceof Error ? error.message.slice(0, 512) : 'DEPLOYMENT_RELEASE_FAILED'
+                if (containerId && options.reportDiagnostics) {
+                    const diagnostics = await collectFailureDiagnostics({
+                        containerId,
+                        containerName: release.containerName,
+                        releaseId: release.id,
+                        stage: failureStage,
+                    }).catch(() => undefined)
+                    if (diagnostics) {
+                        await options.reportDiagnostics(diagnostics).catch(() => undefined)
+                    }
+                }
                 let rollbackSucceeded = false
                 if (switchedRoute) {
                     try {
