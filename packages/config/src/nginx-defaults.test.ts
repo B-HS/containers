@@ -38,4 +38,21 @@ describe('nginx 기본 설정', () => {
 
         expect(directives.map((line) => line.trim())).toEqual(['set_real_ip_from 127.0.0.1/32;'])
     })
+
+    test('CSP 가 WebAssembly 컴파일을 허용한다', () => {
+        for (const path of CONFIGS) {
+            const directives = readConfig(path)
+                .split('\n')
+                .filter((line) => line.includes('Content-Security-Policy'))
+
+            expect(directives.length).toBeGreaterThan(0)
+            expect(directives.every((line) => line.includes("'wasm-unsafe-eval'"))).toBe(true)
+        }
+    })
+
+    test('CSP 가 임의 스크립트 eval 은 허용하지 않는다', () => {
+        for (const path of CONFIGS) {
+            expect(readConfig(path)).not.toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'")
+        }
+    })
 })
