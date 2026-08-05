@@ -9,6 +9,7 @@ import {
     Database,
     DatabaseBackup,
     FileCode,
+    Globe,
     Image,
     Key,
     KeyRound,
@@ -19,6 +20,7 @@ import {
     Route,
     ScrollText,
     ServerCog,
+    ShieldCheck,
     UserPlus,
     Users,
 } from 'lucide-react'
@@ -35,6 +37,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
     Database,
     DatabaseBackup,
     FileCode,
+    Globe,
     Image,
     Key,
     KeyRound,
@@ -45,6 +48,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
     Route,
     ScrollText,
     ServerCog,
+    ShieldCheck,
     UserPlus,
     Users,
 }
