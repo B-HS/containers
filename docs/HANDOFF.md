@@ -173,8 +173,9 @@
 2. ~~다크 모드 실렌더~~ — 완료. 6화면 판독 문제 0건. `dark:` 변형·Tailwind 기본 팔레트 부재를 테스트로 고정.
 3. ~~nginx revision 정리~~ — 완료. 프루닝은 실제 파일시스템 테스트로 검증돼 있고, 컨테이너 env → `server.ts` → `create-agent-app.ts` 배선을 라이브 대조했다.
 4. ~~API SSE 동시 상한 429~~ — 완료. **이 과정에서 재시작 없이는 복구 불가한 슬롯 누수를 발견해 고쳤다** → [bug/2026-08-05-sse-stream-slot-leak.md](./bug/2026-08-05-sse-stream-slot-leak.md), [acknowledge/0032](./acknowledge/0032-stream-lifecycle-and-e2e-verification.md).
-5. **미푸시 커밋 push** — 사용자 지시 시.
-6. **`full` 모드 복구 드릴** — 라이브 control DB 를 스냅샷으로 되돌리는 파괴적 작업이라 사용자 승인 필요. 백업 `verify-passphrase`(암호 포함)가 준비돼 있다.
+5. ~~미푸시 커밋 push~~ — 완료.
+6. ~~`full` 모드 복구 드릴~~ — 완료. job succeeded, 복구 전 세션 401(DB 실제 교체 확인), 재로그인·기능·암호 envelope 복호화·SSE 전부 정상 → [acknowledge/0032](./acknowledge/0032-stream-lifecycle-and-e2e-verification.md) §3.1.
+7. ~~호스트 저속 SSE 미도달~~ — 완료. 원인은 호스트 published 포트 8080 자체였고 기본값을 18080 으로 옮겼다 → [bug 문서 §7](./bug/2026-08-05-sse-stream-slot-leak.md).
 
 ### 2순위 — 외부 자원이 있어야 가능(코드는 준비됨)
 
