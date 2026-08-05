@@ -82,6 +82,10 @@ export const QUERY_KEY = {
         BACKUP_SCHEDULE: ['job', 'backup-schedule'] as const,
         DETAIL: (jobId: string) => ['job', 'detail', jobId] as const,
     },
+    PANEL_SETTING: {
+        ALL: ['panel-setting'] as const,
+        DETAIL: ['panel-setting', 'detail'] as const,
+    },
     MAINTENANCE: {
         ALL: ['maintenance'] as const,
         STATUS: ['maintenance', 'status'] as const,
