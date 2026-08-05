@@ -1,8 +1,8 @@
-# HANDOFF — 2026-08-05 세션 스냅샷
+# HANDOFF — 2026-08-06 세션 스냅샷
 
-- 대응 커밋: `e76fb67` (`dev`, origin/dev 와 동기, 워킹트리 clean)
-- 최종 갱신일: 2026-08-05
-- 검증 상태: typecheck 8/8 · lint 0 · **test 427** · format:check · build 8/8 · `audit:runtime` 5/5
+- 대응 커밋: `376a4d4` (`dev`, origin/dev 와 동기)
+- 최종 갱신일: 2026-08-06
+- 검증 상태: typecheck 8/8 · lint 0 · **test 454** · format:check · build 8/8 · `audit:runtime` 5/5 · compose 스택 5개 healthy
 - 이 문서가 **세션 인수인계 단일 진입점**이다. 다른 문서보다 먼저 읽는다.
 - **진행 중 작업의 실행 계획 정본은 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 다.** 이 문서는 상태만 요약한다.
 
@@ -14,8 +14,8 @@
 
 - **최종 목표**: 실운영 가능 + GitHub Actions 가 API key 만으로 배포를 완주.
 - **현재 마일스톤**: 패널 UX 감사 후속 처리. 원본 64건 → 반증 검증 44건 → 원인 12개. 여기에 라이브 실측으로 찾은 배포 런타임 결함 2건이 더해졌다.
-- **직전 작업**: `PLAN-UX-REMEDIATION.md` 체크리스트의 1.1 → 2.1 → 1.2 를 순서대로 완료하고 각각 커밋·푸시했다.
-- **다음 한 줄**: 계획서 **2.2 배포 실패 진단 노출** — `apps/api/src/service/domain/deployment/create-deployment-release-service.ts` 의 probe 실패 지점에서 `inspectContainer` 로 `State.ExitCode`·`State.Error` 를, `getContainerLogs` 로 마지막 20줄을 읽어 job event `detail` 에 담는다.
+- **직전 작업(2026-08-06)**: 2.2 → 1.3 → 3.1 을 완료했다. 그 과정에서 발견한 결함 3건(CSP 가 브라우저 업로드를 전부 막음, `DEPLOYMENT_RELEASE_FAILED` 미등록으로 500, control DB 고아 행 78건)도 함께 처리하거나 기록했다.
+- **다음 한 줄**: 계획서 **3.2 스택 저장·조회 API** — `deployment_stack` 테이블과 `POST /api/deployment-stacks/preview`·`POST /api/deployment-stacks`. 변환기(`apps/api/src/lib/compose-stack.ts`)와 계약(`packages/contracts/src/deployment-stack.ts`)은 3.1 에서 이미 만들어 두었고 테스트 13건이 붙어 있다.
 
 ## 3. 완료 / 진행 중 / 미착수
 
@@ -61,15 +61,33 @@
 | 2.1 런타임 프로필             | `0a94269` | 순정 `nginx:alpine` 무설정 배포 healthy, 외부 200, `SYS_ADMIN` 400 |
 | 1.2 라우트 대상 검증 + Select | `e76fb67` | 없는 대상 400 / bridge 400 / edge 201                              |
 
+### 2026-08-06 세션에서 한 일 — 커밋 9건, 전부 push
+
+| 커밋      | 내용                                                                                          |
+| --------- | --------------------------------------------------------------------------------------------- |
+| `7d5e729` | 직전 세션의 미커밋 문서(런타임 프로필·라우트 검증 + ADR 0037·0038) 정리                       |
+| `1c50f24` | **2.2** 배포 실패 진단을 job event 에 남긴다 + 시크릿 리댁션 유틸 신설 + 에러 코드 3파일 등록 |
+| `1e32d41` | 2.2 실측 결과 기록                                                                            |
+| `7d8c251` | **1.3** durable job 실패를 화면에 드러낸다(조건부 폴링 포함)                                  |
+| `6495759` | 로케일 카탈로그 키 정합 테스트                                                                |
+| `9d3769d` | **CSP 가 업로드 해시 WebAssembly 를 막던 blocker** 수정                                       |
+| `6934baa` | 1.3 실측 결과 기록                                                                            |
+| `d68016f` | **3.1** compose 스택 계약과 변환 규칙(+ manifest route nullable, migration 0019)              |
+| `376a4d4` | 테이블 재생성 마이그레이션이 적용되게 하고 DB 무결성 점검을 붙인다                            |
+
+**이번 세션에서 새로 찾은 결함 3건**
+
+1. **CSP 가 브라우저 업로드를 전부 막고 있었다**(blocker). `hash-wasm` 이 WebAssembly 를 쓰는데 `script-src` 에 허용이 없었다. API 경로는 CSP 와 무관해 지금까지 드러나지 않았다. → [bug/2026-08-06-csp-blocks-upload-hashing.md](./bug/2026-08-06-csp-blocks-upload-hashing.md). **실행 중 스택에도 적용 완료**(사용자 승인 후 `POST /api/nginx/config/apply`).
+2. `DEPLOYMENT_RELEASE_FAILED` 가 `ERROR_CODE` 에 없어 응답 경로에서 500 으로 떨어지고 있었다. 3파일에 등록했다.
+3. **control DB 에 삭제된 user 를 참조하는 고아 행 78건**(`audit_log` 62·`api_key` 9·`operation_job` 4·`trusted_proxy` 2·`panel_setting` 1). → [bug/2026-08-06-control-db-orphan-user-references.md](./bug/2026-08-06-control-db-orphan-user-references.md). **처리 방침은 사용자 판단이 필요하다 — 특히 소유자 없는 `api_key` 9건이 살아 있는지 먼저 확인해야 한다.**
+
 ### 진행 중
 
-없음. 워킹트리 clean. 다음 항목(2.2)은 아직 손대지 않았다.
+없음. 워킹트리 clean.
 
 ### 미착수 — [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 체크리스트
 
-- **1.3** job 실패 표면화 — `apps/web/src/entities/job/job.query.ts` 에 `FAILED` 분기가 없어 업로드·load 실패가 화면에 안 뜬다
-- **2.2** 배포 실패 진단 노출 (다음 작업)
-- **3.1~3.4** compose 스택 — 계약·API·오케스트레이션·화면
+- **3.2~3.4** compose 스택 — 저장·조회 API, 오케스트레이션, 화면 (3.1 계약·변환기는 완료)
 - **4.1~4.7** 마찰 — 에러 파싱, CTA 링크, 라우트 수정, 소유권 표시, job 진행, 업로드 재개, manifest 폼 하드코딩
 - **5.1~5.3** 품질·접근성
 - **6.1~6.4** 최종 재검증·문서 정합·정리
@@ -108,6 +126,7 @@
 
 ## 6. 미해결 질문 / 확인 필요
 
+0. **`verify2@containers.local`(owner) 계정을 이번 세션에서 만들었다.** 실측용이고 `hs@gumyo.net` 으로 로그인해 `/ko/users` 에서 지워야 한다. 남은 테스트 자산: `fail-demo` manifest·컨테이너(exited)·이미지 `containers-fail-demo:1.0.0`·artifact `fail-demo.tar`·`ui-failure-check.tar`. 6.4 에서 정리한다.
 1. **`verify@containers.local`(admin) 계정이 남아 있다.** 내가 검증용으로 만든 것이고 owner 만 지울 수 있다. `hs@gumyo.net` 으로 로그인해 `/ko/users` 에서 삭제해야 한다.
 2. **테스트 배포가 살아 있다** — `demo-a-2.0.0`·`demo-b-2.0.0`·`demo-plain-3.0.0` 컨테이너와 `a.hyuns.uk`·`b.hyuns.uk` 라우트. 계획서 6.1·6.2 재검증에 쓰고 6.4 에서 정리한다.
 3. **CI 검증용 API key `ci-flow-verify`** 가 남아 있다(1일 만료). 6.4 에서 폐기.

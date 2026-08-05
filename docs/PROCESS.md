@@ -739,6 +739,13 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [ ] 12. 접근성 4건(directive 편집기 label, 표 키보드 스크롤, 컨트롤 없는 Label, aria-live)
 - [ ] 13. 삭제 확인 다이얼로그 피드백
 
+### compose 스택 (3.x)
+
+- [x] 3.1 파싱·변환 계약 — `packages/contracts/src/deployment-stack.ts` + `apps/api/src/lib/compose-stack.ts`(테스트 13건). manifest `route` nullable 전환 + migration 0019. [acknowledge/0040](./acknowledge/0040-compose-stack-contract.md)
+- [ ] 3.2 스택 저장·조회 API (`deployment_stack` 테이블, preview/create 라우트)
+- [ ] 3.3 스택 릴리스 오케스트레이션 (순차 배포, 실패 시 역순 롤백, 스택 단위 잠금)
+- [ ] 3.4 compose 업로드·스택 배포 화면
+
 ### 결정 완료 (사용자 확정)
 
 - compose 는 **(b) 본격 지원** — `compose.yml` 업로드 → manifest N개 변환 → 스택 단위 배포·롤백

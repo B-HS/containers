@@ -43,7 +43,7 @@
 
 ### P1 — compose 스택 (사용자 확정: 본격 지원)
 
-- [ ] **3.1 compose 파싱·변환 계약** — `feat(contracts): compose 스택 계약과 변환 규칙을 정의한다`
+- [x] **3.1 compose 파싱·변환 계약** — 변환기 테스트 13건. manifest `route` 를 nullable 로 바꿔야 했다(내부 서비스). 결정 기록 [acknowledge/0040](./acknowledge/0040-compose-stack-contract.md)
 - [ ] **3.2 스택 저장·조회 API** — `feat(api): compose 스택 등록과 미리보기를 제공한다`
 - [ ] **3.3 스택 릴리스 오케스트레이션** — `feat(deployment): 스택 단위 순차 배포와 롤백을 구현한다`
 - [ ] **3.4 스택 웹 화면** — `feat(web): compose 업로드와 스택 배포 화면을 추가한다`
