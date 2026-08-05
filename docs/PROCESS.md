@@ -738,9 +738,12 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [ ] 12. 접근성 4건(directive 편집기 label, 표 키보드 스크롤, 컨트롤 없는 Label, aria-live)
 - [ ] 13. 삭제 확인 다이얼로그 피드백
 
-### 결정 필요
+### 결정 완료 (사용자 확정)
 
-- [ ] compose 지원 여부 — (a) manifest `group` 최소안 / (b) `compose.yml` 업로드 변환. 안 할 경우 최소한 manifest 폼 하드코딩(볼륨·protocol·healthcheck 타이밍) 해소
+- compose 는 **(b) 본격 지원** — `compose.yml` 업로드 → manifest N개 변환 → 스택 단위 배포·롤백
+- 런타임 제약은 **표준 이미지가 기본으로 뜨도록 개방** — "어떤 이미지가 올라올 줄 알고 특정 이미지 세팅을 강요할 수 없다"
+
+**실행 계획 정본은 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 다.** 항목별 근거·주의·완료 판정이 거기 있다. 이 체크리스트는 요약이다.
 
 ### 오탐 기록
 

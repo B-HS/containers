@@ -33,10 +33,11 @@
 26. [quality-assurance/2026-08-04-ui-backend-audit.md](./quality-assurance/2026-08-04-ui-backend-audit.md) — 웹 UI/UX·백엔드 6영역 감사(findings 132건)
 27. [quality-assurance/2026-08-04-production-readiness.md](./quality-assurance/2026-08-04-production-readiness.md) — 실운영·CI API 운용 준비도 판정과 3단계 로드맵
 28. [quality-assurance/2026-08-05-disaster-recovery-drill.md](./quality-assurance/2026-08-05-disaster-recovery-drill.md) — 새 호스트 재해복구 드릴 실행 기록
-29. [quality-assurance/2026-08-05-panel-ux-audit.md](./quality-assurance/2026-08-05-panel-ux-audit.md) — 패널 UX 감사(원본 64건 → 검증 44건 → 원인 12개)와 배포 런타임 제약 실측
-30. `ci-examples/` — CI 워크플로 예제(빌드 CI 3종 + API key 기반 배포 워크플로)
-31. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0036 공개 주소 단일 출처·종료 드레인)
-32. `history/` — 세션별 작업 이력 (시간순, 현재 상태가 아님)
+29. [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) — 진행 중 실행 계획: UX 감사 후속·런타임 개방·compose 스택 (항목별 근거·주의·완료 판정)
+30. [quality-assurance/2026-08-05-panel-ux-audit.md](./quality-assurance/2026-08-05-panel-ux-audit.md) — 패널 UX 감사(원본 64건 → 검증 44건 → 원인 12개)와 배포 런타임 제약 실측
+31. `ci-examples/` — CI 워크플로 예제(빌드 CI 3종 + API key 기반 배포 워크플로)
+32. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0036 공개 주소 단일 출처·종료 드레인)
+33. `history/` — 세션별 작업 이력 (시간순, 현재 상태가 아님)
 
 처음 설치·기동할 때는 저장소 루트의 `scripts/setup.sh` 를 실행한다(환경 확인 → compose 검증·override 생성 → 기동 → 스모크 테스트). macOS(Docker Desktop)와 Linux(rootful Docker Engine)를 모두 지원하며, Linux 에서는 `/var/run/docker.sock` 의 그룹 GID 를 탐지해 override 의 `engine-agent.group_add` 에 기록한다. 패널 포트·호스트를 바꾸면 `AUTH_BASE_URL`·`PANEL_PUBLIC_URL`·`AUTH_TRUSTED_ORIGINS` 를 함께 기록해 인증 origin 검사가 깨지지 않게 한다. `scripts/setup-macos.sh` 는 `setup.sh` 로 위임하는 하위호환 래퍼다. CI·무인 프로비저닝은 `--non-interactive`(stdin 이 TTY 가 아니면 자동 적용)로 질문 없이 실행하며, 모든 프롬프트를 동명 플래그·환경변수로 대체하고 `--start-mode build|up|skip` 으로 기동 방식을 정한다(`scripts/setup.sh --help`).
 
