@@ -31,7 +31,25 @@ nginx는 알 수 없는 Host로 온 요청을 catch-all `default_server`에서 `
     - 두 경로 모두 origin으로 원본 Host 헤더를 그대로 전달해야 한다. Host를 덮어쓰면 catch-all이 `444`로 끊는다.
 3. 패널 hostname은 Cloudflare Access로 한 번 더 감싸는 것을 권장한다.
 
-### 2.2 토큰 주입
+### 2.2 호스트에서 돌리던 터널을 옮기기
+
+`cloudflared tunnel run --token <TOKEN>` 을 호스트에서 직접 돌리고 있으면 두 가지 문제가 생긴다.
+
+- **rate limit 이 외부 전원에게 공유된다.** 요청이 edge 게이트웨이(`10.89.0.1`)로 들어와 `set_real_ip_from 10.89.0.10/32` 에 걸리지 않으므로 `CF-Connecting-IP` 가 무시된다. 한 클라이언트가 로그인 5r/m 을 소진하면 전원이 막히고, 감사 로그 `sourceIp` 도 전부 게이트웨이로 찍힌다.
+- **토큰이 `ps` 출력에 노출된다.** 로컬의 어떤 프로세스든 읽을 수 있고, 그 토큰은 터널 전체 제어 권한이다.
+
+`scripts/migrate-tunnel-to-compose.sh` 가 이 둘을 한 번에 해소한다.
+
+```sh
+read -rs CLOUDFLARE_TUNNEL_TOKEN && export CLOUDFLARE_TUNNEL_TOKEN
+./scripts/migrate-tunnel-to-compose.sh --public-url https://panel.example.com --stop-host-tunnel
+```
+
+스크립트는 토큰을 인자로 받지 않고(인자는 `ps` 에 남는다) 환경변수로만 읽는다. 호스트 프로세스를 정리하고 compose 프로필로 기동한 뒤, **외부로 프로브 요청을 보내 nginx access log 의 `client_ip` 가 실제 클라이언트 주소인지 확인**하고 실패하면 종료 코드로 알린다.
+
+**대시보드에서 먼저 바꿔야 하는 것**: public hostname 의 service 를 `http://127.0.0.1:18080` 이 아니라 `http://nginx:8080` 으로 바꾼다. compose 안의 cloudflared 는 edge 네트워크에 있어 호스트 loopback 에 도달할 수 없다. Host 헤더는 덮어쓰지 않는다.
+
+### 2.3 토큰 주입
 
 토큰은 저장소에 넣지 않는다. `CLOUDFLARE_TUNNEL_TOKEN`을 compose를 실행하는 셸 환경 또는 호스트의 secret store에서만 주입한다. 이 값은 tunnel의 전체 제어 권한이므로 로그·문서·이슈에 붙여넣지 않는다.
 
@@ -40,7 +58,7 @@ export CLOUDFLARE_TUNNEL_TOKEN=<대시보드에서 발급한 토큰>
 docker compose --profile cloudflared up -d
 ```
 
-### 2.3 스택 설정
+### 2.4 스택 설정
 
 `cloudflared` 서비스는 `profiles: [cloudflared]`라 기본 `docker compose up`에는 포함되지 않는다.
 
@@ -51,7 +69,7 @@ docker compose --profile cloudflared up -d
 
 터널을 쓰는 동안 호스트 publish는 loopback으로 유지한다(`PANEL_BIND_ADDRESS=127.0.0.1`). 외부 진입은 터널 하나로 좁힌다.
 
-### 2.4 함께 바꿔야 하는 값
+### 2.5 함께 바꿔야 하는 값
 
 | 변수                   | 값 예시                                                              |
 | ---------------------- | -------------------------------------------------------------------- |

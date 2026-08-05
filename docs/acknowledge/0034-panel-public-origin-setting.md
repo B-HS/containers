@@ -61,6 +61,5 @@
 
 ## 4. 남은 것
 
-- `hyuns.uk` 로 붙인 터널은 **호스트에서 실행 중인 cloudflared** 라 요청이 `10.89.0.1`(게이트웨이)로 들어온다. nginx `real_ip` 는 compose 프로필의 `10.89.0.10` 만 신뢰하므로 `CF-Connecting-IP` 가 무시되고 **로그인 rate limit 버킷을 외부 전원이 공유**한다. compose 프로필(`--profile cloudflared`)로 옮기면 설계대로 동작한다.
-- 터널 토큰이 `ps` 출력에 노출된다(`cloudflared tunnel run --token ...`). `cloudflared service install` 또는 compose 프로필로 옮겨야 한다.
+- **호스트 cloudflared 를 compose 프로필로 옮겨야 한다.** 두 문제가 같은 원인에서 나온다: 요청이 게이트웨이(`10.89.0.1`)로 들어와 `real_ip` 가 `CF-Connecting-IP` 를 무시하므로 **rate limit 버킷을 외부 전원이 공유**하고, `--token` 이 `ps` 에 노출된다. compose 프로필은 nginx 가 신뢰하는 `10.89.0.10` 을 받고 토큰을 `TUNNEL_TOKEN` 환경변수로만 전달한다. `scripts/migrate-tunnel-to-compose.sh` 가 정리·기동·검증까지 한다 → [EXPOSURE.md](../EXPOSURE.md) §2.2.
 - 공개 노출 시 Cloudflare Access 를 앞에 두는 것을 권장한다([EXPOSURE.md](../EXPOSURE.md) §2.1).

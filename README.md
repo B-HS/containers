@@ -43,6 +43,8 @@ For CI and unattended provisioning it also runs without prompts. Non-interactive
     --start-mode build
 ```
 
+Exposing the panel through a Cloudflare tunnel? Run cloudflared as the compose profile rather than on the host — `scripts/migrate-tunnel-to-compose.sh` moves an existing host tunnel over, then verifies that nginx records the real client IP instead of the docker gateway. See [`docs/EXPOSURE.md`](docs/EXPOSURE.md) §2.2.
+
 `--start-mode` picks `build` (build then start, the default), `up` (start without building) or `skip` (checks only). An existing `compose.override.yaml` is kept as is unless you pass `--replace-override`, which backs it up to `compose.override.yaml.bak` first.
 
 To run manually:
