@@ -32,6 +32,20 @@ describe('저장소 스크립트 계약', () => {
         expect(rootScripts['audit:runtime']).toBe('bun scripts/audit-runtime-security.ts')
     })
 
+    test('계정 초기화 스크립트는 --confirm 없이는 아무것도 지우지 않는다', () => {
+        const source = readRepositoryFile('scripts/reset-accounts.ts')
+
+        expect(source).toContain("if (!('confirm' in options))")
+        expect(source).toContain('.pre-reset')
+    })
+
+    test('seed 스크립트가 공개 주소가 설정된 스택을 거부한다', () => {
+        const source = readRepositoryFile('scripts/seed-e2e.ts')
+
+        expect(source).toContain("if (!('allow-configured' in options))")
+        expect(source).toContain('select public_origin from panel_setting')
+    })
+
     test('seed 스크립트가 auth 테이블에 초 단위 timestamp 를 쓴다', () => {
         const source = readRepositoryFile('scripts/seed-e2e.ts')
 

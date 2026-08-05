@@ -10,11 +10,14 @@ const GENERATED_PASSWORD_BYTES = 18
 const DEFAULT_EMAIL = 'e2e@containers.local'
 const DEFAULT_NAME = 'E2E'
 const DEFAULT_ROLE = 'owner'
-const USAGE = `사용법: bun scripts/seed-e2e.ts [--email <주소>] [--name <이름>] [--role <역할>]
+const USAGE = `사용법: bun scripts/seed-e2e.ts [--email <주소>] [--name <이름>] [--role <역할>] [--allow-configured]
 
-E2E 로그인용 계정을 control DB 에 만들거나 비밀번호를 재설정한다.
+개발·E2E 전용 도구다. 로그인 계정을 control DB 에 만들거나 비밀번호를 재설정한다.
 비밀번호는 E2E_PASSWORD 환경변수를 쓰고, 없으면 무작위로 만들어 stdout 에 한 번만 출력한다.
-출력된 비밀번호는 저장소·문서에 기록하지 않는다.`
+출력된 비밀번호는 저장소·문서에 기록하지 않는다.
+
+공개 주소가 설정된 스택에서는 실행을 거부한다. 운영 계정은 패널의 초기 설정 화면과
+초대로 만든다. 개발 목적으로 그런 스택에 써야 하면 --allow-configured 를 명시한다.`
 
 const parseArguments = (argv: string[]) =>
     argv.reduce<Record<string, string>>((parsed, token, index) => {
@@ -40,6 +43,12 @@ const hashPassword = (password: string) =>
         cwd: API_WORKSPACE,
         env: { SEED_E2E_PASSWORD: password },
     })
+
+const PUBLIC_ORIGIN_SCRIPT = `import { Database } from 'bun:sqlite'
+const database = new Database(process.env.CONTROL_DB_PATH ?? '', { readonly: true })
+const row = database.query('select public_origin from panel_setting limit 1').get()
+console.log(row?.public_origin ?? '')
+`
 
 const APPLY_SCRIPT = `import { Database } from 'bun:sqlite'
 
@@ -100,6 +109,20 @@ const options = parseArguments(Bun.argv.slice(2))
 if ('help' in options) {
     console.log(USAGE)
     process.exit(0)
+}
+
+const readPublicOrigin = async () => {
+    const output = await run(['docker', 'compose', 'exec', '-T', 'api', 'bun', '-e', PUBLIC_ORIGIN_SCRIPT]).catch(() => '')
+    return output.trim() === '' ? null : output.trim()
+}
+
+if (!('allow-configured' in options)) {
+    const publicOrigin = await readPublicOrigin()
+    if (publicOrigin !== null) {
+        console.error(`이 스택에는 공개 주소(${publicOrigin})가 설정돼 있어 개발용 seed 를 거부한다.`)
+        console.error('운영 계정은 패널의 초기 설정 화면과 초대로 만든다. 개발 목적이면 --allow-configured 를 붙인다.')
+        process.exit(1)
+    }
 }
 
 const email = options.email ?? DEFAULT_EMAIL
