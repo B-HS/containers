@@ -32,6 +32,22 @@ describe('저장소 스크립트 계약', () => {
         expect(rootScripts['audit:runtime']).toBe('bun scripts/audit-runtime-security.ts')
     })
 
+    test('터널 스크립트는 패널 주소를 compose 에서 유도하고 값을 박지 않는다', () => {
+        const source = readRepositoryFile('scripts/setup-cloudflare-tunnel.sh')
+
+        expect(source).toContain('detect_panel_origin')
+        expect(source).toContain('PANEL_BIND_ADDRESS')
+        expect(source).not.toMatch(/http:\/\/127\.0\.0\.1:[0-9]+/)
+    })
+
+    test('터널 스크립트는 와일드카드 ingress 를 로컬 config 로 쓴다', () => {
+        const source = readRepositoryFile('scripts/setup-cloudflare-tunnel.sh')
+
+        expect(source).toContain('ingress:')
+        expect(source).toContain('hostname: "*.%s"')
+        expect(source).toContain('cloudflared tunnel ingress validate')
+    })
+
     test('계정 초기화 스크립트는 --confirm 없이는 아무것도 지우지 않는다', () => {
         const source = readRepositoryFile('scripts/reset-accounts.ts')
 

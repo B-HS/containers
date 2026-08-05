@@ -701,7 +701,9 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] g. TESTING checkpoint 갱신 (34 files/158 pass → 62 files/412 pass + web 20)
 - [x] h. HANDOFF 문서 지도에 누락 7건 보강
 - [x] i. 리버스 프록시 로컬 실측 — a/b 라우트 분기, 미등록 host 444
-- [ ] j. 외부(터널) 실측 — 사용자가 `*.hyuns.uk` public hostname 추가 후
+- [x] j. 와일드카드 경로 확인 — 대시보드는 **Subdomain 칸에 `*` 만** 넣으면 되고, 로컬 config.yml ingress 로도 된다. DNS 는 붙었지만 매칭 ingress 가 없어 Cloudflare 404 였다. (처음에 "대시보드는 와일드카드 불가"로 잘못 단정했다가 사용자 제공 아티클로 정정)
+- [x] k. `scripts/setup-cloudflare-tunnel.sh` 추가 — 대화형으로 로컬 config 방식 터널 구성. 패널 주소는 compose publish 에서 유도
+- [ ] l. 외부(터널) 실측 — 사용자가 스크립트 실행 후
 
 ### 실측 (로컬)
 

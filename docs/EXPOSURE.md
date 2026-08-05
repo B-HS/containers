@@ -31,17 +31,45 @@ nginx는 알 수 없는 Host로 온 요청을 catch-all `default_server`에서 `
     - 두 경로 모두 origin으로 원본 Host 헤더를 그대로 전달해야 한다. Host를 덮어쓰면 catch-all이 `444`로 끊는다.
 3. 패널 hostname은 Cloudflare Access로 한 번 더 감싸는 것을 권장한다.
 
-### 2.2 토큰 주입
+### 2.2 터널 연결
 
-터널은 **이 스택 밖에서** 돌린다. compose 는 터널 토큰을 알 필요가 없고 알아서도 안 된다. `cloudflared service install` 로 호스트 서비스로 등록하면 토큰이 cloudflared 자체 설정에 저장되고 `ps` 출력에도 남지 않는다.
+서브도메인을 여러 개 쓸 거라면 **와일드카드 하나**로 받는 편이 편하다. 두 가지 방법이 있다.
 
-```sh
-cloudflared service install <대시보드에서 발급한 토큰>
+**대시보드에서 (기존 터널에 바로 추가)**
+
+Zero Trust > Networks > Tunnels > 해당 터널 > Public Hostname > Add 에서 **Subdomain 칸에 `*` 하나만** 넣고 Domain 은 드롭다운에서 고른다. 호스트명 전체(`*.example.com`)를 한 칸에 적는 게 아니다. Type 은 HTTP, URL 은 패널 publish 주소(`127.0.0.1:<포트>`)다.
+
+**로컬 config 로 (권장)**
+
+```bash
+./scripts/setup-cloudflare-tunnel.sh
 ```
 
-`cloudflared tunnel run --token <TOKEN>` 으로 직접 띄우면 **토큰이 `ps` 출력에 그대로 보인다.** 로컬의 어떤 프로세스든 읽을 수 있고 그 토큰은 터널 전체 제어 권한이다.
+대화형으로 인증·터널 생성·`~/.cloudflared/config.yml` 작성·ingress 검증·DNS 안내·service 설치까지 진행한다. 넘길 로컬 주소는 `compose.yaml` 의 publish 설정에서 유도하므로 포트를 따로 적지 않는다.
 
-public hostname 의 service 는 호스트에서 도달 가능한 주소여야 한다 — 기본값은 `http://127.0.0.1:18080` 이다. 원본 Host 헤더는 그대로 전달한다. Host 를 덮어쓰면 nginx catch-all 이 `444` 로 끊고 Cloudflare 는 `502` 를 표시한다.
+만들어지는 설정은 이 형태다.
+
+```yaml
+tunnel: <TUNNEL_ID>
+credentials-file: ~/.cloudflared/<TUNNEL_ID>.json
+
+ingress:
+    - hostname: '*.example.com'
+      service: http://127.0.0.1:18080
+    - hostname: 'example.com'
+      service: http://127.0.0.1:18080
+    - service: http_status:404
+```
+
+`cloudflared tunnel ingress validate` 로 규칙을, `cloudflared tunnel ingress rule https://a.example.com` 으로 특정 호스트의 매칭을 확인한다. 연결 로그는 `cloudflared tail <TUNNEL_ID>`.
+
+**와일드카드 DNS 레코드는 `cloudflared tunnel route dns` 로 못 만든다.** 대시보드 DNS 에서 직접 추가한다 — Type `CNAME`, Name `*`, Target `<TUNNEL_ID>.cfargotunnel.com`, Proxied. 이미 다른 터널을 가리키는 `*` 레코드가 있으면 Target 을 새 터널 ID 로 바꿔야 한다.
+
+이 방식은 **토큰이 명령줄에서 사라지는** 이득도 있다. 자격증명은 `~/.cloudflared/` 의 인증서와 JSON 파일에 있고 `ps` 에 노출되지 않는다.
+
+macOS 에서 `sudo cloudflared service install` 로 만든 LaunchDaemon 은 `ProgramArguments` 에 `tunnel run` 이 빠져 있을 수 있다. 그러면 `/Library/LaunchDaemons/com.cloudflare.cloudflared.plist` 에 두 인자를 넣고 `launchctl bootout` / `bootstrap` 으로 다시 읽힌다. 스크립트가 이 상태를 검사해 알려준다.
+
+와일드카드로 받아도 **실제로 어떤 호스트를 열지는 패널의 nginx 라우트 목록이 단독으로 결정한다.** 등록하지 않은 호스트는 catch-all 이 `444` 로 끊는다.
 
 ### 2.2.1 최초 계정은 로컬에서 만든다
 

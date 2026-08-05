@@ -286,6 +286,19 @@ Boot resolution: AUTH_BASE_URL and PANEL_PUBLIC_URL are fallbacks only. At boot
                  Protected hostnames are evaluated per call and always include
                  the current effective trusted origins, so a route cannot hijack
                  the panel's own public hostname.
+Tunnel:          Wildcard subdomains work two ways. In the dashboard, put * in
+                 the Subdomain field alone (not the whole *.example.com in one
+                 box) and pick the domain from the dropdown. Or run a locally
+                 managed tunnel whose ~/.cloudflared/config.yml carries the
+                 wildcard ingress rule; scripts/setup-cloudflare-tunnel.sh sets
+                 that up interactively and derives the origin service from the
+                 compose publish line so the port is not written twice. The
+                 wildcard DNS record cannot be created by cloudflared tunnel
+                 route dns: add a proxied CNAME * -> <id>.cfargotunnel.com in
+                 the dashboard. A hostname that resolves but has no matching
+                 ingress rule returns a Cloudflare 404, not a tunnel error.
+                 Which hosts are actually served stays with the nginx route
+                 table: unregistered hosts hit the catch-all 444.
 Shutdown:        SIGINT/SIGTERM stop the job worker and recurring tasks, drain
                  in-flight requests for up to 8s, force close the rest, then
                  close the database. compose stop_grace_period is 20s so a long
