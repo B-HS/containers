@@ -108,6 +108,18 @@ Nginx 설정은 **자동으로 적용하지 않는다.** `nginx.conf`는 사본�
 4. 새 호스트에서 owner를 bootstrap해 로그인하고, `POST /api/backups/:id/restore`를 `{"confirmation":"<id>","mode":"full","passphrase":"<생성 시 사용한 passphrase>"}`로 호출한다.
 5. 완료 후 API를 재시작한다(`docker compose restart api`). 마스터 키가 새로 쓰였으므로 재시작 전에는 기존 secret 복호화가 되지 않는다.
 6. artifact 파일 자체는 control DB가 아니라 `containers_artifacts` volume에 있다. 필요하면 같은 방식으로 함께 복사한다. 복사하지 않으면 artifact metadata만 복구되고 실제 이미지 파일은 없다.
+7. 복구 후 새 호스트의 `current.conf`는 기본 설정 그대로다. Nginx 라우팅은 복구된 `nginx_route` 행을 기준으로 API 재시작 시 재생성된다(§4.3). backup의 `nginx.conf` 사본은 수작업 대조용이다.
+
+> **같은 머신에서 드릴을 재현할 때**: `EDGE_SUBNET` 기본값이 `10.89.0.0/24` 고정이라 두 번째 스택이 `Pool overlaps with other one on this address space`로 기동에 실패한다. `COMPOSE_PROJECT_NAME`·`PANEL_PORT`와 함께 `EDGE_SUBNET`을 다른 대역으로 지정한다. 실제 새 호스트에서는 해당 없다.
+>
+> ```sh
+> COMPOSE_PROJECT_NAME=containers-dr PANEL_PORT=19080 EDGE_SUBNET=10.91.0.0/24 \
+>     PANEL_PUBLIC_ORIGIN=http://127.0.0.1:19080 \
+>     AUTH_TRUSTED_ORIGINS=http://127.0.0.1:19080,http://localhost:19080 \
+>     docker compose up -d --wait
+> ```
+
+실행 기록은 [quality-assurance/2026-08-05-disaster-recovery-drill.md](./quality-assurance/2026-08-05-disaster-recovery-drill.md)에 있다.
 
 ## 5. 실제 검증 기록
 

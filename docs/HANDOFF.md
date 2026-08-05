@@ -179,10 +179,10 @@
 
 ### 2순위 — 외부 자원이 있어야 가능(코드는 준비됨)
 
-- 실도메인 + TLS 또는 Cloudflare 터널 토큰으로 외부 노출 실검증 → [EXPOSURE.md](./EXPOSURE.md).
-- GitHub Actions 실제 실행(러너가 패널에 도달 가능해야 함) → `docs/ci-examples/github-actions-deploy.yml`. 여기서 **토큰 단독 blue-green release 완주**를 함께 실측한다(§6-4).
-- 새 호스트 재해복구 드릴(볼륨 tar → 새 호스트 → `full` 모드 복구 → API 재시작) → [BACKUP-RESTORE.md](./BACKUP-RESTORE.md).
-- Linux 실기 검증(`DOCKER_GID` 탐지).
+- 실도메인 + TLS 또는 Cloudflare 터널 토큰으로 외부 노출 실검증 → [EXPOSURE.md](./EXPOSURE.md). **사용자가 터널을 연결해 주소를 주면 점검한다.**
+- 토큰 단독 blue-green release 완주 실측 → `docs/ci-examples/github-actions-deploy.yml`. 이 저장소는 **CI 예제를 제공하는 것이 목적**이므로 GitHub Actions 자체를 돌릴 필요는 없다. 예제가 실제 API 와 일치하는지는 2026-08-05 에 엔드포인트 16개 전수 대조로 확인했고, `bun run test` 가 raw `bun test` 사용을 막는다.
+- ~~새 호스트 재해복구 드릴~~ — **2026-08-05 완료.** 별도 compose 프로젝트를 새 호스트로 삼아 문서 절차 그대로 성공 → [quality-assurance/2026-08-05-disaster-recovery-drill.md](./quality-assurance/2026-08-05-disaster-recovery-drill.md).
+- Linux 실기 검증(`DOCKER_GID` 탐지). **지원 대상은 macOS 로 확정**했고 README 에 "Linux 는 구현됐으나 미검증"으로 명시했다.
 - Discord webhook 실전송, 24시간 경과 자동 backup job live 성공 이력.
 
 ## 9. 문서 지도
