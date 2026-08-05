@@ -2,26 +2,38 @@
 
 A self-hosted Docker management panel that runs entirely on your own machine — a modern alternative to Portainer / Yacht for a single Docker host, hardened as if it were a production control plane.
 
-![Dashboard](screenshots/hero.png)
+![Container control](screenshots/hero.png)
 
 It lets you control Docker containers, create and deploy them, inspect live traffic, and manage the Nginx reverse proxy (including a GUI config editor) — all through a single web panel on your own machine. It ships with role-based access control, encrypted credentials, automated backups, and rate limiting, so it behaves like a small production control plane rather than an admin toy.
 
+<details>
+<summary>More screens</summary>
+
+|                                                                                        |                                                                         |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| ![Dashboard](screenshots/ko-dashboard.png) Operations overview                         | ![Traffic](screenshots/ko-traffic.png) Traffic analytics with live tail |
+| ![Nginx GUI editor](screenshots/ko-nginx-gui.png) Nginx GUI config editor              | ![Nginx raw editor](screenshots/ko-nginx.png) Raw config with revisions |
+| ![Deployments](screenshots/ko-deployments.png) Immutable manifest / blue-green release |                                                                         |
+
+</details>
+
 ## Requirements
 
-- macOS (Apple Silicon, Docker Desktop) or Linux (rootful Docker Engine)
+- **macOS (Apple Silicon, Docker Desktop)** — the supported and verified platform
 - Docker Compose v2.24+ (the `!override` merge tag is used by `compose.override.yaml`)
-- On Linux: a `/var/run/docker.sock` unix socket — the setup script reads its group id and pins `engine-agent` to it via `group_add`. Rootless Docker is not supported (different socket path).
 - [Bun](https://bun.sh) (for local development only — runtime uses Docker images)
+
+> **Linux is implemented but not verified.** `scripts/setup.sh` detects the `/var/run/docker.sock` group id and pins `engine-agent` to it via `group_add`, and nothing in the stack is macOS-specific — but it has never been run on a Linux host, so treat it as untested. Rootless Docker is not supported either way (different socket path). Reports welcome.
 
 ## Run it
 
-The recommended way is the interactive setup script (macOS and Linux):
+The recommended way is the interactive setup script:
 
 ```bash
 ./scripts/setup.sh
 ```
 
-It checks the environment, detects the docker socket group id on Linux, verifies the Compose file, optionally builds, starts the stack, and runs a smoke test — including a sign-in call with a real `Origin` header so a mismatched public origin fails here instead of at first login. It creates a `compose.override.yaml` for customization (panel bind address/port, public origin, backup interval/retention, traffic retention).
+It checks the environment, detects the docker socket group id (Linux), verifies the Compose file, optionally builds, starts the stack, and runs a smoke test — including a sign-in call with a real `Origin` header so a mismatched public origin fails here instead of at first login. It creates a `compose.override.yaml` for customization (panel bind address/port, public origin, backup interval/retention, traffic retention).
 
 For CI and unattended provisioning it also runs without prompts. Non-interactive mode is implied when stdin is not a TTY, and every prompt falls back to a flag or an environment variable of the same name (`scripts/setup.sh --help` lists them):
 
@@ -71,7 +83,7 @@ bun install
 bun run dev        # run all workspaces
 bun run typecheck  # typecheck all workspaces
 bun run lint
-bun test           # unit + integration tests
+bun run test       # unit + integration tests (backend + web)
 bun run build
 ```
 
@@ -98,9 +110,13 @@ and security model, and the deployment pipeline, tuned for LLM consumption.
 
 - `docs/llm.txt` — full AI-ready project reference (endpoints, DB, security, flows)
 - `docs/ci-examples/` — ready-to-drop CI workflows:
-    - `github-actions.yml` — `.github/workflows/ci.yml`
+    - `github-actions.yml` — `.github/workflows/ci.yml` (typecheck · lint · test · build)
     - `gitea-actions.yml` — `.gitea/workflows/ci.yml`
     - `gitlab-ci.yml` — `.gitlab-ci.yml`
+    - `github-actions-deploy.yml` — unattended deploy driven only by an API key
+      (upload → image load → manifest → blue-green release → verdict from the job status).
+      The runner must be able to reach the panel, so use a self-hosted runner on the same
+      host or expose the API over HTTPS through a tunnel.
 - `docs/README.md` — human-facing documentation index
 
 Human-facing documentation lives in [`docs/`](docs/README.md).

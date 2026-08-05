@@ -57,7 +57,7 @@ test:
     <<: *check-template
     stage: check
     script:
-        - bun test
+        - bun run test
 
 build:
     image: oven/bun:1.3.14-alpine
