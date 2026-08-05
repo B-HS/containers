@@ -14,7 +14,9 @@ import { createNginxStatusClient } from './service/shared/nginx/create-nginx-sta
 import { createNginxRouteProbeClient } from './service/shared/nginx/create-nginx-route-probe-client'
 import { createTrafficWorkerClient } from './service/shared/traffic-worker-client/create-traffic-worker-client'
 import { compose } from './compose/compose'
+import { buildPanelSettingServiceDb } from './compose/compose-panel-setting'
 import { runStartupTasks, startRecurringTask } from './boot/run-startup-tasks'
+import { createServerDrain, createShutdownHandler, registerShutdownSignals } from './boot/create-shutdown-handler'
 
 const MINUTE_MS = 60 * 1_000
 const HOUR_MS = 60 * MINUTE_MS
@@ -25,6 +27,8 @@ const UPLOAD_SESSION_CLEANUP_INTERVAL_MS = 15 * MINUTE_MS
 const ARTIFACT_RETENTION_INTERVAL_MS = 6 * HOUR_MS
 const AUDIT_ARCHIVE_INTERVAL_MS = 12 * HOUR_MS
 const OPENAPI_SPEC_PATH = '/api/openapi.json'
+const SERVER_IDLE_TIMEOUT_SECONDS = 255
+const SHUTDOWN_DRAIN_TIMEOUT_MS = 8 * 1_000
 
 const envSchema = z
     .object({
@@ -73,6 +77,10 @@ const env = parseEnv(envSchema)
 
 const { db, sqlite } = createControlDatabase({ filePath: env.CONTROL_DB_PATH, migrationsFolder: env.CONTROL_MIGRATIONS_PATH })
 
+const storedPublicOrigin = buildPanelSettingServiceDb(db).load()?.publicOrigin ?? null
+const authBaseUrl = storedPublicOrigin ?? env.AUTH_BASE_URL
+const panelPublicUrl = storedPublicOrigin ?? env.PANEL_PUBLIC_URL
+
 const engineAgentClient = createEngineAgentClient({
     baseUrl: env.AGENT_INTERNAL_URL,
     secret: await loadOrCreateSecret(env.AGENT_SHARED_SECRET_FILE),
@@ -99,7 +107,7 @@ const composed = compose({
     env: {
         agentInternalUrl: env.AGENT_INTERNAL_URL,
         artifactRoot: env.ARTIFACT_ROOT,
-        authBaseUrl: env.AUTH_BASE_URL,
+        authBaseUrl,
         authTrustedOrigins: env.AUTH_TRUSTED_ORIGINS,
         backupIntervalHours: env.BACKUP_INTERVAL_HOURS,
         backupRetentionCount: env.BACKUP_RETENTION_COUNT,
@@ -110,11 +118,11 @@ const composed = compose({
         deploymentSecretKeyFile: env.DEPLOYMENT_SECRET_KEY_FILE,
         diskHardAvailableBytes: env.UPLOAD_DISK_HARD_AVAILABLE_BYTES,
         diskSoftAvailableBytes: env.UPLOAD_DISK_SOFT_AVAILABLE_BYTES,
-        invitationBaseUrl: env.PANEL_PUBLIC_URL,
+        invitationBaseUrl: panelPublicUrl,
         nginxStatusUrl: env.NGINX_STATUS_URL,
         notificationSecretKeyFile: env.NOTIFICATION_SECRET_KEY_FILE,
         probeNetworkName: env.PROBE_NETWORK_NAME,
-        protectedHostnames: ['api.containers.local', 'panel.containers.local', new URL(env.PANEL_PUBLIC_URL).hostname],
+        protectedHostnames: ['api.containers.local', 'panel.containers.local', new URL(panelPublicUrl).hostname],
         trafficWorkerInternalUrl: env.TRAFFIC_WORKER_INTERNAL_URL,
         artifactRetentionDays: env.ARTIFACT_RETENTION_DAYS,
         auditArchiveRoot: env.AUDIT_ARCHIVE_ROOT,
@@ -151,6 +159,8 @@ const {
     uploadService,
 } = composed
 
+let stopOperationJobWorker: (() => void) | null = null
+
 await runStartupTasks({
     tasks: [
         { name: 'deployment-release-reconcile-interrupted', run: () => deploymentReleaseService.reconcileInterrupted() },
@@ -158,43 +168,50 @@ await runStartupTasks({
         { name: 'upload-cleanup-expired-sessions', run: () => uploadService.cleanupExpiredSessions() },
         { name: 'artifact-cleanup-expired', run: () => uploadService.cleanupExpiredArtifacts() },
         { name: 'operation-job-reconcile-interrupted', run: () => operationJobService.reconcileInterrupted() },
-        { name: 'operation-job-start', run: async () => operationJobService.start() },
+        {
+            name: 'operation-job-start',
+            run: async () => {
+                stopOperationJobWorker = operationJobService.start()
+            },
+        },
         { name: 'notification-delivery-reconcile-queued', run: () => notificationDeliveryService.reconcileQueued() },
         { name: 'nginx-route-reconcile', run: () => nginxProxyRouteService.reconcileRoutes() },
         { name: 'backup-schedule-enqueue-if-due', run: () => backupScheduleService.enqueueIfDue() },
     ],
 })
 
-startRecurringTask({
-    intervalMs: CONTAINER_CLEANUP_INTERVAL_MS,
-    name: 'deployment-release-cleanup-expired-containers',
-    run: () => deploymentReleaseService.cleanupExpiredContainers(),
-})
-startRecurringTask({
-    intervalMs: UPLOAD_SESSION_CLEANUP_INTERVAL_MS,
-    name: 'upload-cleanup-expired-sessions',
-    run: () => uploadService.cleanupExpiredSessions(),
-})
-startRecurringTask({
-    intervalMs: ARTIFACT_RETENTION_INTERVAL_MS,
-    name: 'artifact-cleanup-expired',
-    run: () => uploadService.cleanupExpiredArtifacts(),
-})
-startRecurringTask({
-    intervalMs: AUDIT_ARCHIVE_INTERVAL_MS,
-    name: 'audit-archive-expired',
-    run: () => auditService.archiveExpired(),
-})
-startRecurringTask({
-    intervalMs: BACKUP_SCHEDULE_INTERVAL_MS,
-    name: 'backup-schedule-enqueue-if-due',
-    run: () => backupScheduleService.enqueueIfDue(),
-})
-startRecurringTask({
-    intervalMs: JOB_CLEANUP_INTERVAL_MS,
-    name: 'operation-job-cleanup-finished',
-    run: () => operationJobService.cleanupFinished(),
-})
+const recurringTasks = [
+    startRecurringTask({
+        intervalMs: CONTAINER_CLEANUP_INTERVAL_MS,
+        name: 'deployment-release-cleanup-expired-containers',
+        run: () => deploymentReleaseService.cleanupExpiredContainers(),
+    }),
+    startRecurringTask({
+        intervalMs: UPLOAD_SESSION_CLEANUP_INTERVAL_MS,
+        name: 'upload-cleanup-expired-sessions',
+        run: () => uploadService.cleanupExpiredSessions(),
+    }),
+    startRecurringTask({
+        intervalMs: ARTIFACT_RETENTION_INTERVAL_MS,
+        name: 'artifact-cleanup-expired',
+        run: () => uploadService.cleanupExpiredArtifacts(),
+    }),
+    startRecurringTask({
+        intervalMs: AUDIT_ARCHIVE_INTERVAL_MS,
+        name: 'audit-archive-expired',
+        run: () => auditService.archiveExpired(),
+    }),
+    startRecurringTask({
+        intervalMs: BACKUP_SCHEDULE_INTERVAL_MS,
+        name: 'backup-schedule-enqueue-if-due',
+        run: () => backupScheduleService.enqueueIfDue(),
+    }),
+    startRecurringTask({
+        intervalMs: JOB_CLEANUP_INTERVAL_MS,
+        name: 'operation-job-cleanup-finished',
+        run: () => operationJobService.cleanupFinished(),
+    }),
+]
 
 const app = createApp({
     apiKeyService,
@@ -239,9 +256,20 @@ if (env.API_DOCS_ENABLED) {
     )
 }
 
-export default {
+const server = Bun.serve({
     fetch: app.fetch,
-    idleTimeout: 255,
+    idleTimeout: SERVER_IDLE_TIMEOUT_SECONDS,
     port: env.API_PORT,
     websocket,
-}
+})
+
+registerShutdownSignals(
+    createShutdownHandler({
+        steps: [
+            { name: 'stop-operation-job-worker', run: () => stopOperationJobWorker?.() },
+            { name: 'stop-recurring-tasks', run: () => recurringTasks.forEach((task) => clearInterval(task)) },
+            { name: 'drain-http-server', run: createServerDrain({ server, timeoutMs: SHUTDOWN_DRAIN_TIMEOUT_MS }) },
+            { name: 'close-control-database', run: () => sqlite.close(false) },
+        ],
+    }),
+)

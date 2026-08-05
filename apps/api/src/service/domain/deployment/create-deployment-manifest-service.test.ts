@@ -46,7 +46,7 @@ const createTestContext = async () => {
             ],
         },
         now: () => timestamp,
-        protectedHostnames: ['panel.example.com', 'api.example.com'],
+        protectedHostnames: () => ['panel.example.com', 'api.example.com'],
         protectedNetworks: ['containers_control', 'containers_ingress'],
     })
 

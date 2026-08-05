@@ -117,7 +117,7 @@ const createHarness = () => {
         engineAgentClient: engine.client,
         now: () => NOW,
         protectedContainers: ['containers-api'],
-        protectedHostnames: ['panel.example.com'],
+        protectedHostnames: () => ['panel.example.com'],
     })
 
     return { calls, engine, failure, rows, service }
@@ -185,7 +185,7 @@ describe('Nginx proxy route service 지속성 순서', () => {
             engineAgentClient: engine.client,
             now: () => NOW,
             protectedContainers: [],
-            protectedHostnames: [],
+            protectedHostnames: () => [],
         })
 
         const error = await service.create(input()).then(

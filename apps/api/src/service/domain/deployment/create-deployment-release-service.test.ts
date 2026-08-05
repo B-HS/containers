@@ -60,7 +60,7 @@ const createTestContext = async ({
             ],
         },
         now: () => timestamp,
-        protectedHostnames: [],
+        protectedHostnames: () => [],
         protectedNetworks: ['containers_control'],
     })
     const { manifest } = await manifestService.create(actorId, {

@@ -180,4 +180,24 @@ describe('패널 설정 서비스', () => {
 
         expect(applied).toHaveLength(1)
     })
+
+    test('공개 주소를 저장하면 보호 hostname 에 포함된다', async () => {
+        const { service } = createFixture()
+
+        expect(service.getProtectedHostnames()).toEqual(['127.0.0.1', 'localhost'])
+
+        await service.update('owner', { extraTrustedOrigins: [], publicOrigin: 'https://panel.example.com' })
+
+        expect(service.getProtectedHostnames()).toContain('panel.example.com')
+        expect(service.getPublicOrigin()).toBe('https://panel.example.com')
+    })
+
+    test('추가 신뢰 origin 도 보호 hostname 이 된다', async () => {
+        const { service } = createFixture()
+
+        await service.update('owner', { extraTrustedOrigins: ['https://ops.example.com'], publicOrigin: null })
+
+        expect(service.getProtectedHostnames()).toContain('ops.example.com')
+        expect(service.getPublicOrigin()).toBeNull()
+    })
 })

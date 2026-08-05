@@ -7,7 +7,7 @@ import { createDeploymentManifestService, type DeploymentManifestServiceDb } fro
 type ComposeDeploymentManifestDependencies = {
     db: ControlDatabase
     engineAgentClient: Pick<EngineAgentClient, 'getImages'>
-    protectedHostnames: string[]
+    protectedHostnames: () => string[]
     protectedNetworks: string[]
 }
 

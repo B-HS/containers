@@ -62,7 +62,7 @@ type DeploymentManifestServiceDependencies = {
     db: DeploymentManifestServiceDb
     engineAgentClient: Pick<EngineAgentClient, 'getImages'>
     now: () => Date
-    protectedHostnames: string[]
+    protectedHostnames: () => string[]
     protectedNetworks: string[]
 }
 
@@ -182,7 +182,7 @@ export const createDeploymentManifestService = ({
     return {
         create: async (actorId: string, input: unknown) => {
             const payload = deploymentManifestInputSchema.parse(input)
-            if (protectedHostnames.includes(payload.route.hostname)) {
+            if (protectedHostnames().includes(payload.route.hostname)) {
                 throw createAppError('DEPLOYMENT_ROUTE_PROTECTED_HOSTNAME')
             }
             if (protectedNetworks.includes(payload.network)) {

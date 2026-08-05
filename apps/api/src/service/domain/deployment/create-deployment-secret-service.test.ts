@@ -54,7 +54,7 @@ const createTestContext = async () => {
             ],
         },
         now: () => timestamp,
-        protectedHostnames: [],
+        protectedHostnames: () => [],
         protectedNetworks: [],
     })
     return { ...database, actorId, manifestService, secretService }

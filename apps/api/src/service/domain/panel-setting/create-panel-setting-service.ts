@@ -86,6 +86,16 @@ export const createPanelSettingService = ({
 
     return {
         get: async () => toResponse(await readHostnameCandidates()),
+        getProtectedHostnames: () =>
+            Array.from(
+                new Set(
+                    effectiveTrustedOrigins()
+                        .map((origin) => hostnameOf(origin))
+                        .filter((hostname): hostname is string => hostname !== null)
+                        .concat(state?.nginxHostname === undefined || state.nginxHostname === null ? [] : [state.nginxHostname]),
+                ),
+            ),
+        getPublicOrigin: () => state?.publicOrigin ?? null,
         getTrustedOrigins: () => effectiveTrustedOrigins(),
         update: async (actorId: string | null, input: unknown) => {
             const payload = panelSettingUpdateSchema.parse(input)

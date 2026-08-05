@@ -8,7 +8,7 @@ type ComposeNginxProxyRouteDependencies = {
     db: ControlDatabase
     engineAgentClient: Pick<EngineAgentClient, 'applyNginxConfig' | 'getNginxConfig'>
     protectedContainers: string[]
-    protectedHostnames: string[]
+    protectedHostnames: () => string[]
 }
 
 export const buildNginxProxyRouteServiceDb = (db: ControlDatabase): NginxProxyRouteServiceDb => ({

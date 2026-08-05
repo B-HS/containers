@@ -131,19 +131,23 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         ...(env.apiKeyRateLimitPerMinute === undefined ? {} : { rateLimitPerMinute: env.apiKeyRateLimitPerMinute }),
     })
     const { auditService } = composeAudit({ archiveRoot: env.auditArchiveRoot, db, retentionDays: env.auditRetentionDays })
-    const { authService } = composeAuth({ auth, db, invitationBaseUrl: env.invitationBaseUrl })
+    const { authService } = composeAuth({
+        auth,
+        db,
+        invitationBaseUrl: () => panelSettingService.getPublicOrigin() ?? env.invitationBaseUrl,
+    })
     const { deploymentService } = composeDeployment({ db, engineAgentClient: clients.engineAgentClient })
     const { deploymentManifestService } = composeDeploymentManifest({
         db,
         engineAgentClient: clients.engineAgentClient,
-        protectedHostnames: env.protectedHostnames,
+        protectedHostnames: () => [...env.protectedHostnames, ...panelSettingService.getProtectedHostnames()],
         protectedNetworks: PROTECTED_NETWORKS,
     })
     const { nginxProxyRouteService } = composeNginxProxyRoute({
         db,
         engineAgentClient: clients.engineAgentClient,
         protectedContainers: PROTECTED_CONTAINERS,
-        protectedHostnames: env.protectedHostnames,
+        protectedHostnames: () => [...env.protectedHostnames, ...panelSettingService.getProtectedHostnames()],
     })
     const { deploymentSecretService } = composeDeploymentSecret({ db, keyring: secrets.deploymentKeyring })
     const { backupService } = composeBackup({
