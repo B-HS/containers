@@ -720,7 +720,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 - [x] 1. `containerSummarySchema` 확장(`exposedPorts`·`networks`) — 완료
 - [x] 2. 라우트 폼 `Input+datalist` → `Select` + 서버 대상 존재·네트워크 검증 — 완료
-- [ ] 3. job 실패 분기(`job.query.ts`) + 소비 위젯 3곳
+- [x] 3. job 실패 분기(`job.query.ts`) + 소비 위젯 — 실측: 잘못된 tar 업로드 → 재시도 소진 후 실패 배너·사유 표시, 진행률 초기화, 종료 후 폴링 중단. 이 실측 중 CSP 가 업로드 해시 WebAssembly 를 막던 blocker 를 발견해 함께 수정([bug/2026-08-06](./bug/2026-08-06-csp-blocks-upload-hashing.md))
 - [x] 4a. 런타임 프로필 도입 — 표준 이미지가 기본으로 뜬다 (실측 완료)
 - [x] 4b. 배포 실패 진단 노출 (§13) — job event `detail` 에 exit code·container error·리댁션 로그 20줄. 실측: exit 3 이미지 배포 → `stage=probe`·`exitCode=3`·`REGISTRY_TOKEN=[REDACTED]` 확인, 배포 화면 렌더 확인. 함께 정리: 시크릿 리댁션 유틸 신설(문서만 있고 구현이 없었다), `DEPLOYMENT_RELEASE_FAILED` 미등록으로 500 이던 것 3파일 등록. [acknowledge/0039](./acknowledge/0039-deployment-failure-diagnostics.md)
 

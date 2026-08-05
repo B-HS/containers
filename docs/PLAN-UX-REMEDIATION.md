@@ -34,7 +34,7 @@
 
 - [x] **1.1 컨테이너 요약 계약 확장** — `72cb596` 실측: `demo-a` 에서 `8080/tcp` + `containers_edge` 확인
 - [x] **1.2 라우트 대상 검증(서버) + Select 전환(웹)** — 실측: 없는 대상 400 `NGINX_ROUTE_TARGET_NOT_FOUND`, bridge 컨테이너 400 `NGINX_ROUTE_TARGET_UNREACHABLE`, edge 컨테이너 201
-- [ ] **1.3 job 실패 표면화** — `fix(web): durable job 실패를 화면에 드러낸다`
+- [x] **1.3 job 실패 표면화** — 실측: 브라우저에서 잘못된 tar 를 업로드하니 재시도 소진 후 화면에 실패 배너와 사유가 뜨고 진행률이 초기화됐다. 종료 후 job 폴링도 멈춘다
 
 ### P0' — 런타임 개방 (사용자 1순위 요구)
 
@@ -129,6 +129,12 @@
 - 소비 위젯 `artifact-widget.tsx`·`artifact-upload-form.tsx` — 실패 토스트 + 인라인 배너, 진행률 초기화.
 
 **완료 판정.** 일부러 sha256 이 어긋난 업로드를 finalize 하면 화면에 실패와 코드가 뜬다. 종료 후 네트워크 탭에 job 폴링이 멈춘다.
+
+**결과(2026-08-06).** 완료. 실측은 sha256 대신 잘못된 tar 로 했다 — 클라이언트가 digest 를 직접 계산하므로 불일치를 UI 로 만들 수 없다.
+
+- **이 항목을 실측하려다 별개 blocker 를 찾았다.** CSP 가 WebAssembly 를 막아 브라우저 업로드가 아예 동작하지 않았다. `hash-wasm` 으로 증분 sha256 을 계산하기 때문이다. → [bug/2026-08-06-csp-blocks-upload-hashing.md](./bug/2026-08-06-csp-blocks-upload-hashing.md)
+- 배너에 뜨는 문자열이 에러 코드가 아니라 tar 라이브러리의 영어 예외 메시지다(`Invalid tar header...`). finalize 실패가 코드로 정규화되지 않는 기존 문제이고 **4.1 에서 함께 정리한다**.
+- 로케일 카탈로그 키 정합 테스트가 없어 한 로케일 누락이 조용히 통과하던 것도 함께 막았다(`apps/web/src/i18n/messages.test.ts`).
 
 ---
 
