@@ -215,6 +215,7 @@
         "engine": "Docker Engine",
         "exec": "Execute",
         "expiresInDays": "Expires in days",
+        "exposedPorts": "Exposed ports",
         "file": "Archive file",
         "force": "Force",
         "gateway": "Gateway",

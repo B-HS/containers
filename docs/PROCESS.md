@@ -718,7 +718,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 ### P0 — 흐름을 실제로 깨뜨림
 
-- [ ] 1. `containerSummarySchema` 확장(`exposedPorts`·`networks`) — P0 1·2 를 동시에 푸는 단일 변경점
+- [x] 1. `containerSummarySchema` 확장(`exposedPorts`·`networks`) — 완료
 - [ ] 2. 라우트 폼 `Input+datalist` → `Select` + 서버 대상 존재·네트워크 검증
 - [ ] 3. job 실패 분기(`job.query.ts`) + 소비 위젯 3곳
 - [ ] 4. 배포 런타임 제약 — `readOnlyRootFilesystem` 하드코딩 해소, 실패 진단 노출 (§13)

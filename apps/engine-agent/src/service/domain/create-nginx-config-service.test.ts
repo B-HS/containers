@@ -40,6 +40,8 @@ const createTestContext = async (validationExitCode = 0, fetcher?: (input: strin
                     ImageID: 'sha256:nginx',
                     Labels: { 'com.docker.compose.project': 'containers', 'com.docker.compose.service': 'nginx' },
                     Names: ['/containers-nginx-1'],
+                    NetworkSettings: { Networks: { containers_edge: {} } },
+                    Ports: [{ PrivatePort: 8080, Type: 'tcp' }],
                     State: 'running',
                     Status: 'Up',
                 },

@@ -33,11 +33,13 @@ export const engineOverviewSchema = z.object({
 export const containerSummarySchema = z.object({
     command: z.string(),
     createdAt: z.iso.datetime(),
+    exposedPorts: z.array(z.string()),
     id: z.string().min(1),
     image: z.string().min(1),
     imageId: z.string().min(1),
     labelKeys: z.array(z.string()),
     names: z.array(z.string()),
+    networks: z.array(z.string()),
     state: z.string().min(1),
     status: z.string().min(1),
 })

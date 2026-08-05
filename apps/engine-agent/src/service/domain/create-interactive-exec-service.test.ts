@@ -90,6 +90,8 @@ describe('Interactive exec ticket', () => {
                         ImageID: '',
                         Labels: { 'com.docker.compose.project': 'containers' },
                         Names: ['/nginx'],
+                        NetworkSettings: { Networks: { containers_edge: {} } },
+                        Ports: [{ PrivatePort: 8080, Type: 'tcp' }],
                         State: 'running',
                         Status: 'Up',
                     },

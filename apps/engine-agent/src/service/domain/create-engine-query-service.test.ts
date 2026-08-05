@@ -34,6 +34,8 @@ const createDockerEngineClientStub = () => ({
             ImageID: 'sha256:image-id',
             Labels: { secret: 'sensitive-label-value' },
             Names: ['/containers-api-1'],
+            NetworkSettings: { Networks: { containers_edge: {} } },
+            Ports: [{ PrivatePort: 8080, Type: 'tcp' }],
             State: 'running',
             Status: 'Up 5 minutes',
         },

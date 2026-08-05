@@ -16,6 +16,7 @@ import { createAppError } from '../../lib/error'
 import type { DockerEngineClient } from '../shared/create-docker-engine-client'
 
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
+const DEFAULT_PORT_PROTOCOL = 'tcp'
 const MANAGEMENT_LABEL = 'managed-by'
 const MANAGEMENT_LABEL_VALUE = 'containers-control-plane'
 const MANAGEMENT_PROJECT = 'containers'
@@ -151,11 +152,15 @@ export const createEngineQueryService = ({ artifactRoot, dockerEngineClient }: E
                     .map((container) => ({
                         command: container.Command,
                         createdAt: new Date(container.Created * 1_000).toISOString(),
+                        exposedPorts: Array.from(
+                            new Set(container.Ports.map((port) => `${port.PrivatePort}/${port.Type ?? DEFAULT_PORT_PROTOCOL}`)),
+                        ).sort(),
                         id: container.Id,
                         image: container.Image,
                         imageId: container.ImageID,
                         labelKeys: Object.keys(container.Labels),
                         names: container.Names.map((name) => name.replace(/^\//, '')),
+                        networks: Object.keys(container.NetworkSettings.Networks).sort(),
                         state: container.State,
                         status: container.Status,
                     })),

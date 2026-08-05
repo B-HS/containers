@@ -64,6 +64,8 @@ const CONTAINER_SUMMARY = {
     image: 'example:1.0.0',
     imageId: 'image-id',
     labelKeys: [],
+    exposedPorts: ['8080/tcp'],
+    networks: ['containers_edge'],
     names: ['/example'],
     state: 'running',
     status: 'Up 1 minute',

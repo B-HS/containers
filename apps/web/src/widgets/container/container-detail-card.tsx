@@ -79,6 +79,18 @@ export const ContainerDetailCard: FC<ContainerDetailCardProps> = ({
                             <dt className="text-text-subtle">{t('state')}</dt>
                             <dd className="mt-1 truncate text-text-strong">{container.status}</dd>
                         </div>
+                        <div className="min-w-0">
+                            <dt className="text-text-subtle">{t('exposedPorts')}</dt>
+                            <dd className="mt-1 truncate font-mono text-text-strong tabular-nums">
+                                {container.exposedPorts.length === 0 ? t('none') : container.exposedPorts.join(', ')}
+                            </dd>
+                        </div>
+                        <div className="min-w-0 sm:col-span-2">
+                            <dt className="text-text-subtle">{t('networks')}</dt>
+                            <dd className="mt-1 truncate font-mono text-text-strong">
+                                {container.networks.length === 0 ? t('none') : container.networks.join(', ')}
+                            </dd>
+                        </div>
                     </dl>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

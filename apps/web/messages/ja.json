@@ -215,6 +215,7 @@
         "engine": "Docker Engine",
         "exec": "実行",
         "expiresInDays": "有効日数",
+        "exposedPorts": "公開ポート",
         "file": "Archiveファイル",
         "force": "強制",
         "gateway": "ゲートウェイ",

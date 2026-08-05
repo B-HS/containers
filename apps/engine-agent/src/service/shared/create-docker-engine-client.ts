@@ -111,6 +111,25 @@ const dockerContainerSummarySchema = z.object({
         .array(z.string())
         .nullish()
         .transform((value) => value ?? []),
+    NetworkSettings: z
+        .object({
+            Networks: z
+                .record(z.string(), z.unknown())
+                .nullish()
+                .transform((value) => value ?? {}),
+        })
+        .nullish()
+        .transform((value) => value ?? { Networks: {} }),
+    Ports: z
+        .array(
+            z.object({
+                PrivatePort: z.number().int().positive(),
+                PublicPort: z.number().int().positive().nullish(),
+                Type: z.string().nullish(),
+            }),
+        )
+        .nullish()
+        .transform((value) => value ?? []),
     State: z.string().min(1),
     Status: z.string().min(1),
 })
