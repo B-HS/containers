@@ -606,3 +606,23 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - 미인증 API 23개 전수 401, 패널 9개 라우트 200, console error 0
 - 토큰 전용 경로 7개 200, validator 400 응답 2종, 에러 봉투 형태 동일
 - `drizzle-kit generate` 결과 "No schema changes" — enum 정리는 마이그레이션 무영향
+
+## 작업: HANDOFF 1순위 라이브 검증과 스트림 결함 수정 (2026-08-05)
+
+기준: [HANDOFF.md](./HANDOFF.md) §8 1순위. 결정은 [acknowledge/0032](./acknowledge/0032-stream-lifecycle-and-e2e-verification.md), 결함 상세는 [bug/2026-08-05-sse-stream-slot-leak.md](./bug/2026-08-05-sse-stream-slot-leak.md).
+
+- [x] a. SSE 동시 상한 429 확인 — 확인했으나 **재시작 없이는 복구 불가한 슬롯 누수를 발견**. api·engine-agent 양쪽 수정, 회귀 테스트 6건 추가, 재빌드 후 3회 반복 실측
+- [x] b. 동시 상한 불일치(API 32 / agent 20) 해소 — `MAX_CONCURRENT_ENGINE_STREAMS` 단일 상수
+- [x] c. SSE 초기 flush 추가 — 조용한 스트림이 15초간 헤더조차 못 보내던 문제
+- [x] d. nginx revision 정리 — 프루닝은 실제 파일시스템 테스트(keep=2, 5회 apply)로 검증됨을 확인하고 컨테이너 env(`NGINX_REVISION_KEEP_COUNT=20`) → `server.ts` → `create-agent-app.ts` 배선을 라이브 대조. 라이브 21회 apply 는 control plane churn 대비 정보 이득이 없어 생략
+- [x] e. `scripts/seed-e2e.ts` 추가 — E2E 계정 생성/비밀번호 재설정. 비밀번호는 stdout 1회 출력, 기록하지 않음
+- [x] f. 암호 포함 백업 복구 UI 실렌더 확인 — 브라우저에서 `secretsIncluded` 분기 양쪽 확인, 위젯 테스트 2건으로 고정
+- [x] g. 다크 모드 6화면 확인 — 판독 문제 0건. `dark:` 변형·Tailwind 기본 팔레트 부재를 테스트로 고정
+- [x] h. 웹 테스트 환경 — vitest 대신 `bun test` + happy-dom + Testing Library(의존성 3개, `bunfig.toml` preload 1줄)
+- [ ] i. `full` 모드 복구 드릴 — 라이브 control DB 를 되돌리는 파괴적 작업이라 사용자 승인 대기
+- [ ] j. 운영 nginx 이미지 경유 저속 SSE 미도달 — 사용자 판단으로 조사 중단, KNOWN ISSUE 로 기록
+
+### 실측
+
+- 스트림: 동시 32개 → 33번째 429 → 전부 종료 → 다시 32개 전부 200(3회 반복 동일), `/api/readyz` 전 항목 `ok`, `GET /api/containers` 200
+- 전체 검증: typecheck 8/8 · lint 0 · test 320(백엔드) + 6(웹) · format:check · build 8/8

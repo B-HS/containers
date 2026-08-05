@@ -23,7 +23,7 @@
 - [ ] [HANDOFF-STATUS.md](./HANDOFF-STATUS.md)의 구현 범위·한계·검증 증거를 읽는다.
 - [ ] [PROCESS.md](./PROCESS.md)의 마지막 활성 Phase를 읽는다.
 - [ ] [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md)과 [quality-assurance/ACCEPTANCE.md](./quality-assurance/ACCEPTANCE.md)에서 선택한 작업의 완료 조건을 확인한다.
-- [ ] 관련 최신 `acknowledge/` 문서를 읽는다. 현재 최신은 [0029](./acknowledge/0029-monotone-design-system.md)이다.
+- [ ] 관련 최신 `acknowledge/` 문서를 읽는다. 현재 최신은 [0032](./acknowledge/0032-stream-lifecycle-and-e2e-verification.md)이다.
 - [ ] 세션 인수인계는 [HANDOFF.md](./HANDOFF.md)가 단일 진입점이다. 이 체크리스트보다 먼저 읽는다.
 - [ ] UI 변경이면 [SHADCN-COMPONENTS.md](./SHADCN-COMPONENTS.md)와 `/Users/gkn/flunti-otel` 패턴을 먼저 확인한다.
 

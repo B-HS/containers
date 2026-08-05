@@ -233,7 +233,7 @@ Compose 서비스와 권한 경계:
 - `/api/maintenance` 미인증 401, maintenance off 상태에서 mutation 경로 정상 통과 확인
 - api 이미지 재빌드·재기동 후 live control DB 에 `operation_job`·`operation_job_event` 존재, `/api/jobs` 미인증 401
 - Agent 3종 stream(logs·stats·events) 실수신 200 `text/event-stream` + 정규화 데이터, `/api/stream/*` 미인증 401
-- Next.js 16.2.12 production build: 성공
+- Next.js 16.2.12 production build: 성공 (2026-08-05 에 16.3.0 으로 상향, 재빌드 성공 — [acknowledge/0031](./acknowledge/0031-dependency-and-type-hardening.md))
 - Phase 14 Next.js webpack production build와 Compose image 내부 Turbopack build: 성공. host root의 기본 Turbopack build는 compile 단계에 장시간 정지해 중단했으며 환경 차이로 기록한다.
 - API·Agent·Traffic Worker Bun production bundle: 성공
 - Compose 5개 서비스: healthy
