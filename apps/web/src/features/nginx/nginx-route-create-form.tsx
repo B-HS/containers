@@ -15,12 +15,20 @@ const DEFAULT_BODY_SIZE_MEGABYTES = 64
 
 type NginxRouteInput = z.infer<typeof nginxProxyRouteInputSchema>
 
+type RouteTargetCandidate = {
+    exposedPorts: string[]
+    name: string
+    networks: string[]
+    state: string
+}
+
 type NginxRouteCreateFormProps = {
     busy: boolean
-    containers: string[]
+    containers: RouteTargetCandidate[]
     labels: {
         bodySize: string
         container: string
+        containerUnreachable: string
         create: string
         hostname: string
         invalidValue: string
@@ -32,12 +40,26 @@ type NginxRouteCreateFormProps = {
         timeout: string
     }
     onCreate: (input: NginxRouteInput) => void
+    routableNetworks: string[]
 }
 
-export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, containers, labels, onCreate }) => {
+export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, containers, labels, onCreate, routableNetworks }) => {
     const [errors, setErrors] = useState<Record<string, string>>({})
     const [protocol, setProtocol] = useState<NginxRouteInput['protocol']>('http')
     const [stripPrefix, setStripPrefix] = useState(false)
+    const [targetContainer, setTargetContainer] = useState('')
+    const [targetPort, setTargetPort] = useState('')
+
+    const isReachable = (candidate: RouteTargetCandidate) =>
+        candidate.state !== 'running' || candidate.networks.some((network) => routableNetworks.includes(network))
+
+    const selectContainer = (name: string) => {
+        setTargetContainer(name)
+        const firstPort = containers.find((candidate) => candidate.name === name)?.exposedPorts[0]?.split('/')[0]
+        if (firstPort !== undefined) {
+            setTargetPort(firstPort)
+        }
+    }
 
     const submit = (form: FormData) => {
         const result = nginxProxyRouteInputSchema.safeParse({
@@ -48,8 +70,8 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
             pathMode: 'prefix',
             protocol,
             stripPrefix,
-            targetContainer: String(form.get('targetContainer') ?? ''),
-            targetPort: Number(form.get('targetPort')),
+            targetContainer,
+            targetPort: Number(targetPort),
             timeoutSeconds: Number(form.get('timeoutSeconds')),
         })
 
@@ -113,19 +135,28 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
                 </div>
                 <div className="grid min-w-0 gap-2 lg:col-span-2">
                     <Label htmlFor="route-container">{labels.container}</Label>
-                    <Input
-                        id="route-container"
-                        name="targetContainer"
-                        list="route-container-options"
-                        required
-                        aria-invalid={errors.targetContainer !== undefined}
-                        aria-describedby={errors.targetContainer === undefined ? undefined : 'route-container-error'}
-                    />
-                    <datalist id="route-container-options">
-                        {containers.map((container) => (
-                            <option key={container} value={container} />
-                        ))}
-                    </datalist>
+                    <Select value={targetContainer} onValueChange={selectContainer}>
+                        <SelectTrigger
+                            id="route-container"
+                            className="w-full"
+                            aria-invalid={errors.targetContainer !== undefined}
+                            aria-describedby={errors.targetContainer === undefined ? undefined : 'route-container-error'}
+                        >
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {containers.map((candidate) => (
+                                <SelectItem key={candidate.name} value={candidate.name}>
+                                    {candidate.name}
+                                    <span className="text-text-subtle">
+                                        {candidate.state}
+                                        {candidate.exposedPorts.length > 0 ? ` · ${candidate.exposedPorts.join(', ')}` : ''}
+                                        {isReachable(candidate) ? '' : ` · ${labels.containerUnreachable}`}
+                                    </span>
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                     {errors.targetContainer !== undefined && (
                         <p id="route-container-error" className="text-xs text-danger">
                             {errors.targetContainer}
@@ -141,6 +172,8 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
                         min="1"
                         max="65535"
                         required
+                        value={targetPort}
+                        onChange={(event) => setTargetPort(event.target.value)}
                         aria-invalid={errors.targetPort !== undefined}
                         aria-describedby={errors.targetPort === undefined ? undefined : 'route-port-error'}
                     />

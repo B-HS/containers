@@ -530,6 +530,7 @@
         "nginxRouteBodySize": "リクエスト本文上限 MiB",
         "nginxRouteConfirmation": "削除するhostnameとpathを入力",
         "nginxRouteContainer": "対象コンテナDNS名",
+        "nginxRouteContainerUnreachable": "Nginx と別のネットワーク",
         "nginxRouteControl": "構造化プロキシルート",
         "nginxRouteCreate": "ルート追加",
         "nginxRouteEmpty": "登録済みのworkloadルートはありません。",

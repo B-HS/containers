@@ -38,10 +38,11 @@ type NginxProxyRouteServiceDb = {
 
 type NginxProxyRouteServiceDependencies = {
     db: NginxProxyRouteServiceDb
-    engineAgentClient: Pick<EngineAgentClient, 'applyNginxConfig' | 'getNginxConfig'>
+    engineAgentClient: Pick<EngineAgentClient, 'applyNginxConfig' | 'getContainers' | 'getNginxConfig'>
     now: () => Date
     protectedContainers: string[]
     protectedHostnames: () => string[]
+    routableNetworks: string[]
 }
 
 export type { NginxProxyRouteServiceDb }
@@ -123,6 +124,7 @@ export const createNginxProxyRouteService = ({
     now,
     protectedContainers,
     protectedHostnames,
+    routableNetworks,
 }: NginxProxyRouteServiceDependencies) => {
     let pending: Promise<unknown> = Promise.resolve()
 
@@ -138,6 +140,23 @@ export const createNginxProxyRouteService = ({
     const assertProtectedTarget = (payload: { targetContainer: string }) => {
         if (protectedContainers.includes(payload.targetContainer)) {
             throw createAppError('NGINX_ROUTE_PROTECTED_TARGET')
+        }
+    }
+
+    /**
+     * Rejects targets nginx could never reach. The rendered config resolves the upstream through a
+     * variable, so nginx validates and reloads even when the container does not exist and the
+     * mistake only surfaces as a 502 on the public domain. Being stopped is allowed because a route
+     * may legitimately be prepared before its container runs.
+     */
+    const assertReachableTarget = async (payload: { targetContainer: string }) => {
+        const containers = await engineAgentClient.getContainers()
+        const target = containers.find((container) => container.names.includes(payload.targetContainer))
+        if (target === undefined) {
+            throw createAppError('NGINX_ROUTE_TARGET_NOT_FOUND')
+        }
+        if (target.state === 'running' && !target.networks.some((network) => routableNetworks.includes(network))) {
+            throw createAppError('NGINX_ROUTE_TARGET_UNREACHABLE')
         }
     }
     const list = async () =>
@@ -182,6 +201,7 @@ export const createNginxProxyRouteService = ({
                     throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
                 }
                 assertProtectedTarget(payload)
+                await assertReachableTarget(payload)
                 const collision = await db.findCollision(payload.hostname, payload.path, payload.pathMode)
                 if (collision !== undefined) {
                     throw createAppError('NGINX_ROUTE_COLLISION')
@@ -235,6 +255,7 @@ export const createNginxProxyRouteService = ({
                     throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
                 }
                 assertProtectedTarget(payload)
+                await assertReachableTarget(payload)
                 const current = await list()
                 const existing = current.find(
                     (route) => route.hostname === payload.hostname && route.path === payload.path && route.pathMode === payload.pathMode,

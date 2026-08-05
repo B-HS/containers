@@ -125,6 +125,7 @@ services:
             CONTROL_DB_PATH: /data/control.sqlite
             CONTROL_MIGRATIONS_PATH: /app/drizzle
             PROBE_NETWORK_NAME: containers_probe
+            ROUTABLE_NETWORK_NAMES: containers_edge
             NGINX_STATUS_URL: http://nginx:8081/status
             NOTIFICATION_SECRET_KEY_FILE: /data/notification-secret-key
             PANEL_PUBLIC_URL: ${PANEL_PUBLIC_ORIGIN:-http://127.0.0.1:18080}

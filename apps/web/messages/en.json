@@ -530,6 +530,7 @@
         "nginxRouteBodySize": "Request body limit MiB",
         "nginxRouteConfirmation": "Enter the hostname and path to remove",
         "nginxRouteContainer": "Target container DNS name",
+        "nginxRouteContainerUnreachable": "not on an nginx network",
         "nginxRouteControl": "Structured proxy routes",
         "nginxRouteCreate": "Add route",
         "nginxRouteEmpty": "No workload routes are registered.",

@@ -67,6 +67,7 @@ type ComposeEnv = {
     notificationSecretKeyFile: string
     probeNetworkName: string
     protectedHostnames: string[]
+    routableNetworks: string[]
     trafficWorkerInternalUrl: string
     uploadTotalQuotaBytes: number
     workerId: string
@@ -148,6 +149,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         engineAgentClient: clients.engineAgentClient,
         protectedContainers: PROTECTED_CONTAINERS,
         protectedHostnames: () => [...env.protectedHostnames, ...panelSettingService.getProtectedHostnames()],
+        routableNetworks: env.routableNetworks,
     })
     const { deploymentSecretService } = composeDeploymentSecret({ db, keyring: secrets.deploymentKeyring })
     const { backupService } = composeBackup({

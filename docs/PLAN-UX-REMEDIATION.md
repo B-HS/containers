@@ -33,7 +33,7 @@
 ### P0 — 흐름을 조용히 깨뜨림
 
 - [x] **1.1 컨테이너 요약 계약 확장** — `72cb596` 실측: `demo-a` 에서 `8080/tcp` + `containers_edge` 확인
-- [ ] **1.2 라우트 대상 검증(서버) + Select 전환(웹)** — `fix(nginx): 라우트 대상 컨테이너를 검증하고 목록에서 고르게 한다`
+- [x] **1.2 라우트 대상 검증(서버) + Select 전환(웹)** — 실측: 없는 대상 400 `NGINX_ROUTE_TARGET_NOT_FOUND`, bridge 컨테이너 400 `NGINX_ROUTE_TARGET_UNREACHABLE`, edge 컨테이너 201
 - [ ] **1.3 job 실패 표면화** — `fix(web): durable job 실패를 화면에 드러낸다`
 
 ### P0' — 런타임 개방 (사용자 1순위 요구)

@@ -124,6 +124,8 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.NGINX_ROUTE_COLLISION]: 'Nginx 라우트가 이미 존재합니다.',
     [ERROR_CODE.NGINX_ROUTE_CREATE_FAILED]: 'Nginx 라우트를 생성할 수 없습니다.',
     [ERROR_CODE.NGINX_ROUTE_NOT_FOUND]: 'Nginx 라우트를 찾을 수 없습니다.',
+    [ERROR_CODE.NGINX_ROUTE_TARGET_NOT_FOUND]: '대상 컨테이너를 찾을 수 없습니다.',
+    [ERROR_CODE.NGINX_ROUTE_TARGET_UNREACHABLE]: '대상 컨테이너가 Nginx 와 같은 네트워크에 없어 연결할 수 없습니다.',
     [ERROR_CODE.NGINX_ROUTE_PROTECTED_HOSTNAME]: 'Nginx 라우트의 호스트명은 보호되어 변경할 수 없습니다.',
     [ERROR_CODE.NGINX_ROUTE_PROTECTED_TARGET]: 'Nginx 라우트의 대상은 보호되어 변경할 수 없습니다.',
     [ERROR_CODE.NGINX_ROUTE_READ_FAILED]: 'Nginx 라우트를 조회할 수 없습니다.',

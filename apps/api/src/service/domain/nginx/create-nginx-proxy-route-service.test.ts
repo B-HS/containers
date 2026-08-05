@@ -1,4 +1,18 @@
 import { describe, expect, test } from 'bun:test'
+
+const TEST_CONTAINER = {
+    command: 'nginx',
+    createdAt: '2026-08-05T00:00:00.000Z',
+    exposedPorts: ['8080/tcp'],
+    id: 'target-container-id',
+    image: 'app:1.0.0',
+    imageId: 'sha256:app',
+    labelKeys: [],
+    names: ['example-app'],
+    networks: ['containers_edge'],
+    state: 'running',
+    status: 'Up 1 minute',
+}
 import { nginxConfigApplySchema, type NginxProxyRoute } from '@containers/contracts/nginx'
 import { isAppError } from '../../../lib/error'
 import { createNginxProxyRouteService, renderNginxProxyRoutes, type NginxProxyRouteServiceDb } from './create-nginx-proxy-route-service'
@@ -88,6 +102,7 @@ const createStubEngine = (calls: string[], failure: { apply: boolean }) => {
 
     return {
         client: {
+            getContainers: async () => [TEST_CONTAINER],
             getNginxConfig: async () => ({ config, history: [], sha256 }),
             applyNginxConfig: async (input: unknown) => {
                 calls.push('apply')
@@ -107,17 +122,18 @@ const createStubEngine = (calls: string[], failure: { apply: boolean }) => {
     }
 }
 
-const createHarness = () => {
+const createHarness = (containers: (typeof TEST_CONTAINER)[] = [TEST_CONTAINER]) => {
     const calls: string[] = []
     const failure = { apply: false }
     const { db, rows } = createStubDb(calls)
     const engine = createStubEngine(calls, failure)
     const service = createNginxProxyRouteService({
         db,
-        engineAgentClient: engine.client,
+        engineAgentClient: { ...engine.client, getContainers: async () => containers },
         now: () => NOW,
         protectedContainers: ['containers-api'],
         protectedHostnames: () => ['panel.example.com'],
+        routableNetworks: ['containers_edge'],
     })
 
     return { calls, engine, failure, rows, service }
@@ -186,6 +202,7 @@ describe('Nginx proxy route service 지속성 순서', () => {
             now: () => NOW,
             protectedContainers: [],
             protectedHostnames: () => [],
+            routableNetworks: ['containers_edge'],
         })
 
         const error = await service.create(input()).then(
@@ -229,5 +246,29 @@ describe('Nginx proxy route service reconcile', () => {
 
         expect(await service.reconcileRoutes()).toEqual({ applied: true, configSha256: APPLIED_SHA256 })
         expect(calls).toEqual(['apply'])
+    })
+
+    test('존재하지 않는 컨테이너로는 라우트를 만들 수 없다', async () => {
+        const { service } = createHarness([])
+
+        await expect(service.create(input())).rejects.toThrow('NGINX_ROUTE_TARGET_NOT_FOUND')
+    })
+
+    test('nginx 와 다른 네트워크에 있는 실행 중 컨테이너는 거부한다', async () => {
+        const { service } = createHarness([{ ...TEST_CONTAINER, networks: ['bridge'] }])
+
+        await expect(service.create(input())).rejects.toThrow('NGINX_ROUTE_TARGET_UNREACHABLE')
+    })
+
+    test('중지된 컨테이너는 미리 라우트를 만들 수 있다', async () => {
+        const { service } = createHarness([{ ...TEST_CONTAINER, networks: [], state: 'exited' }])
+
+        await expect(service.create(input())).resolves.toMatchObject({ route: { targetContainer: 'example-app' } })
+    })
+
+    test('배포 경로인 upsert 도 같은 검증을 받는다', async () => {
+        const { service } = createHarness([])
+
+        await expect(service.upsert(input())).rejects.toThrow('NGINX_ROUTE_TARGET_NOT_FOUND')
     })
 })

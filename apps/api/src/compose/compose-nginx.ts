@@ -6,9 +6,10 @@ import { createNginxProxyRouteService, type NginxProxyRouteServiceDb } from '../
 
 type ComposeNginxProxyRouteDependencies = {
     db: ControlDatabase
-    engineAgentClient: Pick<EngineAgentClient, 'applyNginxConfig' | 'getNginxConfig'>
+    engineAgentClient: Pick<EngineAgentClient, 'applyNginxConfig' | 'getContainers' | 'getNginxConfig'>
     protectedContainers: string[]
     protectedHostnames: () => string[]
+    routableNetworks: string[]
 }
 
 export const buildNginxProxyRouteServiceDb = (db: ControlDatabase): NginxProxyRouteServiceDb => ({
@@ -32,12 +33,19 @@ export const buildNginxProxyRouteServiceDb = (db: ControlDatabase): NginxProxyRo
     },
 })
 
-export const composeNginxProxyRoute = ({ db, engineAgentClient, protectedContainers, protectedHostnames }: ComposeNginxProxyRouteDependencies) => ({
+export const composeNginxProxyRoute = ({
+    db,
+    engineAgentClient,
+    protectedContainers,
+    protectedHostnames,
+    routableNetworks,
+}: ComposeNginxProxyRouteDependencies) => ({
     nginxProxyRouteService: createNginxProxyRouteService({
         db: buildNginxProxyRouteServiceDb(db),
         engineAgentClient,
         now: () => new Date(),
         protectedContainers,
         protectedHostnames,
+        routableNetworks,
     }),
 })

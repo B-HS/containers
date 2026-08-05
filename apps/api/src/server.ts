@@ -51,6 +51,11 @@ const envSchema = z
         CONTROL_MIGRATIONS_PATH: z.string().min(1),
         CONTROL_NETWORK_NAME: z.string().min(1).default('containers_control'),
         PROBE_NETWORK_NAME: z.string().min(1).default('containers_probe'),
+        ROUTABLE_NETWORK_NAMES: z
+            .string()
+            .min(1)
+            .default('containers_edge')
+            .transform((value) => value.split(',').map((name) => name.trim())),
         DEPLOYMENT_SECRET_KEY_FILE: z.string().min(1).default('/data/deployment-secret-key'),
         NGINX_STATUS_URL: z.url(),
         NOTIFICATION_SECRET_KEY_FILE: z.string().min(1).default('/data/notification-secret-key'),
@@ -122,6 +127,7 @@ const composed = compose({
         nginxStatusUrl: env.NGINX_STATUS_URL,
         notificationSecretKeyFile: env.NOTIFICATION_SECRET_KEY_FILE,
         probeNetworkName: env.PROBE_NETWORK_NAME,
+        routableNetworks: env.ROUTABLE_NETWORK_NAMES,
         protectedHostnames: ['api.containers.local', 'panel.containers.local', new URL(panelPublicUrl).hostname],
         trafficWorkerInternalUrl: env.TRAFFIC_WORKER_INTERNAL_URL,
         artifactRetentionDays: env.ARTIFACT_RETENTION_DAYS,

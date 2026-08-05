@@ -530,6 +530,7 @@
         "nginxRouteBodySize": "요청 본문 한도 MiB",
         "nginxRouteConfirmation": "삭제하려면 hostname과 path를 입력",
         "nginxRouteContainer": "대상 컨테이너 DNS 이름",
+        "nginxRouteContainerUnreachable": "Nginx 와 다른 네트워크",
         "nginxRouteControl": "구조화 프록시 라우트",
         "nginxRouteCreate": "라우트 추가",
         "nginxRouteEmpty": "등록된 workload 라우트가 없습니다.",

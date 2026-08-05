@@ -5,6 +5,7 @@ export type NginxRouteLabels = {
     confirmation: string
     confirmRemoveTitle: string
     container: string
+    containerUnreachable: string
     create: string
     created: string
     empty: string

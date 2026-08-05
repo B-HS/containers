@@ -8,6 +8,8 @@ import { getSession } from '@shared/lib/session'
 import { PageHeader } from '@shared/common/page-header'
 import { NginxRouteControlWidget } from '@widgets/nginx/nginx-route-control-widget'
 
+const ROUTABLE_NETWORKS = ['containers_edge']
+
 const NginxRoutesPage = async () => {
     const [translations, navTranslations, session] = await Promise.all([getTranslations('Dashboard'), getTranslations('Nav'), getSession()])
 
@@ -32,8 +34,8 @@ const NginxRoutesPage = async () => {
             <div className="grid gap-px">
                 <PageHeader description={navTranslations('subtitles.nginxRoutes')} title={navTranslations('items.nginxRoutes')} />
                 <NginxRouteControlWidget
-                    containers={containers?.map((container) => container.names[0]?.replace(/^\//, '') ?? container.id.slice(0, 12)) ?? []}
                     role={session.session.role}
+                    routableNetworks={ROUTABLE_NETWORKS}
                     labels={{
                         actions: translations('actions'),
                         bodySize: translations('nginxRouteBodySize'),
@@ -41,6 +43,7 @@ const NginxRoutesPage = async () => {
                         confirmation: translations('nginxRouteConfirmation'),
                         confirmRemoveTitle: translations('confirmRemoveTitle'),
                         container: translations('nginxRouteContainer'),
+                        containerUnreachable: translations('nginxRouteContainerUnreachable'),
                         create: translations('create'),
                         created: translations('created'),
                         empty: translations('nginxRouteEmpty'),

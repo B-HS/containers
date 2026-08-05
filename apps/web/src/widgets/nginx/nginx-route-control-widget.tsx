@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import type { NginxProxyRoute } from '@containers/contracts/nginx'
 import { useCreateNginxRoute, useGetNginxRoutes, useRemoveNginxRoute } from '@entities/nginx/nginx.query'
+import { useGetContainerList } from '@entities/engine/engine.query'
 import { NginxRouteCreateForm } from '@features/nginx/nginx-route-create-form'
 import { NginxRouteTable } from '@features/nginx/nginx-route-table'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
@@ -13,16 +14,24 @@ import { WidgetSection } from '@shared/common/widget-section'
 import type { NginxRouteLabels } from './nginx-route-labels'
 
 type NginxRouteControlWidgetProps = {
-    containers: string[]
     labels: NginxRouteLabels
     role: string
+    routableNetworks: string[]
 }
 
+const CONTAINER_ID_PREFIX_LENGTH = 12
 const MANAGE_ROLES = ['owner', 'admin']
 const SKELETON_ROW_COUNT = 3
 
-export const NginxRouteControlWidget: FC<NginxRouteControlWidgetProps> = ({ containers, labels, role }) => {
+export const NginxRouteControlWidget: FC<NginxRouteControlWidgetProps> = ({ labels, role, routableNetworks }) => {
     const [busy, setBusy] = useState<string>()
+    const containerList = useGetContainerList()
+    const containers = (containerList.data ?? []).map((container) => ({
+        exposedPorts: container.exposedPorts,
+        name: container.names[0] ?? container.id.slice(0, CONTAINER_ID_PREFIX_LENGTH),
+        networks: container.networks,
+        state: container.state,
+    }))
     const { data, isPending } = useGetNginxRoutes()
     const routes = data ?? []
     const canManage = MANAGE_ROLES.includes(role)
@@ -58,7 +67,13 @@ export const NginxRouteControlWidget: FC<NginxRouteControlWidgetProps> = ({ cont
     return (
         <WidgetSection id="nginx-routes-title" title={labels.title} badge={routes.length}>
             {canManage && (
-                <NginxRouteCreateForm busy={busy === 'create'} containers={containers} labels={labels} onCreate={(input) => void create(input)} />
+                <NginxRouteCreateForm
+                    busy={busy === 'create'}
+                    containers={containers}
+                    labels={labels}
+                    onCreate={(input) => void create(input)}
+                    routableNetworks={routableNetworks}
+                />
             )}
             {isPending && (
                 <div className="grid gap-px bg-background p-px">
