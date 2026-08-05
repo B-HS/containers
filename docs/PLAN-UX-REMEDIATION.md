@@ -39,7 +39,7 @@
 ### P0' — 런타임 개방 (사용자 1순위 요구)
 
 - [x] **2.1 컨테이너 런타임 프로필 도입** — 실측: 순정 `nginx:1.29-alpine` 무설정 배포 healthy, `https://a.hyuns.uk` 200. `SYS_ADMIN` 요청 400
-- [ ] **2.2 배포 실패 진단 노출** — `feat(deployment): 배포 실패에 컨테이너 종료 코드와 로그를 남긴다`
+- [x] **2.2 배포 실패 진단 노출** — 실측: 일부러 exit 3 하는 이미지를 배포하니 job event `detail` 에 `stage=probe`·`exitCode=3`·리댁션된 로그 8줄(`REGISTRY_TOKEN=[REDACTED]`)이 남았고, 배포 화면 실패 릴리스에서 단계·종료 코드·로그 아코디언이 렌더됐다. 결정 기록 [acknowledge/0039](./acknowledge/0039-deployment-failure-diagnostics.md)
 
 ### P1 — compose 스택 (사용자 확정: 본격 지원)
 
@@ -195,6 +195,15 @@ release:     failureCode=DEPLOYMENT_HEALTHCHECK_FAILED, containerName=demo-a-1.0
 **주의.** 로그에 시크릿이 섞일 수 있다. **저장 줄 수를 제한**하고(예: 20줄), production 응답에서 `details` 를 감추는 기존 정책(`docs/API-DATA-AUTH.md` §3)과 충돌하지 않게 job event detail 로만 남긴다.
 
 **완료 판정.** 일부러 실패하는 이미지를 배포하면 job event 에 exit code 와 로그 꼬리가 남는다.
+
+**결과(2026-08-06).** 완료. 설계와 달랐던 점과 함께 고친 것을 남긴다.
+
+- 계획서가 적은 `inspectContainer` 는 존재하지 않는 이름이다. API 측 클라이언트의 inspect 는 `getContainer` 이고 `containerDetailSchema.state` 에 `exitCode`·`error`·`running`·`finishedAt` 이 이미 있다. agent 라우트 추가는 필요 없었다.
+- 수집은 릴리스 서비스가 하고 job handler 가 `reportProgress` 로 연결한다. 서비스는 job 을 모른 채 `run(id, { reportDiagnostics })` 콜백만 받는다.
+- **시크릿 리댁션 유틸이 저장소에 없었다.** `SECURITY.md` §9 등 3개 문서가 있다고 기술했지만 구현이 없었다. `packages/config/src/redact-log.ts` 로 만들고 적용 범위(배포 실패 진단 한 곳)를 문서에 명시했다.
+- **`DEPLOYMENT_RELEASE_FAILED` 가 `ERROR_CODE` 에 없어 500 으로 떨어지고 있었다.** 3파일에 400 으로 등록했다.
+- 진단은 job event 에만 둔다. `GET /api/deployment-releases` 는 전 역할이 볼 수 있어 release 계약에 넣으면 컨테이너 로그가 viewer 에게 열린다.
+- 남은 범위: 수동 롤백(`runRollback`) 실패에는 진단이 붙지 않는다. 로그 조회 API·SSE stream 은 여전히 원문이다(영속화가 없는 경로).
 
 ---
 

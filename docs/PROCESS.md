@@ -722,7 +722,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] 2. 라우트 폼 `Input+datalist` → `Select` + 서버 대상 존재·네트워크 검증 — 완료
 - [ ] 3. job 실패 분기(`job.query.ts`) + 소비 위젯 3곳
 - [x] 4a. 런타임 프로필 도입 — 표준 이미지가 기본으로 뜬다 (실측 완료)
-- [ ] 4b. 배포 실패 진단 노출 (§13)
+- [x] 4b. 배포 실패 진단 노출 (§13) — job event `detail` 에 exit code·container error·리댁션 로그 20줄. 실측: exit 3 이미지 배포 → `stage=probe`·`exitCode=3`·`REGISTRY_TOKEN=[REDACTED]` 확인, 배포 화면 렌더 확인. 함께 정리: 시크릿 리댁션 유틸 신설(문서만 있고 구현이 없었다), `DEPLOYMENT_RELEASE_FAILED` 미등록으로 500 이던 것 3파일 등록. [acknowledge/0039](./acknowledge/0039-deployment-failure-diagnostics.md)
 
 ### P1 — 마찰
 
