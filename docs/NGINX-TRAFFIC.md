@@ -41,6 +41,8 @@ real_ip_recursive on;
 
 알 수 없는 Host로 온 요청은 catch-all `default_server`가 `444`로 끊는다. 등록한 `server_name` 밖의 도메인은 패널·API에 도달하지 않는다. 앞단에서 와일드카드로 받아도 실제로 어떤 호스트를 열지는 이 목록이 단독으로 결정한다.
 
+라우트 대상 컨테이너는 서버가 검증한다. 존재하지 않으면 `NGINX_ROUTE_TARGET_NOT_FOUND`, 실행 중인데 nginx 와 공유 네트워크가 없으면 `NGINX_ROUTE_TARGET_UNREACHABLE` 로 400 이다. 도달 가능한 네트워크는 `ROUTABLE_NETWORK_NAMES`(기본 `containers_edge`)로 받는다. 중지된 컨테이너는 라우트를 미리 준비하는 정당한 사용이라 허용한다. 렌더된 설정이 변수 `proxy_pass` 를 쓰기 때문에 이 검증이 없으면 잘못된 대상도 `nginx -t` 와 리로드를 통과하고 502 로만 드러난다 → [acknowledge/0038](./acknowledge/0038-nginx-route-target-validation.md).
+
 패널 자신의 공개 주소는 프록시 라우트 대상이 될 수 없다. 보호 hostname 목록은 부팅 시 고정하지 않고 호출 시점에 현재 신뢰 origin 을 포함해 평가한다. 노출 경로별 설정과 도메인 전환 절차는 [EXPOSURE.md](./EXPOSURE.md)를 따른다.
 
 ## 3. 설정 모델

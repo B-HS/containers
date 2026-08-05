@@ -113,7 +113,7 @@ CI·자동화가 배포 전 구간을 무인으로 수행하려면 `artifact:upl
 
 - `AUTH_*`, `CAPABILITY_*`, `RATE_LIMITED`
 - `DOCKER_*`, `CONTAINER_*`, `IMAGE_*`, `NETWORK_*`, `VOLUME_*`
-- `NGINX_*`, `TRAFFIC_*`
+- `NGINX_*`(대상 검증 실패는 `NGINX_ROUTE_TARGET_NOT_FOUND`·`NGINX_ROUTE_TARGET_UNREACHABLE`, 둘 다 400), `TRAFFIC_*`
 - `UPLOAD_*`, `DEPLOYMENT_*`, `BACKUP_*`, `JOB_*`
 - `VALIDATION_ERROR`, `CONFLICT`, `INTERNAL_ERROR`
 

@@ -269,6 +269,28 @@ Upload:          /api/artifacts GET (all), /api/uploads/sessions POST,
                  /api/uploads/sessions/:sessionId/chunks PUT,
                  .../finalize POST (artifact:upload or operator+, 64MiB chunks,
                  sequential offset, per-chunk sha256, final full-file hash)
+Container runtime: user containers carry a runtime block (profile, capabilities,
+                 writablePaths). profile 'standard' is the DEFAULT and keeps
+                 Docker's own capability set with a writable root, so stock
+                 images (plain nginx and friends) start unchanged. 'hardened' is
+                 the opt-in old behaviour: CapDrop ALL, read-only root, /tmp plus
+                 writablePaths as tmpfs. Both keep no-new-privileges, memory/cpu/
+                 pids limits and management-plane protection. 16 capabilities are
+                 refused by the contract (SYS_ADMIN, SYS_PTRACE, NET_ADMIN, ...)
+                 including CAP_-prefixed spellings. Stored manifests default to
+                 'hardened' via migration 0018 so existing deployments do not
+                 change behaviour. Artifacts accept image archives only; raw file
+                 upload plus host bind mount was rejected.
+Route targets:   POST/PUT of an nginx route validates the target on the server.
+                 Missing container -> NGINX_ROUTE_TARGET_NOT_FOUND (400); running
+                 but not on a routable network -> NGINX_ROUTE_TARGET_UNREACHABLE
+                 (400); stopped containers are allowed so a route can be prepared
+                 ahead of time. Routable networks come from ROUTABLE_NETWORK_NAMES
+                 (default containers_edge). Server validation is the real gate
+                 because api keys reach the same path. The rendered config uses a
+                 variable proxy_pass, so nginx -t and reload succeed even for a
+                 target that does not exist — the mistake would otherwise surface
+                 only as a 502.
 Trusted proxy:   /api/trusted-proxies GET (owner|admin), POST (owner recent),
                  DELETE /api/trusted-proxies/{address} (owner recent).
                  nginx set_real_ip_from is driven by this table, not by a config

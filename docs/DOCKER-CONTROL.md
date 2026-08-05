@@ -150,3 +150,16 @@ Compose project name 또는 고정 label `managed-by=containers-control-plane`�
 - 100 containers, 동시 terminal 10, 동시 upload 2에서 Agent backpressure
 
 spike가 끝나기 전 Docker client 라이브러리를 확정하지 않는다. 결과와 채택 이유를 `docs/acknowledge/` ADR로 남긴다.
+
+## 컨테이너 요약 계약과 런타임 (2026-08-05)
+
+컨테이너 목록 응답(`containerSummarySchema`)은 `exposedPorts`·`networks` 를 함께 준다. 프록시 라우트를 만들 때 포트를 raw JSON 덤프에서 찾아 외우지 않게 하고, nginx 와 통신 가능한 컨테이너인지 판단할 근거를 주기 위해서다. 관리 plane 컨테이너는 engine-agent 가 라벨로 이미 걸러낸다.
+
+컨테이너 생성 요청은 `readOnlyRootFilesystem` 대신 `runtime` 블록을 받는다.
+
+| 프로필              | 루트      | capability       | tmpfs                     |
+| ------------------- | --------- | ---------------- | ------------------------- |
+| `standard` (기본)   | 쓰기 가능 | Docker 기본 집합 | `writablePaths` 지정 시만 |
+| `hardened` (옵트인) | 읽기 전용 | 전부 drop        | `/tmp` + `writablePaths`  |
+
+기본을 연 이유와 거부 목록은 [acknowledge/0037](./acknowledge/0037-container-runtime-profile.md), 보안 자세는 [SECURITY.md](./SECURITY.md) §17 에 있다.

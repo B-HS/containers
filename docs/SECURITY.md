@@ -237,3 +237,28 @@ bootstrap 은 인증 없이 첫 owner 를 만든다. 계정이 없는 상태에�
 ### 가용성
 
 종료 신호에 job worker·주기 작업을 멈추고 HTTP 를 8초까지 드레인한 뒤 강제 종료하고 DB 를 닫는다. 드레인 상한이 없으면 장수 SSE 하나가 종료를 22초 붙잡아 compose 기본 grace 를 넘기고 SIGKILL 이 된다(실측). `stop_grace_period` 는 20초다.
+
+## 17. 사용자 컨테이너 런타임 자세 (2026-08-05 변경)
+
+**관리 plane 자신의 compose 서비스는 §10 그대로다.** 아래는 패널이 만들고 배포하는 **사용자 컨테이너** 이야기다. 결정 근거는 [acknowledge/0037](./acknowledge/0037-container-runtime-profile.md)에 있다.
+
+이전에는 `CapDrop: ALL` 과 읽기 전용 루트가 코드에 박혀 있어 **공식 이미지 대부분이 기동조차 못 했다**(순정 nginx 는 캐시 디렉터리를 만들지 못하고, 임시 경로를 옮겨도 `chown` 이 막힌다). 어떤 이미지가 올라올지 모르는 제품이 특정 이미지 세팅을 강요할 수 없다.
+
+런타임을 프로필로 나눈다.
+
+| 프로필              | 루트      | capability       | tmpfs                     |
+| ------------------- | --------- | ---------------- | ------------------------- |
+| `standard` (기본)   | 쓰기 가능 | Docker 기본 집합 | `writablePaths` 지정 시만 |
+| `hardened` (옵트인) | 읽기 전용 | 전부 drop        | `/tmp` + `writablePaths`  |
+
+두 프로필 모두 **`no-new-privileges`, 메모리·CPU·PID 상한, 관리 plane 보호, 네트워크 격리를 유지**한다. Docker 기본 capability 집합은 `SYS_ADMIN`·`SYS_PTRACE`·`NET_ADMIN` 같은 위험한 것을 애초에 포함하지 않으므로, 기본을 열어도 `docker run` 기본값보다 엄격하다.
+
+`FORBIDDEN_CONTAINER_CAPABILITIES` 16종은 **계약 단계에서 거부**하며 `CAP_` 접두사 우회도 막는다. `privileged`·host namespace·docker socket·호스트 bind mount 는 어떤 경로로도 노출하지 않는다. 아티팩트는 **이미지 아카이브만** 받는다 — 정적 파일을 올려 bind mount 로 붙이는 안은 기각했다.
+
+기존 manifest 는 migration 기본값 `hardened` 로 남아 동작이 바뀌지 않는다.
+
+## 18. 프록시 라우트 대상 검증 (2026-08-05 추가)
+
+렌더된 설정이 변수 `proxy_pass` 를 쓰기 때문에 대상이 존재하지 않아도 **`nginx -t` 와 리로드가 모두 성공**했다. 이름 오타나 nginx 와 다른 네트워크의 컨테이너를 넣어도 API 가 201 을 주고 라우트 테이블에 정상으로 보이다가 도메인 접속 시 502 로만 드러났다.
+
+서버가 `create`·`upsert` 양쪽에서 대상의 존재와 네트워크 공유를 확인한다(`NGINX_ROUTE_TARGET_NOT_FOUND`·`NGINX_ROUTE_TARGET_UNREACHABLE`, 둘 다 400). **API key 경로로도 같은 실수가 가능하므로 서버 검증이 본체다.** 중지된 컨테이너는 라우트를 미리 준비하는 정당한 사용이라 허용한다. 상세는 [acknowledge/0038](./acknowledge/0038-nginx-route-target-validation.md).

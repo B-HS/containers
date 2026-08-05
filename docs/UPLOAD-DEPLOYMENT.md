@@ -166,3 +166,11 @@ Hono RPC는 JSON control endpoint 타입을 제공한다. 대용량 binary chunk
 - `POST /api/artifacts/:artifactId/load`는 이미 `loaded` 상태 deployment 행이 있으면 job 없이 `200 { deployment }`를, 없으면 `202 { job }`을 반환한다. `POST /api/uploads/sessions/:sessionId/finalize`는 session 존재와 actor 소유를 동기 검증한 뒤 `202 { job }`을 반환하고, 같은 내용(sha256)의 artifact가 이미 있으면 그 artifact를 멱등 반환한다.
 - release·rollback job은 재시도하지 않는다(`maxAttempts` 1). 상태 머신이 시도를 이미 소비했으므로 중단된 실행 정리는 release reconcile이 담당한다.
 - 단계 중간부터 이어 실행하는 세분화된 재개는 후속 범위다.
+
+## 배포 manifest 의 런타임 (2026-08-05)
+
+manifest 에 `runtime` 블록이 있다(`profile`·`capabilities`·`writablePaths`). 기본 `standard` 는 Docker 기본 capability 집합과 쓰기 가능한 루트라 **순정 이미지가 그대로 뜬다.** 이전에는 읽기 전용 루트와 `CapDrop: ALL` 이 하드코딩돼 공식 이미지 대부분이 기동조차 못 했다.
+
+이미 저장된 manifest 는 migration `0018_manifest_runtime` 의 기본값 `hardened` 로 남아 동작이 바뀌지 않는다. 상세는 [acknowledge/0037](./acknowledge/0037-container-runtime-profile.md).
+
+**아티팩트는 이미지 아카이브만 받는다.** 정적 파일을 올려 호스트 경로로 마운트하는 방식은 열지 않는다 — 호스트 bind mount 는 컨테이너 탈출 경로이기 때문이다. 정적 파일은 이미지에 구워 올린다.

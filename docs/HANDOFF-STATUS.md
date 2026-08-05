@@ -96,7 +96,7 @@ Compose 서비스와 권한 경계:
 - public·private registry image pull durable job, Agent 전용 암호화 credential 생성·회전·삭제와 registry host binding
 - non-TTY exec stdout/stderr/exit code
 - one-time TTY WebSocket ticket, stdin·resize·detach·idle/max timeout·concurrency limit
-- destructive confirmation과 기본 read-only filesystem·capability·resource limit
+- destructive confirmation과 자원 상한. 런타임 제약은 2026-08-05 부터 프로필(standard 기본 / hardened 옵트인)이며 기본값은 표준 이미지가 그대로 뜨도록 열려 있다 → [acknowledge/0037](./acknowledge/0037-container-runtime-profile.md)
 
 실제 prune은 owner 최근 인증과 정확한 확인 문구를 요구하는 `system.prune` durable job으로 노출한다. enqueue 전·worker 실행 직전 preview SHA를 재검증하고, volume은 별도 opt-in이며, Agent가 후보별 관리 plane 보호를 다시 적용한다. job은 부분 삭제 자동 재시도를 막기 위해 단일 attempt다.
 
