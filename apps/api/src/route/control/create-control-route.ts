@@ -19,7 +19,7 @@ import { registryCredentialDeleteSchema, registryCredentialUpsertSchema } from '
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
 import { createAppError } from '../../lib/error'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -67,9 +67,9 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('param', containerIdParamSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof containerIdParamSchema> }>) => {
                 await authService.requireRole(context.req.raw.headers, ALL_ROLES)
-                const { containerId } = context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>
+                const { containerId } = context.req.valid('param')
                 return context.json(successResponse(await controlService.getContainerTop(containerId)), 200)
             }),
         )
@@ -81,9 +81,9 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('param', containerIdParamSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof containerIdParamSchema> }>) => {
                 await authService.requireRole(context.req.raw.headers, ALL_ROLES)
-                const { containerId } = context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>
+                const { containerId } = context.req.valid('param')
                 return context.json(successResponse(await controlService.getContainerChanges(containerId)), 200)
             }),
         )
@@ -96,11 +96,15 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
             }),
             validator('param', containerIdParamSchema),
             validator('json', containerWaitRequestSchema),
-            withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, OPERATOR_ROLES)
-                const { containerId } = context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>
-                return context.json(successResponse(await controlService.waitContainer(containerId, context.req.valid('json' as never))), 200)
-            }),
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{ param: z.infer<typeof containerIdParamSchema>; json: z.infer<typeof containerWaitRequestSchema> }>,
+                ) => {
+                    await authService.requireRole(context.req.raw.headers, OPERATOR_ROLES)
+                    const { containerId } = context.req.valid('param')
+                    return context.json(successResponse(await controlService.waitContainer(containerId, context.req.valid('json'))), 200)
+                },
+            ),
         )
         .get(
             '/images',
@@ -134,8 +138,8 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('json', registryCredentialUpsertSchema),
-            withErrorHandling(async (context) => {
-                const input = context.req.valid('json' as never) as z.infer<typeof registryCredentialUpsertSchema>
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof registryCredentialUpsertSchema> }>) => {
+                const input = context.req.valid('json')
                 const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
                 const actorId = session.user.id
                 const audit = {
@@ -177,49 +181,56 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
             }),
             validator('param', credentialIdParamSchema),
             validator('json', registryCredentialUpsertSchema),
-            withErrorHandling(async (context) => {
-                const credentialId = (context.req.valid('param' as never) as z.infer<typeof credentialIdParamSchema>).credentialId
-                const input = context.req.valid('json' as never) as z.infer<typeof registryCredentialUpsertSchema>
-                const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
-                await auditService.record({
-                    actorId,
-                    detail: { serverAddress: input.serverAddress, username: input.username },
-                    operation: 'registry-credential.rotate',
-                    requestId: context.get('requestId'),
-                    result: 'attempt',
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: credentialId,
-                    targetType: 'registry-credential',
-                })
-                try {
-                    const credential = await controlService.upsertRegistryCredential(credentialId, input)
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{
+                        param: z.infer<typeof credentialIdParamSchema>
+                        json: z.infer<typeof registryCredentialUpsertSchema>
+                    }>,
+                ) => {
+                    const credentialId = context.req.valid('param').credentialId
+                    const input = context.req.valid('json')
+                    const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
+                    const actorId = session.user.id
                     await auditService.record({
                         actorId,
-                        detail: { serverAddress: credential.serverAddress, version: credential.version },
+                        detail: { serverAddress: input.serverAddress, username: input.username },
                         operation: 'registry-credential.rotate',
                         requestId: context.get('requestId'),
-                        result: 'success',
+                        result: 'attempt',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId: credentialId,
                         targetType: 'registry-credential',
                     })
-                    return context.json(successResponse(credential), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
-                    await auditService.record({
-                        actorId,
-                        detail: { code },
-                        operation: 'registry-credential.rotate',
-                        requestId: context.get('requestId'),
-                        result: 'failure',
-                        sourceIp: getSourceIp(context.req.raw.headers),
-                        targetId: credentialId,
-                        targetType: 'registry-credential',
-                    })
-                    throw error
-                }
-            }),
+                    try {
+                        const credential = await controlService.upsertRegistryCredential(credentialId, input)
+                        await auditService.record({
+                            actorId,
+                            detail: { serverAddress: credential.serverAddress, version: credential.version },
+                            operation: 'registry-credential.rotate',
+                            requestId: context.get('requestId'),
+                            result: 'success',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: credentialId,
+                            targetType: 'registry-credential',
+                        })
+                        return context.json(successResponse(credential), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'registry-credential.rotate',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: credentialId,
+                            targetType: 'registry-credential',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .delete(
             '/registry-credentials/:credentialId',
@@ -230,48 +241,55 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
             }),
             validator('param', credentialIdParamSchema),
             validator('json', registryCredentialDeleteSchema),
-            withErrorHandling(async (context) => {
-                const credentialId = (context.req.valid('param' as never) as z.infer<typeof credentialIdParamSchema>).credentialId
-                const input = context.req.valid('json' as never) as z.infer<typeof registryCredentialDeleteSchema>
-                const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
-                await auditService.record({
-                    actorId,
-                    operation: 'registry-credential.remove',
-                    requestId: context.get('requestId'),
-                    result: 'attempt',
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: credentialId,
-                    targetType: 'registry-credential',
-                })
-                try {
-                    const credential = await controlService.removeRegistryCredential(credentialId, input)
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{
+                        param: z.infer<typeof credentialIdParamSchema>
+                        json: z.infer<typeof registryCredentialDeleteSchema>
+                    }>,
+                ) => {
+                    const credentialId = context.req.valid('param').credentialId
+                    const input = context.req.valid('json')
+                    const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
+                    const actorId = session.user.id
                     await auditService.record({
                         actorId,
-                        detail: { serverAddress: credential.serverAddress },
                         operation: 'registry-credential.remove',
                         requestId: context.get('requestId'),
-                        result: 'success',
+                        result: 'attempt',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId: credentialId,
                         targetType: 'registry-credential',
                     })
-                    return context.json(successResponse(credential), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
-                    await auditService.record({
-                        actorId,
-                        detail: { code },
-                        operation: 'registry-credential.remove',
-                        requestId: context.get('requestId'),
-                        result: 'failure',
-                        sourceIp: getSourceIp(context.req.raw.headers),
-                        targetId: credentialId,
-                        targetType: 'registry-credential',
-                    })
-                    throw error
-                }
-            }),
+                    try {
+                        const credential = await controlService.removeRegistryCredential(credentialId, input)
+                        await auditService.record({
+                            actorId,
+                            detail: { serverAddress: credential.serverAddress },
+                            operation: 'registry-credential.remove',
+                            requestId: context.get('requestId'),
+                            result: 'success',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: credentialId,
+                            targetType: 'registry-credential',
+                        })
+                        return context.json(successResponse(credential), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'registry-credential.remove',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: credentialId,
+                            targetType: 'registry-credential',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .get(
             '/images/:imageId/removal-impact',
@@ -281,9 +299,9 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('param', imageIdParamSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof imageIdParamSchema> }>) => {
                 await authService.requireRole(context.req.raw.headers, ADMIN_ROLES)
-                const { imageId } = context.req.valid('param' as never) as z.infer<typeof imageIdParamSchema>
+                const { imageId } = context.req.valid('param')
                 return context.json(successResponse(await controlService.getImageRemovalImpact(imageId)), 200)
             }),
         )
@@ -295,9 +313,9 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('query', prunePreviewQuerySchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ query: z.infer<typeof prunePreviewQuerySchema> }>) => {
                 await authService.requireRole(context.req.raw.headers, ADMIN_ROLES)
-                const { includeVolumes } = context.req.valid('query' as never) as z.infer<typeof prunePreviewQuerySchema>
+                const { includeVolumes } = context.req.valid('query')
                 return context.json(successResponse(await controlService.getPrunePreview({ includeVolumes })), 200)
             }),
         )
@@ -309,8 +327,8 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('json', systemPruneJobPayloadSchema),
-            withErrorHandling(async (context) => {
-                const input = context.req.valid('json' as never) as z.infer<typeof systemPruneJobPayloadSchema>
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof systemPruneJobPayloadSchema> }>) => {
+                const input = context.req.valid('json')
                 const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
                 const actorId = session.user.id
                 const preview = await controlService.getPrunePreview({ includeVolumes: input.includeVolumes })
@@ -390,8 +408,8 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('json', networkCreateRequestSchema),
-            withErrorHandling(async (context) => {
-                const input = context.req.valid('json' as never) as z.infer<typeof networkCreateRequestSchema>
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof networkCreateRequestSchema> }>) => {
+                const input = context.req.valid('json')
                 const targetId = input.name
                 const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
                 const actorId = session.user.id
@@ -432,8 +450,8 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('json', volumeCreateRequestSchema),
-            withErrorHandling(async (context) => {
-                const input = context.req.valid('json' as never) as z.infer<typeof volumeCreateRequestSchema>
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof volumeCreateRequestSchema> }>) => {
+                const input = context.req.valid('json')
                 const targetId = input.name
                 const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
                 const actorId = session.user.id
@@ -474,8 +492,8 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('json', containerCreateRequestSchema),
-            withErrorHandling(async (context) => {
-                const input = context.req.valid('json' as never) as z.infer<typeof containerCreateRequestSchema>
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof containerCreateRequestSchema> }>) => {
+                const input = context.req.valid('json')
                 const targetId = input.name
                 const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
                 const actorId = session.user.id
@@ -525,43 +543,45 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
             }),
             validator('param', containerIdParamSchema),
             validator('json', containerActionSchema),
-            withErrorHandling(async (context) => {
-                const containerId = (context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>).containerId
-                const input = context.req.valid('json' as never) as z.infer<typeof containerActionSchema>
-                const operation = `container.${input.action}`
-                const session = RECENT_ADMIN_ACTIONS.includes(input.action)
-                    ? await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                    : await authService.requireRole(context.req.raw.headers, OPERATOR_ROLES)
-                const actorId = session.user.id
-                const audit = {
-                    actorId,
-                    detail: { action: input.action },
-                    operation,
-                    requestId: context.get('requestId'),
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: containerId,
-                    targetType: 'container' as const,
-                }
-                await auditService.record({ ...audit, result: 'attempt' })
-                try {
-                    const result = await controlService.performContainerAction(containerId, input)
-                    await auditService.record({ ...audit, result: 'success' })
-                    return context.json(successResponse(result), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
-                    await auditService.record({
+            withErrorHandling(
+                async (context: ApiRouteContext<{ param: z.infer<typeof containerIdParamSchema>; json: z.infer<typeof containerActionSchema> }>) => {
+                    const containerId = context.req.valid('param').containerId
+                    const input = context.req.valid('json')
+                    const operation = `container.${input.action}`
+                    const session = RECENT_ADMIN_ACTIONS.includes(input.action)
+                        ? await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                        : await authService.requireRole(context.req.raw.headers, OPERATOR_ROLES)
+                    const actorId = session.user.id
+                    const audit = {
                         actorId,
-                        detail: { code },
+                        detail: { action: input.action },
                         operation,
                         requestId: context.get('requestId'),
-                        result: 'failure',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId: containerId,
-                        targetType: 'container',
-                    })
-                    throw error
-                }
-            }),
+                        targetType: 'container' as const,
+                    }
+                    await auditService.record({ ...audit, result: 'attempt' })
+                    try {
+                        const result = await controlService.performContainerAction(containerId, input)
+                        await auditService.record({ ...audit, result: 'success' })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation,
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: containerId,
+                            targetType: 'container',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .post(
             '/containers/:containerId/exec',
@@ -572,40 +592,44 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
             }),
             validator('param', containerIdParamSchema),
             validator('json', containerExecRequestSchema),
-            withErrorHandling(async (context) => {
-                const containerId = (context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>).containerId
-                const input = context.req.valid('json' as never) as z.infer<typeof containerExecRequestSchema>
-                const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
-                const audit = {
-                    actorId,
-                    detail: { argumentCount: input.command.length - 1, executable: input.command[0] ?? '' },
-                    operation: 'container.exec',
-                    requestId: context.get('requestId'),
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: containerId,
-                    targetType: 'container' as const,
-                }
-                await auditService.record({ ...audit, result: 'attempt' })
-                try {
-                    const result = await controlService.executeContainer(containerId, input)
-                    await auditService.record({ ...audit, detail: { exitCode: result.exitCode }, result: 'success' })
-                    return context.json(successResponse(result), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
-                    await auditService.record({
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{ param: z.infer<typeof containerIdParamSchema>; json: z.infer<typeof containerExecRequestSchema> }>,
+                ) => {
+                    const containerId = context.req.valid('param').containerId
+                    const input = context.req.valid('json')
+                    const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
+                    const actorId = session.user.id
+                    const audit = {
                         actorId,
-                        detail: { code },
+                        detail: { argumentCount: input.command.length - 1, executable: input.command[0] ?? '' },
                         operation: 'container.exec',
                         requestId: context.get('requestId'),
-                        result: 'failure',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId: containerId,
-                        targetType: 'container',
-                    })
-                    throw error
-                }
-            }),
+                        targetType: 'container' as const,
+                    }
+                    await auditService.record({ ...audit, result: 'attempt' })
+                    try {
+                        const result = await controlService.executeContainer(containerId, input)
+                        await auditService.record({ ...audit, detail: { exitCode: result.exitCode }, result: 'success' })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'container.exec',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: containerId,
+                            targetType: 'container',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .post(
             '/images/pull',
@@ -615,8 +639,8 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 tags: ['Control'],
             }),
             validator('json', imagePullRequestSchema),
-            withErrorHandling(async (context) => {
-                const input = context.req.valid('json' as never) as z.infer<typeof imagePullRequestSchema>
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof imagePullRequestSchema> }>) => {
+                const input = context.req.valid('json')
                 const targetId = input.reference
                 const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
                 const actorId = session.user.id
@@ -662,38 +686,40 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
             }),
             validator('param', imageIdParamSchema),
             validator('json', imageTagRequestSchema),
-            withErrorHandling(async (context) => {
-                const imageId = (context.req.valid('param' as never) as z.infer<typeof imageIdParamSchema>).imageId
-                const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
-                const audit = {
-                    actorId,
-                    operation: 'image.tag',
-                    requestId: context.get('requestId'),
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: imageId,
-                    targetType: 'image' as const,
-                }
-                await auditService.record({ ...audit, result: 'attempt' })
-                try {
-                    const result = await controlService.tagImage(imageId, context.req.valid('json' as never))
-                    await auditService.record({ ...audit, detail: { taggedAs: result.targetId }, result: 'success' })
-                    return context.json(successResponse(result), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
-                    await auditService.record({
+            withErrorHandling(
+                async (context: ApiRouteContext<{ param: z.infer<typeof imageIdParamSchema>; json: z.infer<typeof imageTagRequestSchema> }>) => {
+                    const imageId = context.req.valid('param').imageId
+                    const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                    const actorId = session.user.id
+                    const audit = {
                         actorId,
-                        detail: { code },
                         operation: 'image.tag',
                         requestId: context.get('requestId'),
-                        result: 'failure',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId: imageId,
-                        targetType: 'image',
-                    })
-                    throw error
-                }
-            }),
+                        targetType: 'image' as const,
+                    }
+                    await auditService.record({ ...audit, result: 'attempt' })
+                    try {
+                        const result = await controlService.tagImage(imageId, context.req.valid('json'))
+                        await auditService.record({ ...audit, detail: { taggedAs: result.targetId }, result: 'success' })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'image.tag',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: imageId,
+                            targetType: 'image',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .delete(
             '/images/:imageId',
@@ -704,43 +730,45 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
             }),
             validator('param', imageIdParamSchema),
             validator('json', imageRemoveRequestSchema),
-            withErrorHandling(async (context) => {
-                const imageId = (context.req.valid('param' as never) as z.infer<typeof imageIdParamSchema>).imageId
-                const input = context.req.valid('json' as never) as z.infer<typeof imageRemoveRequestSchema>
-                const session = await authService.requireRecentRole(
-                    context.req.raw.headers,
-                    input.force ? [USER_ROLE.OWNER] : ADMIN_ROLES,
-                    RECENT_AUTH_MAX_AGE_MS,
-                )
-                const actorId = session.user.id
-                const audit = {
-                    actorId,
-                    operation: 'image.remove',
-                    requestId: context.get('requestId'),
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: imageId,
-                    targetType: 'image' as const,
-                }
-                await auditService.record({ ...audit, result: 'attempt' })
-                try {
-                    const result = await controlService.removeImage(imageId, input)
-                    await auditService.record({ ...audit, result: 'success' })
-                    return context.json(successResponse(result), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
-                    await auditService.record({
+            withErrorHandling(
+                async (context: ApiRouteContext<{ param: z.infer<typeof imageIdParamSchema>; json: z.infer<typeof imageRemoveRequestSchema> }>) => {
+                    const imageId = context.req.valid('param').imageId
+                    const input = context.req.valid('json')
+                    const session = await authService.requireRecentRole(
+                        context.req.raw.headers,
+                        input.force ? [USER_ROLE.OWNER] : ADMIN_ROLES,
+                        RECENT_AUTH_MAX_AGE_MS,
+                    )
+                    const actorId = session.user.id
+                    const audit = {
                         actorId,
-                        detail: { code },
                         operation: 'image.remove',
                         requestId: context.get('requestId'),
-                        result: 'failure',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId: imageId,
-                        targetType: 'image',
-                    })
-                    throw error
-                }
-            }),
+                        targetType: 'image' as const,
+                    }
+                    await auditService.record({ ...audit, result: 'attempt' })
+                    try {
+                        const result = await controlService.removeImage(imageId, input)
+                        await auditService.record({ ...audit, result: 'success' })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'image.remove',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: imageId,
+                            targetType: 'image',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .delete(
             '/networks/:networkId',
@@ -751,38 +779,45 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
             }),
             validator('param', networkIdParamSchema),
             validator('json', dockerResourceRemoveRequestSchema),
-            withErrorHandling(async (context) => {
-                const networkId = (context.req.valid('param' as never) as z.infer<typeof networkIdParamSchema>).networkId
-                const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
-                const audit = {
-                    actorId,
-                    operation: 'network.remove',
-                    requestId: context.get('requestId'),
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: networkId,
-                    targetType: 'network' as const,
-                }
-                await auditService.record({ ...audit, result: 'attempt' })
-                try {
-                    const result = await controlService.removeNetwork(networkId, context.req.valid('json' as never))
-                    await auditService.record({ ...audit, result: 'success' })
-                    return context.json(successResponse(result), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
-                    await auditService.record({
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{
+                        param: z.infer<typeof networkIdParamSchema>
+                        json: z.infer<typeof dockerResourceRemoveRequestSchema>
+                    }>,
+                ) => {
+                    const networkId = context.req.valid('param').networkId
+                    const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                    const actorId = session.user.id
+                    const audit = {
                         actorId,
-                        detail: { code },
                         operation: 'network.remove',
                         requestId: context.get('requestId'),
-                        result: 'failure',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId: networkId,
-                        targetType: 'network',
-                    })
-                    throw error
-                }
-            }),
+                        targetType: 'network' as const,
+                    }
+                    await auditService.record({ ...audit, result: 'attempt' })
+                    try {
+                        const result = await controlService.removeNetwork(networkId, context.req.valid('json'))
+                        await auditService.record({ ...audit, result: 'success' })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'network.remove',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: networkId,
+                            targetType: 'network',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .delete(
             '/volumes/:volumeName',
@@ -793,37 +828,44 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
             }),
             validator('param', volumeNameParamSchema),
             validator('json', dockerResourceRemoveRequestSchema),
-            withErrorHandling(async (context) => {
-                const volumeName = (context.req.valid('param' as never) as z.infer<typeof volumeNameParamSchema>).volumeName
-                const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
-                const audit = {
-                    actorId,
-                    operation: 'volume.remove',
-                    requestId: context.get('requestId'),
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: volumeName,
-                    targetType: 'volume' as const,
-                }
-                await auditService.record({ ...audit, result: 'attempt' })
-                try {
-                    const result = await controlService.removeVolume(volumeName, context.req.valid('json' as never))
-                    await auditService.record({ ...audit, result: 'success' })
-                    return context.json(successResponse(result), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
-                    await auditService.record({
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{
+                        param: z.infer<typeof volumeNameParamSchema>
+                        json: z.infer<typeof dockerResourceRemoveRequestSchema>
+                    }>,
+                ) => {
+                    const volumeName = context.req.valid('param').volumeName
+                    const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                    const actorId = session.user.id
+                    const audit = {
                         actorId,
-                        detail: { code },
                         operation: 'volume.remove',
                         requestId: context.get('requestId'),
-                        result: 'failure',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId: volumeName,
-                        targetType: 'volume',
-                    })
-                    throw error
-                }
-            }),
+                        targetType: 'volume' as const,
+                    }
+                    await auditService.record({ ...audit, result: 'attempt' })
+                    try {
+                        const result = await controlService.removeVolume(volumeName, context.req.valid('json'))
+                        await auditService.record({ ...audit, result: 'success' })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'CONTROL_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'volume.remove',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: volumeName,
+                            targetType: 'volume',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
 }

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { containerLogRequestSchema } from '@containers/contracts/engine'
 import { containerWaitRequestSchema } from '@containers/contracts/engine-control'
 import type { EngineQueryService } from '../service/domain/create-engine-query-service'
-import { withErrorHandling } from '../lib/with-error-handling'
+import { withErrorHandling, type AgentRouteContext } from '../lib/with-error-handling'
 
 type EngineQueryRouteDependencies = {
     engineQueryService: EngineQueryService
@@ -29,8 +29,8 @@ export const createEngineQueryRoute = ({ engineQueryService }: EngineQueryRouteD
         '/containers/:containerId',
         describeRoute({ tags: ['engine-query'], summary: '컨테이너 상세 조회', responses: { 200: { description: '상세' } } }),
         validator('param', containerIdParamSchema),
-        withErrorHandling(async (context) =>
-            context.json(await engineQueryService.getContainer((context.req.valid('param' as never) as { containerId: string }).containerId), 200),
+        withErrorHandling(async (context: AgentRouteContext<{ param: z.infer<typeof containerIdParamSchema> }>) =>
+            context.json(await engineQueryService.getContainer((context.req.valid('param') as { containerId: string }).containerId), 200),
         ),
     )
     route.get(
@@ -38,33 +38,31 @@ export const createEngineQueryRoute = ({ engineQueryService }: EngineQueryRouteD
         describeRoute({ tags: ['engine-query'], summary: '컨테이너 로그 조회', responses: { 200: { description: '로그' } } }),
         validator('param', containerIdParamSchema),
         validator('query', containerLogRequestSchema),
-        withErrorHandling(async (context) =>
-            context.json(
-                await engineQueryService.getContainerLogs(
-                    (context.req.valid('param' as never) as { containerId: string }).containerId,
-                    context.req.valid('query' as never),
+        withErrorHandling(
+            async (context: AgentRouteContext<{ param: z.infer<typeof containerIdParamSchema>; query: z.infer<typeof containerLogRequestSchema> }>) =>
+                context.json(
+                    await engineQueryService.getContainerLogs(
+                        (context.req.valid('param') as { containerId: string }).containerId,
+                        context.req.valid('query'),
+                    ),
+                    200,
                 ),
-                200,
-            ),
         ),
     )
     route.get(
         '/containers/:containerId/top',
         describeRoute({ tags: ['engine-query'], summary: '컨테이너 프로세스 조회', responses: { 200: { description: '프로세스' } } }),
         validator('param', containerIdParamSchema),
-        withErrorHandling(async (context) =>
-            context.json(await engineQueryService.getContainerTop((context.req.valid('param' as never) as { containerId: string }).containerId), 200),
+        withErrorHandling(async (context: AgentRouteContext<{ param: z.infer<typeof containerIdParamSchema> }>) =>
+            context.json(await engineQueryService.getContainerTop((context.req.valid('param') as { containerId: string }).containerId), 200),
         ),
     )
     route.get(
         '/containers/:containerId/changes',
         describeRoute({ tags: ['engine-query'], summary: '컨테이너 변경 사항 조회', responses: { 200: { description: '변경 사항' } } }),
         validator('param', containerIdParamSchema),
-        withErrorHandling(async (context) =>
-            context.json(
-                await engineQueryService.getContainerChanges((context.req.valid('param' as never) as { containerId: string }).containerId),
-                200,
-            ),
+        withErrorHandling(async (context: AgentRouteContext<{ param: z.infer<typeof containerIdParamSchema> }>) =>
+            context.json(await engineQueryService.getContainerChanges((context.req.valid('param') as { containerId: string }).containerId), 200),
         ),
     )
     route.post(
@@ -72,14 +70,15 @@ export const createEngineQueryRoute = ({ engineQueryService }: EngineQueryRouteD
         describeRoute({ tags: ['engine-query'], summary: '컨테이너 상태 대기', responses: { 200: { description: '대기 결과' } } }),
         validator('param', containerIdParamSchema),
         validator('json', containerWaitRequestSchema),
-        withErrorHandling(async (context) =>
-            context.json(
-                await engineQueryService.waitContainer(
-                    (context.req.valid('param' as never) as { containerId: string }).containerId,
-                    context.req.valid('json' as never),
+        withErrorHandling(
+            async (context: AgentRouteContext<{ param: z.infer<typeof containerIdParamSchema>; json: z.infer<typeof containerWaitRequestSchema> }>) =>
+                context.json(
+                    await engineQueryService.waitContainer(
+                        (context.req.valid('param') as { containerId: string }).containerId,
+                        context.req.valid('json'),
+                    ),
+                    200,
                 ),
-                200,
-            ),
         ),
     )
 

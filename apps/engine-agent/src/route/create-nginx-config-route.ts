@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
 import { nginxConfigApplySchema } from '@containers/contracts/nginx'
 import type { NginxConfigService } from '../service/domain/create-nginx-config-service'
-import { withErrorHandling } from '../lib/with-error-handling'
+import { withErrorHandling, type AgentRouteContext } from '../lib/with-error-handling'
 
 type NginxConfigRouteDependencies = {
     nginxConfigService: NginxConfigService
@@ -20,7 +21,9 @@ export const createNginxConfigRoute = ({ nginxConfigService }: NginxConfigRouteD
         '/nginx/config/apply',
         describeRoute({ tags: ['nginx-config'], summary: 'Nginx 설정 적용', responses: { 200: { description: '적용 결과' } } }),
         validator('json', nginxConfigApplySchema),
-        withErrorHandling(async (context) => context.json(await nginxConfigService.apply(context.req.valid('json' as never)), 200)),
+        withErrorHandling(async (context: AgentRouteContext<{ json: z.infer<typeof nginxConfigApplySchema> }>) =>
+            context.json(await nginxConfigService.apply(context.req.valid('json')), 200),
+        ),
     )
 
     return route

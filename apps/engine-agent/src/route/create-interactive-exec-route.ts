@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { createBunWebSocket } from 'hono/bun'
+import { z } from 'zod'
 import { execTicketParamSchema, interactiveExecTicketRequestSchema } from '@containers/contracts/engine-control'
 import type { InteractiveExecService } from '../service/domain/create-interactive-exec-service'
 import { createInteractiveExecSession } from '../service/shared/create-interactive-exec-session'
-import { withErrorHandling } from '../lib/with-error-handling'
+import { withErrorHandling, type AgentRouteContext } from '../lib/with-error-handling'
 
 const { upgradeWebSocket } = createBunWebSocket()
 const INTERACTIVE_EXEC_IDLE_TIMEOUT_MS = 5 * 60 * 1_000
@@ -39,8 +40,8 @@ export const createInteractiveExecRoute = ({ interactiveExecService, limits = {}
                 responses: { 201: { description: 'ticket 생성' } },
             }),
             validator('json', interactiveExecTicketRequestSchema),
-            withErrorHandling(async (context) =>
-                context.json(interactiveExecService.createTicket(context.req.param('containerId'), context.req.valid('json' as never)), 201),
+            withErrorHandling(async (context: AgentRouteContext<{ json: z.infer<typeof interactiveExecTicketRequestSchema> }>) =>
+                context.json(interactiveExecService.createTicket(context.req.param('containerId'), context.req.valid('json')), 201),
             ),
         )
         .get(
@@ -54,7 +55,7 @@ export const createInteractiveExecRoute = ({ interactiveExecService, limits = {}
             upgradeWebSocket((context) => {
                 const { onClose, onMessage, onOpen } = createInteractiveExecSession({
                     interactiveExecService,
-                    ticket: (context.req.valid('param' as never) as { ticket: string }).ticket,
+                    ticket: execTicketParamSchema.parse(context.req.param()).ticket,
                     limits: sessionLimits,
                 })
                 return { onClose, onMessage, onOpen }

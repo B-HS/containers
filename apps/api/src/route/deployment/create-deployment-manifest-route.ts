@@ -5,7 +5,7 @@ import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { deploymentManifestInputSchema } from '@containers/contracts/deployment'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -56,9 +56,9 @@ export const createDeploymentManifestRoute = ({
                 tags: ['Deployment'],
             }),
             validator('query', manifestListQuerySchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ query: z.infer<typeof manifestListQuerySchema> }>) => {
                 await authenticateRead(context.req.raw.headers, apiKeyService, authService)
-                const query = context.req.valid('query' as never) as z.infer<typeof manifestListQuerySchema>
+                const query = context.req.valid('query')
                 return context.json(successResponse(await deploymentManifestService.list(query)), 200)
             }),
         )
@@ -70,9 +70,9 @@ export const createDeploymentManifestRoute = ({
                 tags: ['Deployment'],
             }),
             validator('param', manifestIdParamSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof manifestIdParamSchema> }>) => {
                 await authenticateRead(context.req.raw.headers, apiKeyService, authService)
-                const { id } = context.req.valid('param' as never) as z.infer<typeof manifestIdParamSchema>
+                const { id } = context.req.valid('param')
                 return context.json(successResponse(await deploymentManifestService.get(id)), 200)
             }),
         )
@@ -84,7 +84,7 @@ export const createDeploymentManifestRoute = ({
                 tags: ['Deployment'],
             }),
             validator('json', deploymentManifestInputSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof deploymentManifestInputSchema> }>) => {
                 const audit = {
                     operation: 'deployment.manifest.create',
                     requestId: context.get('requestId'),
@@ -103,7 +103,7 @@ export const createDeploymentManifestRoute = ({
                 }
                 await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
                 try {
-                    const { manifest, reused } = await deploymentManifestService.create(actorId, context.req.valid('json' as never))
+                    const { manifest, reused } = await deploymentManifestService.create(actorId, context.req.valid('json'))
                     await auditService.record({
                         ...audit,
                         actorId,

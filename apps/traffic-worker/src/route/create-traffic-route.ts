@@ -15,7 +15,7 @@ import type { TrafficQueryService } from '../service/domain/create-traffic-query
 import type { TrafficRetentionService } from '../service/domain/create-traffic-retention-service'
 import type { TrafficExportService } from '../service/domain/create-traffic-export-service'
 import type { TrafficSseStream } from '../service/shared/create-traffic-sse-stream'
-import { withErrorHandling } from '../lib/with-error-handling'
+import { withErrorHandling, type TrafficRouteContext } from '../lib/with-error-handling'
 
 type TrafficRouteDependencies = {
     exportService: TrafficExportService
@@ -31,8 +31,8 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
             '/analytics',
             describeRoute({ summary: '트래픽 분석 조회', tags: ['traffic'], responses: { 200: { description: '분석 결과' } } }),
             validator('query', trafficAnalyticsQuerySchema),
-            withErrorHandling(async (context) => {
-                const query = context.req.valid('query' as never) as z.infer<typeof trafficAnalyticsQuerySchema>
+            withErrorHandling(async (context: TrafficRouteContext<{ query: z.infer<typeof trafficAnalyticsQuerySchema> }>) => {
+                const query = context.req.valid('query')
                 return context.json(await queryService.getAnalytics(query), 200)
             }),
         )
@@ -40,8 +40,8 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
             '/live',
             describeRoute({ summary: '실시간 트래픽 스트림', tags: ['traffic'], responses: { 200: { description: 'SSE 스트림' } } }),
             validator('query', trafficLiveQuerySchema),
-            withErrorHandling((context) => {
-                const query = context.req.valid('query' as never) as z.infer<typeof trafficLiveQuerySchema>
+            withErrorHandling((context: TrafficRouteContext<{ query: z.infer<typeof trafficLiveQuerySchema> }>) => {
+                const query = context.req.valid('query')
                 return sseStream.live(query, context.req.raw.signal)
             }),
         )
@@ -49,8 +49,8 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
             '/summary',
             describeRoute({ summary: '트래픽 요약 조회', tags: ['traffic'], responses: { 200: { description: '요약 결과' } } }),
             validator('query', trafficSummaryQuerySchema),
-            withErrorHandling(async (context) => {
-                const { windowMinutes } = context.req.valid('query' as never) as z.infer<typeof trafficSummaryQuerySchema>
+            withErrorHandling(async (context: TrafficRouteContext<{ query: z.infer<typeof trafficSummaryQuerySchema> }>) => {
+                const { windowMinutes } = context.req.valid('query')
                 return context.json(await queryService.getSummary(windowMinutes), 200)
             }),
         )
@@ -69,9 +69,16 @@ export const createTrafficRoute = ({ exportService, ingestionService, queryServi
             describeRoute({ summary: '트래픽 내보내기 실행', tags: ['traffic'], responses: { 201: { description: '내보내기 결과' } } }),
             validator('param', trafficExportJobParamSchema),
             validator('json', trafficExportJobPayloadSchema),
-            withErrorHandling(async (context) => {
-                const { jobId } = context.req.valid('param' as never) as z.infer<typeof trafficExportJobParamSchema>
-                const payload = context.req.valid('json' as never) as z.infer<typeof trafficExportJobPayloadSchema>
-                return context.json(await exportService.create(jobId, payload), 201)
-            }),
+            withErrorHandling(
+                async (
+                    context: TrafficRouteContext<{
+                        param: z.infer<typeof trafficExportJobParamSchema>
+                        json: z.infer<typeof trafficExportJobPayloadSchema>
+                    }>,
+                ) => {
+                    const { jobId } = context.req.valid('param')
+                    const payload = context.req.valid('json')
+                    return context.json(await exportService.create(jobId, payload), 201)
+                },
+            ),
         )

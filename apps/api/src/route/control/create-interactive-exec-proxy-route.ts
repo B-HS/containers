@@ -7,7 +7,7 @@ import { USER_ROLE } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../../service/shared/engine-agent-client/create-engine-agent-client'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { MaintenanceService } from '../../service/domain/maintenance/create-maintenance-service'
@@ -56,48 +56,55 @@ export const createInteractiveExecProxyRoute = ({
             }),
             validator('param', containerIdParamSchema),
             validator('json', interactiveExecTicketRequestSchema),
-            withErrorHandling(async (context) => {
-                const containerId = (context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>).containerId
-                const session = await authService.requireRecentRole(context.req.raw.headers, EXEC_ROLES, EXEC_RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
-                const input = context.req.valid('json' as never) as z.infer<typeof interactiveExecTicketRequestSchema>
-                await auditService.record({
-                    actorId,
-                    detail: { argumentCount: input.command.length - 1, executable: input.command[0] ?? '' },
-                    operation: 'container.exec.interactive.ticket',
-                    requestId: context.get('requestId'),
-                    result: 'attempt',
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId: containerId,
-                    targetType: 'container',
-                })
-                try {
-                    const ticket = await engineAgentClient.createInteractiveExecTicket(containerId, input)
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{
+                        param: z.infer<typeof containerIdParamSchema>
+                        json: z.infer<typeof interactiveExecTicketRequestSchema>
+                    }>,
+                ) => {
+                    const containerId = context.req.valid('param').containerId
+                    const session = await authService.requireRecentRole(context.req.raw.headers, EXEC_ROLES, EXEC_RECENT_AUTH_MAX_AGE_MS)
+                    const actorId = session.user.id
+                    const input = context.req.valid('json')
                     await auditService.record({
                         actorId,
+                        detail: { argumentCount: input.command.length - 1, executable: input.command[0] ?? '' },
                         operation: 'container.exec.interactive.ticket',
                         requestId: context.get('requestId'),
-                        result: 'success',
+                        result: 'attempt',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId: containerId,
                         targetType: 'container',
                     })
-                    return context.json(successResponse({ ...ticket, websocketPath: `/api/exec/ws/${encodeURIComponent(ticket.ticket)}` }), 201)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'EXEC_TICKET_FAILED'
-                    await auditService.record({
-                        actorId,
-                        detail: { code },
-                        operation: 'container.exec.interactive.ticket',
-                        requestId: context.get('requestId'),
-                        result: 'failure',
-                        sourceIp: getSourceIp(context.req.raw.headers),
-                        targetId: containerId,
-                        targetType: 'container',
-                    })
-                    throw error
-                }
-            }),
+                    try {
+                        const ticket = await engineAgentClient.createInteractiveExecTicket(containerId, input)
+                        await auditService.record({
+                            actorId,
+                            operation: 'container.exec.interactive.ticket',
+                            requestId: context.get('requestId'),
+                            result: 'success',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: containerId,
+                            targetType: 'container',
+                        })
+                        return context.json(successResponse({ ...ticket, websocketPath: `/api/exec/ws/${encodeURIComponent(ticket.ticket)}` }), 201)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'EXEC_TICKET_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'container.exec.interactive.ticket',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId: containerId,
+                            targetType: 'container',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .get(
             '/exec/ws/:ticket',

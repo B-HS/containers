@@ -5,7 +5,7 @@ import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { OPERATION_JOB_KIND } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -80,9 +80,9 @@ export const createDeploymentReleaseRoute = ({
                 tags: ['Deployment'],
             }),
             validator('param', releaseIdParamSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof releaseIdParamSchema> }>) => {
                 await authenticateRead(context.req.raw.headers, apiKeyService, authService)
-                const { id } = context.req.valid('param' as never) as z.infer<typeof releaseIdParamSchema>
+                const { id } = context.req.valid('param')
                 return context.json(successResponse(await deploymentReleaseService.get(id)), 200)
             }),
         )
@@ -94,8 +94,8 @@ export const createDeploymentReleaseRoute = ({
                 tags: ['Deployment'],
             }),
             validator('param', releaseIdParamSchema),
-            withErrorHandling(async (context) => {
-                const releaseId = (context.req.valid('param' as never) as z.infer<typeof releaseIdParamSchema>).id
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof releaseIdParamSchema> }>) => {
+                const releaseId = context.req.valid('param').id
                 const audit = {
                     operation: 'deployment.release.rollback',
                     requestId: context.get('requestId'),
@@ -131,8 +131,8 @@ export const createDeploymentReleaseRoute = ({
                 tags: ['Deployment'],
             }),
             validator('param', manifestIdParamSchema),
-            withErrorHandling(async (context) => {
-                const manifestId = (context.req.valid('param' as never) as z.infer<typeof manifestIdParamSchema>).manifestId
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof manifestIdParamSchema> }>) => {
+                const manifestId = context.req.valid('param').manifestId
                 const audit = {
                     operation: 'deployment.release.create',
                     requestId: context.get('requestId'),

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { containerLogStreamQuerySchema } from '@containers/contracts/engine-stream'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { EngineAgentClient } from '../../service/shared/engine-agent-client/create-engine-agent-client'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
@@ -96,11 +96,15 @@ export const createEngineStreamProxyRoute = ({ authService, engineAgentClient }:
             }),
             validator('param', containerIdParamSchema),
             validator('query', containerLogStreamQuerySchema),
-            withErrorHandling((context) => {
-                const containerId = (context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>).containerId
-                const { tail } = context.req.valid('query' as never) as z.infer<typeof containerLogStreamQuerySchema>
-                return proxy(context.req.raw.headers, (signal) => engineAgentClient.openContainerLogStream(containerId, tail, signal))
-            }),
+            withErrorHandling(
+                (
+                    context: ApiRouteContext<{ param: z.infer<typeof containerIdParamSchema>; query: z.infer<typeof containerLogStreamQuerySchema> }>,
+                ) => {
+                    const containerId = context.req.valid('param').containerId
+                    const { tail } = context.req.valid('query')
+                    return proxy(context.req.raw.headers, (signal) => engineAgentClient.openContainerLogStream(containerId, tail, signal))
+                },
+            ),
         )
         .get(
             '/stream/containers/:containerId/stats',
@@ -110,8 +114,8 @@ export const createEngineStreamProxyRoute = ({ authService, engineAgentClient }:
                 tags: ['Stream'],
             }),
             validator('param', containerIdParamSchema),
-            withErrorHandling((context) => {
-                const containerId = (context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>).containerId
+            withErrorHandling((context: ApiRouteContext<{ param: z.infer<typeof containerIdParamSchema> }>) => {
+                const containerId = context.req.valid('param').containerId
                 return proxy(context.req.raw.headers, (signal) => engineAgentClient.openContainerStatsStream(containerId, signal))
             }),
         )

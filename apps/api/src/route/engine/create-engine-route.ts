@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
+import { z } from 'zod'
 import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { containerLogRequestSchema } from '@containers/contracts/engine'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { EngineService } from '../../service/domain/engine/create-engine-service'
@@ -17,6 +18,8 @@ type EngineRouteDependencies = {
 }
 
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
+
+const containerIdParamSchema = z.object({ containerId: z.string().min(1) })
 
 const withEngineFallback =
     (fallback: string) =>
@@ -79,10 +82,12 @@ export const createEngineRoute = ({ apiKeyService, authService, engineService }:
                 summary: '컨테이너 상세 상태 조회',
                 tags: ['Engine'],
             }),
-            withErrorHandling(async (context) => {
+            validator('param', containerIdParamSchema),
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof containerIdParamSchema> }>) => {
                 await authenticateRead(context.req.raw.headers)
+                const { containerId } = context.req.valid('param')
                 return withEngineFallback('CONTAINER_INSPECT_FAILED')(async () =>
-                    context.json(successResponse(await engineService.getContainer(context.req.param('containerId'))), 200),
+                    context.json(successResponse(await engineService.getContainer(containerId)), 200),
                 )
             }),
         )
@@ -95,15 +100,18 @@ export const createEngineRoute = ({ apiKeyService, authService, engineService }:
                 summary: '컨테이너 로그 조회',
                 tags: ['Engine'],
             }),
+            validator('param', containerIdParamSchema),
             validator('query', containerLogRequestSchema),
-            withErrorHandling(async (context) => {
-                await authenticateRead(context.req.raw.headers)
-                return withEngineFallback('CONTAINER_LOGS_FAILED')(async () =>
-                    context.json(
-                        successResponse(await engineService.getContainerLogs(context.req.param('containerId'), context.req.valid('query'))),
-                        200,
-                    ),
-                )
-            }),
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{ param: z.infer<typeof containerIdParamSchema>; query: z.infer<typeof containerLogRequestSchema> }>,
+                ) => {
+                    await authenticateRead(context.req.raw.headers)
+                    const { containerId } = context.req.valid('param')
+                    return withEngineFallback('CONTAINER_LOGS_FAILED')(async () =>
+                        context.json(successResponse(await engineService.getContainerLogs(containerId, context.req.valid('query'))), 200),
+                    )
+                },
+            ),
         )
 }

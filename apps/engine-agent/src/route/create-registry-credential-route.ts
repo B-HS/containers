@@ -3,7 +3,7 @@ import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
 import { registryCredentialDeleteSchema, registryCredentialUpsertSchema } from '@containers/contracts/registry-credential'
 import type { RegistryCredentialService } from '../service/domain/create-registry-credential-service'
-import { withErrorHandling } from '../lib/with-error-handling'
+import { withErrorHandling, type AgentRouteContext } from '../lib/with-error-handling'
 
 type RegistryCredentialRouteDependencies = {
     registryCredentialService: RegistryCredentialService
@@ -31,8 +31,8 @@ export const createRegistryCredentialRoute = ({ registryCredentialService }: Reg
             responses: { 201: { description: '생성 결과' } },
         }),
         validator('json', registryCredentialUpsertSchema),
-        withErrorHandling(async (context) =>
-            context.json(await registryCredentialService.upsert(undefined, context.req.valid('json' as never)), 201),
+        withErrorHandling(async (context: AgentRouteContext<{ json: z.infer<typeof registryCredentialUpsertSchema> }>) =>
+            context.json(await registryCredentialService.upsert(undefined, context.req.valid('json')), 201),
         ),
     )
     route.post(
@@ -44,14 +44,17 @@ export const createRegistryCredentialRoute = ({ registryCredentialService }: Reg
         }),
         validator('param', credentialIdParamSchema),
         validator('json', registryCredentialUpsertSchema),
-        withErrorHandling(async (context) =>
-            context.json(
-                await registryCredentialService.upsert(
-                    (context.req.valid('param' as never) as { credentialId: string }).credentialId,
-                    context.req.valid('json' as never),
+        withErrorHandling(
+            async (
+                context: AgentRouteContext<{ param: z.infer<typeof credentialIdParamSchema>; json: z.infer<typeof registryCredentialUpsertSchema> }>,
+            ) =>
+                context.json(
+                    await registryCredentialService.upsert(
+                        (context.req.valid('param') as { credentialId: string }).credentialId,
+                        context.req.valid('json'),
+                    ),
+                    200,
                 ),
-                200,
-            ),
         ),
     )
     route.delete(
@@ -63,14 +66,17 @@ export const createRegistryCredentialRoute = ({ registryCredentialService }: Reg
         }),
         validator('param', credentialIdParamSchema),
         validator('json', registryCredentialDeleteSchema),
-        withErrorHandling(async (context) =>
-            context.json(
-                await registryCredentialService.remove(
-                    (context.req.valid('param' as never) as { credentialId: string }).credentialId,
-                    context.req.valid('json' as never),
+        withErrorHandling(
+            async (
+                context: AgentRouteContext<{ param: z.infer<typeof credentialIdParamSchema>; json: z.infer<typeof registryCredentialDeleteSchema> }>,
+            ) =>
+                context.json(
+                    await registryCredentialService.remove(
+                        (context.req.valid('param') as { credentialId: string }).credentialId,
+                        context.req.valid('json'),
+                    ),
+                    200,
                 ),
-                200,
-            ),
         ),
     )
 

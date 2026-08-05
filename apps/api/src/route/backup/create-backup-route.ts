@@ -7,7 +7,7 @@ import { OPERATION_JOB_KIND } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { BackupService } from '../../service/domain/backup/create-backup-service'
@@ -70,7 +70,7 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
                 tags: ['Backup'],
             }),
             validator('json', backupCreateSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof backupCreateSchema> }>) => {
                 const audit = {
                     operation: 'backup.create',
                     requestId: context.get('requestId'),
@@ -81,7 +81,7 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
                 const principal = await authenticateWrite(context.req.raw.headers)
                 await auditService.record({ ...audit, ...principal, result: 'attempt' })
                 try {
-                    const result = await backupService.create(context.req.valid('json' as never) as z.infer<typeof backupCreateSchema>)
+                    const result = await backupService.create(context.req.valid('json'))
                     await auditService.record({ ...audit, ...principal, result: 'success' })
                     return context.json(successResponse(result), 201)
                 } catch (error) {
@@ -100,43 +100,45 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
             }),
             validator('param', backupIdParamSchema),
             validator('json', backupRestoreSchema),
-            withErrorHandling(async (context) => {
-                const audit = {
-                    operation: 'backup.restore',
-                    requestId: context.get('requestId'),
-                    sourceIp: sourceIp(context.req.raw.headers),
-                    targetId: 'backup',
-                    targetType: 'backup' as const,
-                }
-                const principal = await authenticateRestore(context.req.raw.headers)
-                const backupId = (context.req.valid('param' as never) as z.infer<typeof backupIdParamSchema>).id
-                const payload = context.req.valid('json' as never) as z.infer<typeof backupRestoreSchema>
-                await auditService.record({ ...audit, ...principal, result: 'attempt' })
-                try {
-                    if (payload.confirmation !== backupId) {
-                        throw createAppError('CONFIRMATION_MISMATCH')
+            withErrorHandling(
+                async (context: ApiRouteContext<{ param: z.infer<typeof backupIdParamSchema>; json: z.infer<typeof backupRestoreSchema> }>) => {
+                    const audit = {
+                        operation: 'backup.restore',
+                        requestId: context.get('requestId'),
+                        sourceIp: sourceIp(context.req.raw.headers),
+                        targetId: 'backup',
+                        targetType: 'backup' as const,
                     }
-                    if (payload.passphrase !== null) {
-                        backupService.stageRestoreSecret(backupId, payload.passphrase)
+                    const principal = await authenticateRestore(context.req.raw.headers)
+                    const backupId = context.req.valid('param').id
+                    const payload = context.req.valid('json')
+                    await auditService.record({ ...audit, ...principal, result: 'attempt' })
+                    try {
+                        if (payload.confirmation !== backupId) {
+                            throw createAppError('CONFIRMATION_MISMATCH')
+                        }
+                        if (payload.passphrase !== null) {
+                            backupService.stageRestoreSecret(backupId, payload.passphrase)
+                        }
+                        const job = await operationJobService.enqueue({
+                            createdBy: principal.actorId,
+                            kind: OPERATION_JOB_KIND.BACKUP_RESTORE,
+                            maxAttempts: 1,
+                            payload: { backupId, confirmation: payload.confirmation, mode: payload.mode },
+                            unique: true,
+                        })
+                        if (job.payload.backupId !== backupId) {
+                            throw createAppError('BACKUP_RESTORE_IN_PROGRESS')
+                        }
+                        await auditService.record({ ...audit, ...principal, result: 'success' })
+                        return context.json(successResponse(job), 202)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'BACKUP_OPERATION_FAILED'
+                        await auditService.record({ ...audit, ...principal, detail: { code }, result: 'failure' })
+                        throw error
                     }
-                    const job = await operationJobService.enqueue({
-                        createdBy: principal.actorId,
-                        kind: OPERATION_JOB_KIND.BACKUP_RESTORE,
-                        maxAttempts: 1,
-                        payload: { backupId, confirmation: payload.confirmation, mode: payload.mode },
-                        unique: true,
-                    })
-                    if (job.payload.backupId !== backupId) {
-                        throw createAppError('BACKUP_RESTORE_IN_PROGRESS')
-                    }
-                    await auditService.record({ ...audit, ...principal, result: 'success' })
-                    return context.json(successResponse(job), 202)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'BACKUP_OPERATION_FAILED'
-                    await auditService.record({ ...audit, ...principal, detail: { code }, result: 'failure' })
-                    throw error
-                }
-            }),
+                },
+            ),
         )
         .delete(
             '/backups/:id',
@@ -147,27 +149,29 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
             }),
             validator('param', backupIdParamSchema),
             validator('json', backupDeleteSchema),
-            withErrorHandling(async (context) => {
-                const audit = {
-                    operation: 'backup.remove',
-                    requestId: context.get('requestId'),
-                    sourceIp: sourceIp(context.req.raw.headers),
-                    targetId: 'backup',
-                    targetType: 'backup' as const,
-                }
-                const principal = await authenticateWrite(context.req.raw.headers)
-                const backupId = (context.req.valid('param' as never) as z.infer<typeof backupIdParamSchema>).id
-                const payload = context.req.valid('json' as never) as z.infer<typeof backupDeleteSchema>
-                await auditService.record({ ...audit, ...principal, result: 'attempt' })
-                try {
-                    const result = await backupService.remove(backupId, payload)
-                    await auditService.record({ ...audit, ...principal, result: 'success' })
-                    return context.json(successResponse(result), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'BACKUP_OPERATION_FAILED'
-                    await auditService.record({ ...audit, ...principal, detail: { code }, result: 'failure' })
-                    throw error
-                }
-            }),
+            withErrorHandling(
+                async (context: ApiRouteContext<{ param: z.infer<typeof backupIdParamSchema>; json: z.infer<typeof backupDeleteSchema> }>) => {
+                    const audit = {
+                        operation: 'backup.remove',
+                        requestId: context.get('requestId'),
+                        sourceIp: sourceIp(context.req.raw.headers),
+                        targetId: 'backup',
+                        targetType: 'backup' as const,
+                    }
+                    const principal = await authenticateWrite(context.req.raw.headers)
+                    const backupId = context.req.valid('param').id
+                    const payload = context.req.valid('json')
+                    await auditService.record({ ...audit, ...principal, result: 'attempt' })
+                    try {
+                        const result = await backupService.remove(backupId, payload)
+                        await auditService.record({ ...audit, ...principal, result: 'success' })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'BACKUP_OPERATION_FAILED'
+                        await auditService.record({ ...audit, ...principal, detail: { code }, result: 'failure' })
+                        throw error
+                    }
+                },
+            ),
         )
 }

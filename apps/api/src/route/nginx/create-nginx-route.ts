@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { nginxConfigApplySchema, nginxProxyRouteInputSchema } from '@containers/contracts/nginx'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { NginxService } from '../../service/domain/nginx/create-nginx-service'
@@ -71,10 +71,10 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                 tags: ['Nginx'],
             }),
             validator('json', nginxProxyRouteInputSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof nginxProxyRouteInputSchema> }>) => {
                 const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
                 const actorId = session.user.id
-                const input = context.req.valid('json' as never)
+                const input = context.req.valid('json')
                 await auditService.record({
                     actorId,
                     operation: 'nginx.route.create',
@@ -122,48 +122,52 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
             }),
             validator('param', nginxRouteIdParamSchema),
             validator('json', nginxRouteRemoveSchema),
-            withErrorHandling(async (context) => {
-                const targetId = (context.req.valid('param' as never) as z.infer<typeof nginxRouteIdParamSchema>).id
-                const confirmation = (context.req.valid('json' as never) as z.infer<typeof nginxRouteRemoveSchema>).confirmation
-                const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
-                await auditService.record({
-                    actorId,
-                    operation: 'nginx.route.remove',
-                    requestId: context.get('requestId'),
-                    result: 'attempt',
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId,
-                    targetType: 'nginx-route',
-                })
-                try {
-                    const result = await nginxProxyRouteService.remove(targetId, confirmation)
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{ param: z.infer<typeof nginxRouteIdParamSchema>; json: z.infer<typeof nginxRouteRemoveSchema> }>,
+                ) => {
+                    const targetId = context.req.valid('param').id
+                    const confirmation = context.req.valid('json').confirmation
+                    const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                    const actorId = session.user.id
                     await auditService.record({
                         actorId,
-                        detail: { configSha256: result.configSha256 },
                         operation: 'nginx.route.remove',
                         requestId: context.get('requestId'),
-                        result: 'success',
+                        result: 'attempt',
                         sourceIp: getSourceIp(context.req.raw.headers),
                         targetId,
                         targetType: 'nginx-route',
                     })
-                    return context.json(successResponse(result), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'NGINX_ROUTE_REMOVE_FAILED'
-                    await auditService.record({
-                        actorId,
-                        detail: { code },
-                        operation: 'nginx.route.remove',
-                        requestId: context.get('requestId'),
-                        result: 'failure',
-                        sourceIp: getSourceIp(context.req.raw.headers),
-                        targetId,
-                        targetType: 'nginx-route',
-                    })
-                    throw error
-                }
-            }),
+                    try {
+                        const result = await nginxProxyRouteService.remove(targetId, confirmation)
+                        await auditService.record({
+                            actorId,
+                            detail: { configSha256: result.configSha256 },
+                            operation: 'nginx.route.remove',
+                            requestId: context.get('requestId'),
+                            result: 'success',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId,
+                            targetType: 'nginx-route',
+                        })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'NGINX_ROUTE_REMOVE_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'nginx.route.remove',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId,
+                            targetType: 'nginx-route',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .post(
             '/nginx/config/apply',
@@ -173,7 +177,7 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                 tags: ['Nginx'],
             }),
             validator('json', nginxConfigApplySchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof nginxConfigApplySchema> }>) => {
                 const audit = {
                     operation: 'nginx.config.apply',
                     requestId: context.get('requestId'),
@@ -185,7 +189,7 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                 const actorId = session.user.id
                 await auditService.record({ ...audit, actorId, result: 'attempt' })
                 try {
-                    const result = await nginxService.applyConfig(context.req.valid('json' as never))
+                    const result = await nginxService.applyConfig(context.req.valid('json'))
                     await auditService.record({ ...audit, actorId, detail: { sha256: result.sha256 }, result: 'success' })
                     return context.json(successResponse(result), 200)
                 } catch (error) {

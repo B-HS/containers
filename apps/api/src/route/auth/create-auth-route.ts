@@ -5,7 +5,7 @@ import { USER_ROLE } from '@containers/db-schema/schema'
 import { managedUserUpdateSchema } from '@containers/contracts/user-management'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
@@ -58,7 +58,9 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
                 tags: ['Auth'],
             }),
             validator('json', ownerBootstrapSchema),
-            withErrorHandling(async (context) => context.json(successResponse(await authService.bootstrapOwner(context.req.valid('json'))), 201)),
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof ownerBootstrapSchema> }>) =>
+                context.json(successResponse(await authService.bootstrapOwner(context.req.valid('json'))), 201),
+            ),
         )
         .get(
             '/session',
@@ -83,7 +85,7 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
                 tags: ['Auth'],
             }),
             validator('json', invitationCreateSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof invitationCreateSchema> }>) => {
                 const input = context.req.valid('json')
                 const actorId = (await authService.getSession(context.req.raw.headers))?.user.id
                 try {
@@ -125,7 +127,7 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
                 tags: ['Auth'],
             }),
             validator('json', invitationAcceptSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof invitationAcceptSchema> }>) => {
                 const result = await authService.acceptInvitation(context.req.valid('json'))
                 await auditService.record({
                     actorId: result.user.id,
@@ -158,38 +160,40 @@ export const createAuthRoute = ({ auditService, authService }: AuthRouteDependen
             }),
             validator('param', userIdParamSchema),
             validator('json', managedUserUpdateSchema),
-            withErrorHandling(async (context) => {
-                const targetId = (context.req.valid('param' as never) as z.infer<typeof userIdParamSchema>).id
-                const actor = await authService.getSession(context.req.raw.headers)
-                if (!actor) {
-                    throw createAppError('AUTH_REQUIRED')
-                }
-                try {
-                    const result = await authService.updateUser(context.req.raw.headers, targetId, context.req.valid('json'))
-                    await auditService.record({
-                        actorId: actor.user.id,
-                        detail: { disabled: Boolean(result.disabledAt), role: result.role },
-                        operation: 'user.update',
-                        requestId: context.get('requestId'),
-                        result: 'success',
-                        sourceIp: getSourceIp(context.req.raw.headers),
-                        targetId,
-                        targetType: 'user',
-                    })
-                    return context.json(successResponse(result), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'UNKNOWN_ERROR'
-                    await auditService.record({
-                        actorId: actor.user.id,
-                        detail: { code },
-                        operation: 'user.update',
-                        requestId: context.get('requestId'),
-                        result: 'failure',
-                        sourceIp: getSourceIp(context.req.raw.headers),
-                        targetId,
-                        targetType: 'user',
-                    })
-                    throw error
-                }
-            }),
+            withErrorHandling(
+                async (context: ApiRouteContext<{ param: z.infer<typeof userIdParamSchema>; json: z.infer<typeof managedUserUpdateSchema> }>) => {
+                    const targetId = context.req.valid('param').id
+                    const actor = await authService.getSession(context.req.raw.headers)
+                    if (!actor) {
+                        throw createAppError('AUTH_REQUIRED')
+                    }
+                    try {
+                        const result = await authService.updateUser(context.req.raw.headers, targetId, context.req.valid('json'))
+                        await auditService.record({
+                            actorId: actor.user.id,
+                            detail: { disabled: Boolean(result.disabledAt), role: result.role },
+                            operation: 'user.update',
+                            requestId: context.get('requestId'),
+                            result: 'success',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId,
+                            targetType: 'user',
+                        })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'UNKNOWN_ERROR'
+                        await auditService.record({
+                            actorId: actor.user.id,
+                            detail: { code },
+                            operation: 'user.update',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId,
+                            targetType: 'user',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )

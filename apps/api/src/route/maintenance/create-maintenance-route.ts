@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { maintenanceUpdateSchema } from '@containers/contracts/maintenance'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { MaintenanceService } from '../../service/domain/maintenance/create-maintenance-service'
@@ -44,8 +44,8 @@ export const createMaintenanceRoute = ({ auditService, authService, maintenanceS
                 tags: ['Maintenance'],
             }),
             validator('json', maintenanceUpdateSchema),
-            withErrorHandling(async (context) => {
-                const payload = context.req.valid('json' as never) as z.infer<typeof maintenanceUpdateSchema>
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof maintenanceUpdateSchema> }>) => {
+                const payload = context.req.valid('json')
                 const audit = {
                     operation: 'maintenance.update',
                     requestId: context.get('requestId'),

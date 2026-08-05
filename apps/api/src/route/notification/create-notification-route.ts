@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { notificationDestinationDeleteSchema, notificationDestinationUpsertSchema } from '@containers/contracts/notification'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { NotificationDeliveryService } from '../../service/domain/notification/create-notification-delivery-service'
@@ -51,7 +51,7 @@ export const createNotificationRoute = ({
                 tags: ['Notification'],
             }),
             validator('json', notificationDestinationUpsertSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof notificationDestinationUpsertSchema> }>) => {
                 const audit = {
                     operation: 'notification.destination.upsert',
                     requestId: context.get('requestId'),
@@ -62,7 +62,7 @@ export const createNotificationRoute = ({
                 const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
                 await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
                 try {
-                    const destination = await notificationDestinationService.upsert(actorId, context.req.valid('json' as never))
+                    const destination = await notificationDestinationService.upsert(actorId, context.req.valid('json'))
                     await auditService.record({ ...audit, actorId, authMethod: 'session', targetId: destination.id, result: 'success' })
                     return context.json(successResponse(destination), 201)
                 } catch (error) {
@@ -81,28 +81,30 @@ export const createNotificationRoute = ({
             }),
             validator('param', destinationIdParamSchema),
             validator('json', setEnabledSchema),
-            withErrorHandling(async (context) => {
-                const targetId = (context.req.valid('param' as never) as z.infer<typeof destinationIdParamSchema>).id
-                const { enabled } = context.req.valid('json' as never) as z.infer<typeof setEnabledSchema>
-                const audit = {
-                    operation: 'notification.destination.enabled',
-                    requestId: context.get('requestId'),
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId,
-                    targetType: 'notification-destination' as const,
-                }
-                const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
-                try {
-                    const destination = await notificationDestinationService.setEnabled(targetId, enabled)
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
-                    return context.json(successResponse(destination), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_ENABLED_FAILED'
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
-                    throw error
-                }
-            }),
+            withErrorHandling(
+                async (context: ApiRouteContext<{ param: z.infer<typeof destinationIdParamSchema>; json: z.infer<typeof setEnabledSchema> }>) => {
+                    const targetId = context.req.valid('param').id
+                    const { enabled } = context.req.valid('json')
+                    const audit = {
+                        operation: 'notification.destination.enabled',
+                        requestId: context.get('requestId'),
+                        sourceIp: getSourceIp(context.req.raw.headers),
+                        targetId,
+                        targetType: 'notification-destination' as const,
+                    }
+                    const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
+                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
+                    try {
+                        const destination = await notificationDestinationService.setEnabled(targetId, enabled)
+                        await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                        return context.json(successResponse(destination), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_ENABLED_FAILED'
+                        await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                        throw error
+                    }
+                },
+            ),
         )
         .post(
             '/notification-destinations/:id/test',
@@ -112,8 +114,8 @@ export const createNotificationRoute = ({
                 tags: ['Notification'],
             }),
             validator('param', destinationIdParamSchema),
-            withErrorHandling(async (context) => {
-                const targetId = (context.req.valid('param' as never) as z.infer<typeof destinationIdParamSchema>).id
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof destinationIdParamSchema> }>) => {
+                const targetId = context.req.valid('param').id
                 const audit = {
                     operation: 'notification.destination.test',
                     requestId: context.get('requestId'),
@@ -143,25 +145,32 @@ export const createNotificationRoute = ({
             }),
             validator('param', destinationIdParamSchema),
             validator('json', notificationDestinationDeleteSchema),
-            withErrorHandling(async (context) => {
-                const targetId = (context.req.valid('param' as never) as z.infer<typeof destinationIdParamSchema>).id
-                const audit = {
-                    operation: 'notification.destination.remove',
-                    requestId: context.get('requestId'),
-                    sourceIp: getSourceIp(context.req.raw.headers),
-                    targetId,
-                    targetType: 'notification-destination' as const,
-                }
-                const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
-                try {
-                    const removed = await notificationDestinationService.remove(targetId, context.req.valid('json' as never))
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
-                    return context.json(successResponse(removed), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_REMOVE_FAILED'
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
-                    throw error
-                }
-            }),
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{
+                        param: z.infer<typeof destinationIdParamSchema>
+                        json: z.infer<typeof notificationDestinationDeleteSchema>
+                    }>,
+                ) => {
+                    const targetId = context.req.valid('param').id
+                    const audit = {
+                        operation: 'notification.destination.remove',
+                        requestId: context.get('requestId'),
+                        sourceIp: getSourceIp(context.req.raw.headers),
+                        targetId,
+                        targetType: 'notification-destination' as const,
+                    }
+                    const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
+                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
+                    try {
+                        const removed = await notificationDestinationService.remove(targetId, context.req.valid('json'))
+                        await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                        return context.json(successResponse(removed), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_REMOVE_FAILED'
+                        await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                        throw error
+                    }
+                },
+            ),
         )

@@ -5,7 +5,7 @@ import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { OPERATION_JOB_KIND } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -43,8 +43,8 @@ export const createDeploymentRoute = ({
             tags: ['Deployment'],
         }),
         validator('param', artifactIdParamSchema),
-        withErrorHandling(async (context) => {
-            const artifactId = (context.req.valid('param' as never) as z.infer<typeof artifactIdParamSchema>).artifactId
+        withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof artifactIdParamSchema> }>) => {
+            const artifactId = context.req.valid('param').artifactId
             const audit = {
                 operation: 'artifact.load-image',
                 requestId: context.get('requestId'),

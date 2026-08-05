@@ -1,4 +1,4 @@
-import type { Context, Env, Handler, Input } from 'hono'
+import type { Context, Input, Next, ValidationTargets } from 'hono'
 import type { HandlerResponse } from 'hono/types'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { ERROR_CODE, type ErrorCode } from './error-code'
@@ -8,6 +8,14 @@ import { errorResponse } from './response'
 
 export type ApiEnv = { Variables: { requestId: string } }
 export type ApiContext = Context<ApiEnv>
+
+export type RouteInput<TValidated extends Partial<Record<keyof ValidationTargets, unknown>>> = { out: TValidated }
+
+export type ApiRouteContext<TValidated extends Partial<Record<keyof ValidationTargets, unknown>> = Record<never, never>> = Context<
+    ApiEnv,
+    string,
+    RouteInput<TValidated>
+>
 
 const INTERNAL_ERROR_MESSAGE = ERROR_MESSAGE[ERROR_CODE.INTERNAL_ERROR]
 
@@ -21,11 +29,18 @@ const resolveThrown = (error: unknown): { code: ErrorCode; detail: string | unde
     return typeof candidate === 'string' ? resolveErrorCode(candidate) : { code: ERROR_CODE.INTERNAL_ERROR, detail: undefined }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC 타입 보존을 위한 hono Handler 제네릭 기본값
-export const withErrorHandling = <E extends Env = any, P extends string = any, I extends Input = any, R extends HandlerResponse<any> = any>(
-    handler: Handler<E, P, I, R>,
-): Handler<E, P, I, R> => {
-    const wrapped = async (context: Context<E, P, I>, next: Parameters<Handler<E, P, I, R>>[1]): Promise<R> => {
+/**
+ * Wraps a route handler so AppError instances become their mapped status code
+ * response and an unexpected error becomes an INTERNAL_ERROR response.
+ *
+ * The result is asserted back to the handler's own return type R so Hono keeps
+ * inferring the route's RPC response schema; the error branch adds a response
+ * shape that R does not describe, which no sound signature can express here.
+ */
+export const withErrorHandling = <I extends Input, R extends HandlerResponse<unknown>>(
+    handler: (context: Context<ApiEnv, string, I>, next: Next) => R,
+) =>
+    (async (context: Context<ApiEnv, string, I>, next: Next) => {
         try {
             return await handler(context, next)
         } catch (error) {
@@ -36,7 +51,7 @@ export const withErrorHandling = <E extends Env = any, P extends string = any, I
                 return context.json(
                     errorResponse(error.code, ERROR_MESSAGE[error.code] ?? INTERNAL_ERROR_MESSAGE, requestId, error.details),
                     error.statusCode as ContentfulStatusCode,
-                ) as unknown as R
+                )
             }
 
             const { code, detail } = resolveThrown(error)
@@ -44,8 +59,6 @@ export const withErrorHandling = <E extends Env = any, P extends string = any, I
             return context.json(
                 errorResponse(code, ERROR_MESSAGE[code] ?? INTERNAL_ERROR_MESSAGE, requestId, detail === undefined ? undefined : { detail }),
                 getStatusCode(code) as ContentfulStatusCode,
-            ) as unknown as R
+            )
         }
-    }
-    return wrapped as unknown as Handler<E, P, I, R>
-}
+    }) as unknown as (context: Context<ApiEnv, string, I>, next: Next) => R

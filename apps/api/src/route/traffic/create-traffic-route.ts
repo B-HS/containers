@@ -12,7 +12,7 @@ import {
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { TrafficService } from '../../service/domain/traffic/create-traffic-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
@@ -52,9 +52,9 @@ export const createTrafficRoute = ({
                 tags: ['Traffic'],
             }),
             validator('query', trafficAnalyticsQuerySchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ query: z.infer<typeof trafficAnalyticsQuerySchema> }>) => {
                 await authorize(context.req.raw.headers)
-                const query = context.req.valid('query' as never) as z.infer<typeof trafficAnalyticsQuerySchema>
+                const query = context.req.valid('query')
                 return context.json(successResponse(await trafficService.getAnalytics(query)), 200)
             }),
         )
@@ -78,10 +78,10 @@ export const createTrafficRoute = ({
                 tags: ['Traffic'],
             }),
             validator('query', trafficLiveQuerySchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ query: z.infer<typeof trafficLiveQuerySchema> }>) => {
                 const headers = context.req.raw.headers
                 await authorize(headers)
-                const query = context.req.valid('query' as never) as z.infer<typeof trafficLiveQuerySchema>
+                const query = context.req.valid('query')
                 const upstreamController = new AbortController()
                 const upstream = await trafficService.openLiveStream(query, upstreamController.signal)
                 const reader = upstream.getReader()
@@ -122,9 +122,9 @@ export const createTrafficRoute = ({
                 tags: ['Traffic'],
             }),
             validator('query', trafficSummaryQuerySchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ query: z.infer<typeof trafficSummaryQuerySchema> }>) => {
                 await authorize(context.req.raw.headers)
-                const { windowMinutes } = context.req.valid('query' as never) as z.infer<typeof trafficSummaryQuerySchema>
+                const { windowMinutes } = context.req.valid('query')
                 return context.json(successResponse(await trafficService.getSummary(windowMinutes)), 200)
             }),
         )
@@ -136,9 +136,9 @@ export const createTrafficRoute = ({
                 tags: ['Traffic'],
             }),
             validator('json', trafficExportJobPayloadSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof trafficExportJobPayloadSchema> }>) => {
                 const session = await authorizeExport(context.req.raw.headers)
-                const payload = context.req.valid('json' as never) as z.infer<typeof trafficExportJobPayloadSchema>
+                const payload = context.req.valid('json')
                 const job = await operationJobService.enqueue({
                     createdBy: session.user.id,
                     kind: OPERATION_JOB_KIND.TRAFFIC_EXPORT,
@@ -167,9 +167,9 @@ export const createTrafficRoute = ({
                 tags: ['Traffic'],
             }),
             validator('param', jobIdParamSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof jobIdParamSchema> }>) => {
                 const session = await authorizeExport(context.req.raw.headers)
-                const jobId = (context.req.valid('param' as never) as z.infer<typeof jobIdParamSchema>).jobId
+                const jobId = context.req.valid('param').jobId
                 const job = await operationJobService.get(jobId)
                 if (job.kind !== OPERATION_JOB_KIND.TRAFFIC_EXPORT) throw createAppError('TRAFFIC_EXPORT_NOT_FOUND')
                 if (job.status !== 'succeeded') throw createAppError('TRAFFIC_EXPORT_NOT_READY')

@@ -5,7 +5,7 @@ import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { operationJobListQuerySchema } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -52,9 +52,9 @@ export const createJobRoute = ({ apiKeyService, auditService, authService, backu
                 tags: ['Job'],
             }),
             validator('query', operationJobListQuerySchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ query: z.infer<typeof operationJobListQuerySchema> }>) => {
                 await authenticateRead(context.req.raw.headers)
-                const query = context.req.valid('query' as never) as z.infer<typeof operationJobListQuerySchema>
+                const query = context.req.valid('query')
                 return context.json(successResponse(await operationJobService.list(query)), 200)
             }),
         )
@@ -78,9 +78,9 @@ export const createJobRoute = ({ apiKeyService, auditService, authService, backu
                 tags: ['Job'],
             }),
             validator('param', jobIdSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof jobIdSchema> }>) => {
                 await authenticateRead(context.req.raw.headers)
-                const { id } = context.req.valid('param' as never) as z.infer<typeof jobIdSchema>
+                const { id } = context.req.valid('param')
                 return context.json(successResponse(await operationJobService.get(id)), 200)
             }),
         )
@@ -92,9 +92,9 @@ export const createJobRoute = ({ apiKeyService, auditService, authService, backu
                 tags: ['Job'],
             }),
             validator('param', jobIdSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof jobIdSchema> }>) => {
                 await authenticateRead(context.req.raw.headers)
-                const { id } = context.req.valid('param' as never) as z.infer<typeof jobIdSchema>
+                const { id } = context.req.valid('param')
                 return context.json(successResponse(await operationJobService.listEvents(id)), 200)
             }),
         )
@@ -106,8 +106,8 @@ export const createJobRoute = ({ apiKeyService, auditService, authService, backu
                 tags: ['Job'],
             }),
             validator('param', jobIdSchema),
-            withErrorHandling(async (context) => {
-                const targetId = (context.req.valid('param' as never) as z.infer<typeof jobIdSchema>).id
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof jobIdSchema> }>) => {
+                const targetId = context.req.valid('param').id
                 const audit = {
                     operation: 'job.cancel',
                     requestId: context.get('requestId'),

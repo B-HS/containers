@@ -3,7 +3,7 @@ import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
 import { containerLogStreamQuerySchema } from '@containers/contracts/engine-stream'
 import type { EngineStreamService } from '../service/domain/create-engine-stream-service'
-import { withErrorHandling } from '../lib/with-error-handling'
+import { withErrorHandling, type AgentRouteContext } from '../lib/with-error-handling'
 
 type EngineStreamRouteDependencies = {
     engineStreamService: EngineStreamService
@@ -33,21 +33,25 @@ export const createEngineStreamRoute = ({ engineStreamService }: EngineStreamRou
         describeRoute({ tags: ['engine-stream'], summary: '컨테이너 로그 실시간 stream', responses: { 200: { description: 'SSE stream' } } }),
         validator('param', containerIdParamSchema),
         validator('query', containerLogStreamQuerySchema),
-        withErrorHandling(async (context) => {
-            const param = context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>
-            const query = context.req.valid('query' as never) as z.infer<typeof containerLogStreamQuerySchema>
-            return new Response(await engineStreamService.openContainerLogStream(param.containerId, query.tail), {
-                headers: SSE_HEADERS,
-                status: 200,
-            })
-        }),
+        withErrorHandling(
+            async (
+                context: AgentRouteContext<{ param: z.infer<typeof containerIdParamSchema>; query: z.infer<typeof containerLogStreamQuerySchema> }>,
+            ) => {
+                const param = context.req.valid('param')
+                const query = context.req.valid('query')
+                return new Response(await engineStreamService.openContainerLogStream(param.containerId, query.tail), {
+                    headers: SSE_HEADERS,
+                    status: 200,
+                })
+            },
+        ),
     )
     route.get(
         '/streams/containers/:containerId/stats',
         describeRoute({ tags: ['engine-stream'], summary: '컨테이너 stats 실시간 stream', responses: { 200: { description: 'SSE stream' } } }),
         validator('param', containerIdParamSchema),
-        withErrorHandling(async (context) => {
-            const param = context.req.valid('param' as never) as z.infer<typeof containerIdParamSchema>
+        withErrorHandling(async (context: AgentRouteContext<{ param: z.infer<typeof containerIdParamSchema> }>) => {
+            const param = context.req.valid('param')
             return new Response(await engineStreamService.openContainerStatsStream(param.containerId), {
                 headers: SSE_HEADERS,
                 status: 200,

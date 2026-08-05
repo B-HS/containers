@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { apiKeyCreateSchema } from '@containers/contracts/api-key'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import { requiresOwnerApiKeyScope, type ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
@@ -41,8 +41,8 @@ export const createApiKeyRoute = ({ apiKeyService, authService }: ApiKeyRouteDep
                 tags: ['ApiKey'],
             }),
             validator('json', apiKeyCreateSchema),
-            withErrorHandling(async (context) => {
-                const payload = context.req.valid('json' as never) as z.infer<typeof apiKeyCreateSchema>
+            withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof apiKeyCreateSchema> }>) => {
+                const payload = context.req.valid('json')
                 const allowedRoles = requiresOwnerApiKeyScope(payload.scopes) ? OWNER_ROLES : ADMIN_ROLES
                 const session = await authService.requireRecentRole(context.req.raw.headers, allowedRoles, RECENT_AUTH_MAX_AGE_MS)
                 return context.json(successResponse(await apiKeyService.create({ id: session.user.id, role: session.role }, payload)), 201)
@@ -56,9 +56,9 @@ export const createApiKeyRoute = ({ apiKeyService, authService }: ApiKeyRouteDep
                 tags: ['ApiKey'],
             }),
             validator('param', apiKeyIdSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof apiKeyIdSchema> }>) => {
                 await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                const { id } = context.req.valid('param' as never) as z.infer<typeof apiKeyIdSchema>
+                const { id } = context.req.valid('param')
                 return context.json(successResponse(await apiKeyService.revoke(id)), 200)
             }),
         )

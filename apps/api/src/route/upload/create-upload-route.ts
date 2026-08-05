@@ -8,7 +8,7 @@ import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
 import { toStreamChunks } from '../../lib/stream-chunks'
-import { withErrorHandling } from '../../lib/with-error-handling'
+import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
@@ -72,28 +72,30 @@ export const createUploadRoute = ({ apiKeyService, auditService, authService, op
             }),
             validator('param', artifactIdParamSchema),
             validator('json', artifactDeleteSchema),
-            withErrorHandling(async (context) => {
-                const { artifactId } = context.req.valid('param' as never) as z.infer<typeof artifactIdParamSchema>
-                const session = await authService.requireRecentRole(context.req.raw.headers, ARTIFACT_REMOVE_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                const audit = {
-                    actorId: session.user.id,
-                    operation: 'artifact.remove',
-                    requestId: context.get('requestId'),
-                    sourceIp: context.req.raw.headers.get('x-real-ip')?.trim() || undefined,
-                    targetId: artifactId,
-                    targetType: 'artifact' as const,
-                }
-                await auditService.record({ ...audit, result: 'attempt' })
-                try {
-                    const removed = await uploadService.removeArtifact(artifactId, context.req.valid('json' as never))
-                    await auditService.record({ ...audit, detail: { sha256: removed.sha256 }, result: 'success' })
-                    return context.json(successResponse(removed), 200)
-                } catch (error) {
-                    const code = error instanceof Error ? error.message : 'ARTIFACT_REMOVE_FAILED'
-                    await auditService.record({ ...audit, detail: { code }, result: 'failure' })
-                    throw error
-                }
-            }),
+            withErrorHandling(
+                async (context: ApiRouteContext<{ param: z.infer<typeof artifactIdParamSchema>; json: z.infer<typeof artifactDeleteSchema> }>) => {
+                    const { artifactId } = context.req.valid('param')
+                    const session = await authService.requireRecentRole(context.req.raw.headers, ARTIFACT_REMOVE_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                    const audit = {
+                        actorId: session.user.id,
+                        operation: 'artifact.remove',
+                        requestId: context.get('requestId'),
+                        sourceIp: context.req.raw.headers.get('x-real-ip')?.trim() || undefined,
+                        targetId: artifactId,
+                        targetType: 'artifact' as const,
+                    }
+                    await auditService.record({ ...audit, result: 'attempt' })
+                    try {
+                        const removed = await uploadService.removeArtifact(artifactId, context.req.valid('json'))
+                        await auditService.record({ ...audit, detail: { sha256: removed.sha256 }, result: 'success' })
+                        return context.json(successResponse(removed), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'ARTIFACT_REMOVE_FAILED'
+                        await auditService.record({ ...audit, detail: { code }, result: 'failure' })
+                        throw error
+                    }
+                },
+            ),
         )
         .post(
             '/uploads/sessions',
@@ -104,14 +106,15 @@ export const createUploadRoute = ({ apiKeyService, auditService, authService, op
             }),
             validator('json', uploadSessionCreateSchema),
             validator('header', idempotencyKeySchema),
-            withErrorHandling(async (context) => {
-                const actorId = await requireActor(context.req.raw.headers, API_KEY_SCOPE.ARTIFACT_UPLOAD)
-                const { 'idempotency-key': idempotencyKey } = context.req.valid('header' as never) as z.infer<typeof idempotencyKeySchema>
-                return context.json(
-                    successResponse(await uploadService.createSession(actorId, idempotencyKey, context.req.valid('json' as never))),
-                    201,
-                )
-            }),
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{ json: z.infer<typeof uploadSessionCreateSchema>; header: z.infer<typeof idempotencyKeySchema> }>,
+                ) => {
+                    const actorId = await requireActor(context.req.raw.headers, API_KEY_SCOPE.ARTIFACT_UPLOAD)
+                    const { 'idempotency-key': idempotencyKey } = context.req.valid('header')
+                    return context.json(successResponse(await uploadService.createSession(actorId, idempotencyKey, context.req.valid('json'))), 201)
+                },
+            ),
         )
         .put(
             '/uploads/sessions/:sessionId/chunks',
@@ -123,19 +126,27 @@ export const createUploadRoute = ({ apiKeyService, auditService, authService, op
             validator('param', sessionIdParamSchema),
             validator('query', chunkQuerySchema),
             validator('header', chunkSha256Schema),
-            withErrorHandling(async (context) => {
-                const actorId = await requireActor(context.req.raw.headers, API_KEY_SCOPE.ARTIFACT_UPLOAD)
-                const sessionId = (context.req.valid('param' as never) as z.infer<typeof sessionIdParamSchema>).sessionId
-                const { offset } = context.req.valid('query' as never) as z.infer<typeof chunkQuerySchema>
-                const { 'x-chunk-sha256': chunkSha256 } = context.req.valid('header' as never) as z.infer<typeof chunkSha256Schema>
-                const body = context.req.raw.body
-                const declaredBytes = Number(context.req.header('content-length'))
-                const chunk = body === null ? new Uint8Array(await context.req.arrayBuffer()) : toStreamChunks(body)
-                const result = Number.isSafeInteger(declaredBytes)
-                    ? await uploadService.appendChunk(actorId, sessionId, offset, chunkSha256, chunk, declaredBytes)
-                    : await uploadService.appendChunk(actorId, sessionId, offset, chunkSha256, chunk)
-                return context.json(successResponse(result), 200)
-            }),
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{
+                        param: z.infer<typeof sessionIdParamSchema>
+                        query: z.infer<typeof chunkQuerySchema>
+                        header: z.infer<typeof chunkSha256Schema>
+                    }>,
+                ) => {
+                    const actorId = await requireActor(context.req.raw.headers, API_KEY_SCOPE.ARTIFACT_UPLOAD)
+                    const sessionId = context.req.valid('param').sessionId
+                    const { offset } = context.req.valid('query')
+                    const { 'x-chunk-sha256': chunkSha256 } = context.req.valid('header')
+                    const body = context.req.raw.body
+                    const declaredBytes = Number(context.req.header('content-length'))
+                    const chunk = body === null ? new Uint8Array(await context.req.arrayBuffer()) : toStreamChunks(body)
+                    const result = Number.isSafeInteger(declaredBytes)
+                        ? await uploadService.appendChunk(actorId, sessionId, offset, chunkSha256, chunk, declaredBytes)
+                        : await uploadService.appendChunk(actorId, sessionId, offset, chunkSha256, chunk)
+                    return context.json(successResponse(result), 200)
+                },
+            ),
         )
         .post(
             '/uploads/sessions/:sessionId/finalize',
@@ -145,9 +156,9 @@ export const createUploadRoute = ({ apiKeyService, auditService, authService, op
                 tags: ['Upload'],
             }),
             validator('param', sessionIdParamSchema),
-            withErrorHandling(async (context) => {
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof sessionIdParamSchema> }>) => {
                 const actorId = await requireActor(context.req.raw.headers, API_KEY_SCOPE.ARTIFACT_UPLOAD)
-                const sessionId = (context.req.valid('param' as never) as z.infer<typeof sessionIdParamSchema>).sessionId
+                const sessionId = context.req.valid('param').sessionId
                 if (!(await uploadService.getOwnedSession(actorId, sessionId))) {
                     throw createAppError('UPLOAD_SESSION_INVALID')
                 }
