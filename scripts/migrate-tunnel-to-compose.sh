@@ -10,6 +10,9 @@ set -u
 #  2. 토큰 노출: 호스트 실행은 `cloudflared tunnel run --token <TOKEN>` 이라 ps 출력에
 #     토큰이 그대로 보인다. compose 는 TUNNEL_TOKEN 환경변수로만 전달한다.
 #
+# 순서가 중요하다. 대시보드 service 를 http://nginx:8080 으로 바꾸면 호스트 cloudflared 는
+# 그 이름을 DNS 로 풀 수 없어 즉시 502 가 된다. 그래서 컨테이너를 먼저 띄우고 확인한다.
+#
 # 토큰은 인자로 받지 않는다(인자는 ps 에 남는다). CLOUDFLARE_TUNNEL_TOKEN 환경변수만 쓴다.
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -131,14 +134,7 @@ else
     ok '호스트에서 실행 중인 cloudflared 가 없습니다.'
 fi
 
-step '3. Cloudflare 대시보드 설정 확인'
-
-info "  터널의 public hostname service 를 ${BOLD}${INGRESS_SERVICE_URL}${RESET} 로 바꿔야 합니다."
-info '  compose 안의 cloudflared 는 edge 네트워크에 있어 호스트의 127.0.0.1 에 도달할 수 없습니다.'
-info '  원본 Host 헤더는 그대로 전달해야 합니다. Host 를 덮어쓰면 nginx catch-all 이 444 로 끊습니다.'
-confirm '  대시보드에서 위 값으로 바꿨습니까?'
-
-step '4. compose 프로필로 기동'
+step '3. compose 프로필로 기동'
 
 docker compose --profile cloudflared up -d --wait cloudflared || fail 'cloudflared 컨테이너 기동에 실패했습니다.'
 
@@ -161,6 +157,15 @@ if docker inspect "$CLOUDFLARED_CONTAINER" --format '{{json .Config.Cmd}}' | gre
     fail 'cloudflared command 에 토큰이 들어 있습니다. compose.yaml 의 TUNNEL_TOKEN 환경변수 경로를 쓰세요.'
 fi
 ok '토큰이 프로세스 인자가 아니라 환경변수로 전달됩니다.'
+
+step '4. Cloudflare 대시보드 설정 확인'
+
+info "  터널의 public hostname service 가 ${BOLD}${INGRESS_SERVICE_URL}${RESET} 여야 합니다."
+info '  compose 안의 cloudflared 는 edge 네트워크에 있어 호스트의 127.0.0.1 에 도달할 수 없고,'
+info "  반대로 호스트에서 돌던 cloudflared 는 '${INGRESS_SERVICE_URL}' 의 이름을 DNS 로 풀 수 없습니다."
+info '  둘 중 어느 조합이 어긋나도 Cloudflare 는 502 를 돌려줍니다.'
+info '  원본 Host 헤더는 그대로 전달해야 합니다. Host 를 덮어쓰면 nginx catch-all 이 444 로 끊습니다.'
+confirm '  대시보드가 위 값입니까?'
 
 step '5. 실측 검증'
 
