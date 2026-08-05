@@ -84,7 +84,7 @@ Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 act
 
 ### 구현된 edge·application 제한
 
-- Nginx는 `CF-Connecting-IP`가 있으면 이를, 없으면 직접 peer 주소를 rate key와 traffic `client_ip`로 사용한다. origin은 `127.0.0.1:8080`에만 bind하며 Cloudflare Tunnel 외 공개 listener를 두지 않는다.
+- Nginx는 `CF-Connecting-IP`가 있으면 이를, 없으면 직접 peer 주소를 rate key와 traffic `client_ip`로 사용한다. origin은 `127.0.0.1:18080`에만 bind하며 Cloudflare Tunnel 외 공개 listener를 두지 않는다.
 - 로그인은 Nginx의 `5 request/minute + burst 5`와 API의 source별 `10 request/minute`를 겹쳐 적용한다. 제한 초과 응답은 `429`와 `Retry-After`를 사용한다.
 - 일반 API는 Nginx에서 client별 `300 request/minute + burst 100`, API key는 애플리케이션에서 key별 기본 `120 request/minute`를 적용한다. API key 기본값은 환경 설정으로 낮출 수 있다.
 - 패널에는 CSP, COOP, Permissions-Policy, Referrer-Policy, HSTS, `nosniff`, frame deny를 모든 응답에 추가한다. 외부 API hostname에는 브라우저 실행 권한 없이 no-referrer, HSTS, `nosniff`, frame deny만 추가한다.

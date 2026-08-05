@@ -43,7 +43,7 @@ services:
             timeout: 3s
             retries: 5
         ports:
-            - ${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-8080}:8080
+            - ${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-18080}:8080
         read_only: true
         security_opt:
             - no-new-privileges:true
@@ -152,15 +152,15 @@ services:
             AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-365}
             BACKUP_ROOT: /backups
             API_PORT: 3001
-            AUTH_BASE_URL: ${PANEL_PUBLIC_ORIGIN:-http://127.0.0.1:8080}
+            AUTH_BASE_URL: ${PANEL_PUBLIC_ORIGIN:-http://127.0.0.1:18080}
             AUTH_SECRET_FILE: /data/auth-secret
-            AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080}
+            AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:-http://127.0.0.1:18080,http://localhost:18080}
             CONTROL_DB_PATH: /data/control.sqlite
             CONTROL_MIGRATIONS_PATH: /app/drizzle
             PROBE_NETWORK_NAME: containers_probe
             NGINX_STATUS_URL: http://nginx:8081/status
             NOTIFICATION_SECRET_KEY_FILE: /data/notification-secret-key
-            PANEL_PUBLIC_URL: ${PANEL_PUBLIC_ORIGIN:-http://127.0.0.1:8080}
+            PANEL_PUBLIC_URL: ${PANEL_PUBLIC_ORIGIN:-http://127.0.0.1:18080}
             TRAFFIC_WORKER_INTERNAL_URL: http://traffic-worker:3003
             TRAFFIC_WORKER_SHARED_SECRET_FILE: /traffic-credentials/traffic-secret
             TRAFFIC_EXPORT_ROOT: /backups/traffic-exports

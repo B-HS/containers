@@ -10,7 +10,7 @@
 
 ## 1. 기본값 — 로컬 전용
 
-`compose.yaml`의 유일한 publish는 `${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-8080}:8080`이다. 인증서도 443 listener도 없고, 인증 origin은 `http://127.0.0.1:8080`으로 고정돼 있다. 이 상태에서 접속은 `http://127.0.0.1:8080` 또는 `http://localhost:8080`만 동작한다.
+`compose.yaml`의 유일한 publish는 `${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-8080}:8080`이다. 인증서도 443 listener도 없고, 인증 origin은 `http://127.0.0.1:18080`으로 고정돼 있다. 이 상태에서 접속은 `http://127.0.0.1:18080` 또는 `http://localhost:18080`만 동작한다.
 
 nginx는 알 수 없는 Host로 온 요청을 catch-all `default_server`에서 `444`로 끊는다. 즉 `server_name`에 등록된 이름(`panel.containers.local`, `localhost`, `127.0.0.1`)이 아닌 Host로는 패널도 `/api/*`도 응답하지 않는다. 새 도메인을 붙일 때는 반드시 `server_name`에 그 도메인을 추가해야 한다(3절·5절).
 

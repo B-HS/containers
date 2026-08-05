@@ -6,7 +6,7 @@ COMPOSE_FILE="$REPO_ROOT/compose.yaml"
 OVERRIDE_FILE="$REPO_ROOT/compose.override.yaml"
 
 DEFAULT_PANEL_BIND_ADDRESS=127.0.0.1
-DEFAULT_PANEL_PORT=8080
+DEFAULT_PANEL_PORT=18080
 DEFAULT_BACKUP_INTERVAL_HOURS=24
 DEFAULT_BACKUP_RETENTION_COUNT=7
 DEFAULT_TRAFFIC_RAW_RETENTION_DAYS=14
@@ -62,7 +62,7 @@ usage() {
   --replace-override              기존 override 를 .bak 으로 옮기고 새로 만든다(--write-override 포함).
   --start-mode <build|up|skip>    빌드·기동 방식. 기본 build.
   --bind-address <addr>           패널 바인딩 주소. 기본 127.0.0.1
-  --port <port>                   패널 포트. 기본 8080
+  --port <port>                   패널 포트. 기본 18080
   --public-origin <origin>        패널 공개 origin(인증 origin 검사 기준).
   --trusted-origins <list>        추가 신뢰 origin(쉼표 구분).
   --backup-interval-hours <n>     백업 주기(시간).

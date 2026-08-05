@@ -33,7 +33,7 @@
 cd /Users/gkn/containers
 pwd
 docker compose ps
-curl -fsS http://127.0.0.1:8080/api/health
+curl -fsS http://127.0.0.1:18080/api/health
 rg --files docs | sort
 ```
 

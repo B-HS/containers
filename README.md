@@ -40,27 +40,27 @@ docker compose build
 docker compose up -d --wait
 ```
 
-Then open **http://127.0.0.1:8080**. On first boot, bootstrap the owner account from the panel.
+Then open **http://127.0.0.1:18080**. On first boot, bootstrap the owner account from the panel.
 
 Customization goes in `compose.override.yaml`. Most defaults below come from `compose.yaml`; the values in parentheses are the compose interpolation variables you can also export in your shell. Rows marked **override only** are read by the service's own env schema but are not declared in `compose.yaml`, so exporting them in your shell does not reach the container — set them in `compose.override.yaml`.
 
-| Setting                   | Service          | Key                                                         | Default          |
-| ------------------------- | ---------------- | ----------------------------------------------------------- | ---------------- |
-| Panel bind address / port | `nginx`          | `ports` (`PANEL_BIND_ADDRESS`, `PANEL_PORT`)                | `127.0.0.1:8080` |
-| Panel public origin       | `api`            | `AUTH_BASE_URL`, `PANEL_PUBLIC_URL` (`PANEL_PUBLIC_ORIGIN`) | panel bind URL   |
-| Trusted auth origins      | `api`            | `AUTH_TRUSTED_ORIGINS`, comma separated                     | panel bind URL   |
-| Docker socket group id    | `engine-agent`   | `group_add` (`DOCKER_GID`)                                  | `0`              |
-| Automatic backup interval | `api`            | `BACKUP_INTERVAL_HOURS` (override only)                     | `24`             |
-| Backups kept              | `api`            | `BACKUP_RETENTION_COUNT` (override only)                    | `7`              |
-| Raw traffic log retention | `traffic-worker` | `TRAFFIC_RAW_RETENTION_DAYS`                                | `14`             |
-| Traffic row cap           | `traffic-worker` | `TRAFFIC_MAX_EVENT_ROWS`                                    | `2000000`        |
-| Traffic DB size cap       | `traffic-worker` | `TRAFFIC_MAX_DB_BYTES`                                      | `1073741824`     |
-| Traffic cleanup interval  | `traffic-worker` | `TRAFFIC_RETENTION_INTERVAL_SECONDS`                        | `60`             |
-| Artifact retention days   | `api`            | `ARTIFACT_RETENTION_DAYS`                                   | `30`             |
-| Artifacts always kept     | `api`            | `ARTIFACT_RETENTION_MINIMUM_COUNT`                          | `5`              |
-| Upload storage quota      | `api`            | `UPLOAD_TOTAL_QUOTA_BYTES` (override only)                  | `34359738368`    |
-| Audit retention days      | `api`            | `AUDIT_RETENTION_DAYS`                                      | `365`            |
-| Nginx revisions kept      | `engine-agent`   | `NGINX_REVISION_KEEP_COUNT`                                 | `20`             |
+| Setting                   | Service          | Key                                                         | Default           |
+| ------------------------- | ---------------- | ----------------------------------------------------------- | ----------------- |
+| Panel bind address / port | `nginx`          | `ports` (`PANEL_BIND_ADDRESS`, `PANEL_PORT`)                | `127.0.0.1:18080` |
+| Panel public origin       | `api`            | `AUTH_BASE_URL`, `PANEL_PUBLIC_URL` (`PANEL_PUBLIC_ORIGIN`) | panel bind URL    |
+| Trusted auth origins      | `api`            | `AUTH_TRUSTED_ORIGINS`, comma separated                     | panel bind URL    |
+| Docker socket group id    | `engine-agent`   | `group_add` (`DOCKER_GID`)                                  | `0`               |
+| Automatic backup interval | `api`            | `BACKUP_INTERVAL_HOURS` (override only)                     | `24`              |
+| Backups kept              | `api`            | `BACKUP_RETENTION_COUNT` (override only)                    | `7`               |
+| Raw traffic log retention | `traffic-worker` | `TRAFFIC_RAW_RETENTION_DAYS`                                | `14`              |
+| Traffic row cap           | `traffic-worker` | `TRAFFIC_MAX_EVENT_ROWS`                                    | `2000000`         |
+| Traffic DB size cap       | `traffic-worker` | `TRAFFIC_MAX_DB_BYTES`                                      | `1073741824`      |
+| Traffic cleanup interval  | `traffic-worker` | `TRAFFIC_RETENTION_INTERVAL_SECONDS`                        | `60`              |
+| Artifact retention days   | `api`            | `ARTIFACT_RETENTION_DAYS`                                   | `30`              |
+| Artifacts always kept     | `api`            | `ARTIFACT_RETENTION_MINIMUM_COUNT`                          | `5`               |
+| Upload storage quota      | `api`            | `UPLOAD_TOTAL_QUOTA_BYTES` (override only)                  | `34359738368`     |
+| Audit retention days      | `api`            | `AUDIT_RETENTION_DAYS`                                      | `365`             |
+| Nginx revisions kept      | `engine-agent`   | `NGINX_REVISION_KEEP_COUNT`                                 | `20`              |
 
 If you change the panel port, host, or scheme, change the public origin **and** the trusted origin list together — otherwise the stack comes up healthy and every sign-in fails with `403 INVALID_ORIGIN`. Serving the panel over HTTPS automatically switches session cookies to `Secure`, so an HTTPS public origin behind an HTTP-only edge will not keep a session.
 

@@ -11,11 +11,11 @@
 - 조회 API는 세션 쿠키 또는 API key로 호출한다. API key는 `authorization: Bearer ctk_...`이며 필요한 scope는 [API-DATA-AUTH.md](./API-DATA-AUTH.md) 2.1절 표를 본다.
 - 상태 판단의 1차 소스는 세 가지다.
 
-| 확인 대상             | 명령                                                                 | 의미                                                                                |
-| --------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 컨테이너 생존·healthy | `docker compose ps`                                                  | 5개 서비스가 `Up (healthy)`인지                                                     |
-| API 프로세스 생존     | `curl -s localhost:8080/api/health`                                  | 프로세스만 확인한다. downstream은 보지 않는다                                       |
-| 의존 구성요소 준비도  | `curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/api/readyz` | `200`=ok, `503`=degraded. 상세는 owner·admin 세션 또는 `control-plane:read` API key |
+| 확인 대상             | 명령                                                                  | 의미                                                                                |
+| --------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 컨테이너 생존·healthy | `docker compose ps`                                                   | 5개 서비스가 `Up (healthy)`인지                                                     |
+| API 프로세스 생존     | `curl -s localhost:18080/api/health`                                  | 프로세스만 확인한다. downstream은 보지 않는다                                       |
+| 의존 구성요소 준비도  | `curl -s -o /dev/null -w '%{http_code}\n' localhost:18080/api/readyz` | `200`=ok, `503`=degraded. 상세는 owner·admin 세션 또는 `control-plane:read` API key |
 
 `/api/readyz`의 check 이름은 `engineAgent`, `trafficWorker`, `controlDatabase`, `jobs`, `backup`, `maintenance`다. 인증 없이 호출하면 check별 상태값만 요약으로 나오고, 인증하면 백업 경과 시간·stalled job 수 같은 상세가 함께 나온다.
 
@@ -30,7 +30,7 @@
 ```bash
 docker compose ps
 docker compose logs --since 10m api nginx engine-agent
-curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/api/readyz
+curl -s -o /dev/null -w '%{http_code}\n' localhost:18080/api/readyz
 ```
 
 **조치**
@@ -66,7 +66,7 @@ docker compose logs --tail 200 api
 2. migration 문제면 **먼저 볼륨 스냅샷을 뜬 뒤** [CONTROL-PLANE-UPGRADE.md](./CONTROL-PLANE-UPGRADE.md) 절차로 이전 이미지·이전 스키마 조합으로 되돌린다. 백업 복원은 migration 기록까지 되돌리지 않으므로 단독 롤백 수단이 아니다.
 3. 원인 불명이면 볼륨을 건드리지 말고 로그 전체를 보존한다(`docker compose logs api > api-crash.log`).
 
-**확인** — `curl -s localhost:8080/api/health`가 200, `/api/readyz` 상세에서 `controlDatabase.integrity`가 `ok`.
+**확인** — `curl -s localhost:18080/api/health`가 200, `/api/readyz` 상세에서 `controlDatabase.integrity`가 `ok`.
 
 ---
 
@@ -79,14 +79,14 @@ docker compose logs --tail 200 api
 ```bash
 docker compose ps engine-agent
 docker compose logs --tail 100 engine-agent
-curl -s localhost:8080/api/readyz | jq '.data.checks.engineAgent'
+curl -s localhost:18080/api/readyz | jq '.data.checks.engineAgent'
 ```
 
 engine-agent의 healthcheck는 자체 HTTP 응답만 본다. **healthy로 떠 있어도 Docker socket 접근이 막혀 있을 수 있다.** 다음으로 실제 접근을 확인한다.
 
 ```bash
 docker compose exec -T engine-agent ls -l /var/run/docker.sock
-curl -s localhost:8080/api/system/engine | jq '.data.version'
+curl -s localhost:18080/api/system/engine | jq '.data.version'
 ```
 
 **조치**
@@ -108,7 +108,7 @@ curl -s localhost:8080/api/system/engine | jq '.data.version'
 ```bash
 docker compose ps traffic-worker
 docker compose logs --tail 100 traffic-worker
-curl -s localhost:8080/api/readyz | jq '.data.checks.trafficWorker'
+curl -s localhost:18080/api/readyz | jq '.data.checks.trafficWorker'
 docker compose exec -T traffic-worker cat /data/ingest-checkpoint.json
 docker compose exec -T nginx ls -l /var/log/nginx/access.jsonl
 ```
@@ -141,7 +141,7 @@ checkpoint는 `device`·`inode`·`offset`을 담는다. nginx access log가 로�
 | `NGINX_PROTECTED_CONTRACT`                          | 보호 계약(관리 server 블록·status 리스너 등)을 깨는 설정   |
 
 ```bash
-curl -s localhost:8080/api/nginx/status | jq .
+curl -s localhost:18080/api/nginx/status | jq .
 docker compose exec -T nginx nginx -t -c /etc/nginx/managed/current.conf
 docker compose exec -T nginx head -40 /etc/nginx/managed/current.conf
 docker compose logs --tail 100 nginx
@@ -154,7 +154,7 @@ docker compose logs --tail 100 nginx
 3. `ROLLBACK_UNHEALTHY`면 nginx가 잘못된 설정으로 떠 있을 수 있다. `nginx -t -c /etc/nginx/managed/current.conf`로 확인 후 마지막 정상 설정으로 되돌리고 컨테이너를 재기동한다.
 4. `NGINX_PROTECTED_CONTRACT`는 요청 자체가 잘못된 것이다. 보호 대상 블록을 건드리지 않도록 route 정의를 고친다.
 
-**확인** — `docker compose exec -T nginx nginx -t -c /etc/nginx/managed/current.conf`가 성공, `curl -s localhost:8080/api/nginx/status`가 200, 배포 라우트가 실제로 응답한다.
+**확인** — `docker compose exec -T nginx nginx -t -c /etc/nginx/managed/current.conf`가 성공, `curl -s localhost:18080/api/nginx/status`가 200, 배포 라우트가 실제로 응답한다.
 
 ---
 
@@ -165,7 +165,7 @@ docker compose logs --tail 100 nginx
 **확인**
 
 ```bash
-curl -s localhost:8080/api/system/engine | jq '.data.disk'
+curl -s localhost:18080/api/system/engine | jq '.data.disk'
 docker system df
 docker compose logs --tail 50 api | grep -i disk
 ```
@@ -190,10 +190,10 @@ docker compose logs --tail 50 api | grep -i disk
 **확인**
 
 ```bash
-curl -s 'localhost:8080/api/jobs?kind=backup.restore&limit=10' | jq '.data[] | {id, status, failureCode, progressStep, finishedAt}'
-curl -s localhost:8080/api/jobs/<jobId>/events | jq .
-curl -s localhost:8080/api/maintenance | jq .
-curl -s localhost:8080/api/control-plane/status | jq '{integrity: .data.databaseIntegrity, migrations: (.data.migrations.pending | length)}'
+curl -s 'localhost:18080/api/jobs?kind=backup.restore&limit=10' | jq '.data[] | {id, status, failureCode, progressStep, finishedAt}'
+curl -s localhost:18080/api/jobs/<jobId>/events | jq .
+curl -s localhost:18080/api/maintenance | jq .
+curl -s localhost:18080/api/control-plane/status | jq '{integrity: .data.databaseIntegrity, migrations: (.data.migrations.pending | length)}'
 ```
 
 **조치**
@@ -215,9 +215,9 @@ curl -s localhost:8080/api/control-plane/status | jq '{integrity: .data.database
 **확인**
 
 ```bash
-curl -s 'localhost:8080/api/jobs?status=running&limit=20' | jq '.data[] | {id, kind, progressStep, startedAt, heartbeatAt}'
-curl -s localhost:8080/api/jobs/<jobId>/events | jq .
-curl -s localhost:8080/api/deployment-releases | jq '.data[] | select(.status != "healthy" and .status != "failed" and .status != "rolled-back")'
+curl -s 'localhost:18080/api/jobs?status=running&limit=20' | jq '.data[] | {id, kind, progressStep, startedAt, heartbeatAt}'
+curl -s localhost:18080/api/jobs/<jobId>/events | jq .
+curl -s localhost:18080/api/deployment-releases | jq '.data[] | select(.status != "healthy" and .status != "failed" and .status != "rolled-back")'
 ```
 
 먼저 **정상적인 장시간 실행**과 구분한다. release는 healthcheck `startPeriodSeconds` + `retries × intervalSeconds` + `rollout.observationSeconds`만큼 정상적으로 오래 걸린다. manifest 값을 보고 예상 소요를 계산한다.
@@ -240,8 +240,8 @@ curl -s localhost:8080/api/deployment-releases | jq '.data[] | select(.status !=
 **확인**
 
 ```bash
-curl -s localhost:8080/api/api-keys | jq '.data[] | {id, name, prefix, lastUsedAt, expiresAt, revokedAt}'
-curl -s 'localhost:8080/api/audit?limit=100' | jq '.data[] | select(.authMethod == "api-key") | {occurredAt, actorId, operation, targetType, targetId, result, sourceIp}'
+curl -s localhost:18080/api/api-keys | jq '.data[] | {id, name, prefix, lastUsedAt, expiresAt, revokedAt}'
+curl -s 'localhost:18080/api/audit?limit=100' | jq '.data[] | select(.authMethod == "api-key") | {occurredAt, actorId, operation, targetType, targetId, result, sourceIp}'
 ```
 
 감사 로그는 `operation`·`targetType`·`targetId`·`result`·`from`·`to`로 필터할 수 있다. 응답에 키 원문은 절대 나오지 않는다(저장은 sha256 해시, 식별은 `prefix`).

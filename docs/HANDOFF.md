@@ -22,8 +22,8 @@
 질문은 "지금 구현 상태에서 기능이 완전히 작동하고, 보안 문제·취약점 없이 제대로 돌릴 수 있느냐"였다. 실측 결과:
 
 - **동작**: 로컬 스택에서 API key 토큰만으로 manifest 등록 → 업로드 → 이미지 load → 배포 판정까지 완주한다.
-- **보안**: 미인증 엔드포인트 23개 전부 401, 로그인 rate limit 이 burst 후 429, 알 수 없는 Host 는 444, Docker 소켓은 engine-agent 에만, 퍼블리시 포트는 nginx `127.0.0.1:8080` 하나, 전 컨테이너 `read_only` + `no-new-privileges`, 앱 컨테이너는 non-root(`bun`), 시크릿 파일 전부 `0600 bun:bun`. `bun audit` 0건.
-- **한계 (정직하게)**: GitHub 호스팅 러너는 `127.0.0.1:8080` 에 도달할 수 없다 — 외부 노출 경로(터널/TLS)를 붙이기 전까지 실제 GitHub Actions 실행은 불가능하다. 또한 **토큰만으로 blue-green release 를 끝까지 실행하는 경로는 라이브 실측을 하지 않았다**(release 메커니즘 자체는 이전 세션에 검증됨 — [HANDOFF-STATUS.md](./HANDOFF-STATUS.md) "실제 blue-green v1→v2→manual rollback, secret injection, graceful stop timeout 검증").
+- **보안**: 미인증 엔드포인트 23개 전부 401, 로그인 rate limit 이 burst 후 429, 알 수 없는 Host 는 444, Docker 소켓은 engine-agent 에만, 퍼블리시 포트는 nginx `127.0.0.1:18080` 하나, 전 컨테이너 `read_only` + `no-new-privileges`, 앱 컨테이너는 non-root(`bun`), 시크릿 파일 전부 `0600 bun:bun`. `bun audit` 0건.
+- **한계 (정직하게)**: GitHub 호스팅 러너는 `127.0.0.1:18080` 에 도달할 수 없다 — 외부 노출 경로(터널/TLS)를 붙이기 전까지 실제 GitHub Actions 실행은 불가능하다. 또한 **토큰만으로 blue-green release 를 끝까지 실행하는 경로는 라이브 실측을 하지 않았다**(release 메커니즘 자체는 이전 세션에 검증됨 — [HANDOFF-STATUS.md](./HANDOFF-STATUS.md) "실제 blue-green v1→v2→manual rollback, secret injection, graceful stop timeout 검증").
 
 ## 3. 완료 / 진행 중 / 미착수
 
@@ -157,7 +157,7 @@
 - **런타임**: Bun 1.3.14 workspace(`apps/*`, `packages/*`), TypeScript strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`.
 - **스택**: Hono 4.13.0(api·engine-agent·traffic-worker), **Next.js 16.3.0** App Router + React 19 + React Compiler + Tailwind v4 + next-intl(ko/en/ja) + TanStack Query v5, Drizzle + SQLite, Better Auth 1.6.25.
 - **호스트**: macOS Docker Desktop에서 개발·검증. Linux(rootful Docker Engine + `DOCKER_GID`)는 코드상 지원하나 **실기 검증 미수행**.
-- **네트워크**: `127.0.0.1:8080` 로컬 바인딩. `panel.containers.local`/`api.containers.local` 가상 hostname. 외부 노출 수단은 opt-in(cloudflared 프로필 / TLS 템플릿)이며 **실검증 미수행**. GitHub 호스팅 러너는 이 주소에 도달할 수 없다.
+- **네트워크**: `127.0.0.1:18080` 로컬 바인딩. `panel.containers.local`/`api.containers.local` 가상 hostname. 외부 노출 수단은 opt-in(cloudflared 프로필 / TLS 템플릿)이며 **실검증 미수행**. GitHub 호스팅 러너는 이 주소에 도달할 수 없다.
 - **패키지**: `packages/nginx-config`가 이번 세션 신규다. **새 workspace 패키지를 추가하면 `apps/*/Dockerfile` 4개에 `COPY` 2줄씩 추가해야 한다** — 누락 시 이미지 빌드가 깨진다(이번에 실제로 깨졌다).
 - **SQLite enum 주의**: Drizzle 의 `text({ enum: [...] })` 는 **TypeScript 전용**이고 CHECK 제약을 만들지 않는다. 값을 추가해도 `drizzle-kit generate` 는 "No schema changes" 를 낸다 — 정상이다.
 - **E2E 계정**: `owner@containers.local`. 비밀번호는 better-auth `hashPassword`로 재설정했고 **저장소·문서 어디에도 기록하지 않았다.** 필요하면 같은 방법으로 다시 재설정한다.
