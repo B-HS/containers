@@ -126,10 +126,11 @@
 
 ## 6. 미해결 질문 / 확인 필요
 
-0. **`verify2@containers.local`(owner) 계정을 이번 세션에서 만들었다.** 실측용이고 `hs@gumyo.net` 으로 로그인해 `/ko/users` 에서 지워야 한다. 남은 테스트 자산: `fail-demo` manifest·컨테이너(exited)·이미지 `containers-fail-demo:1.0.0`·artifact `fail-demo.tar`·`ui-failure-check.tar`. 6.4 에서 정리한다.
-1. **`verify@containers.local`(admin) 계정이 남아 있다.** 내가 검증용으로 만든 것이고 owner 만 지울 수 있다. `hs@gumyo.net` 으로 로그인해 `/ko/users` 에서 삭제해야 한다.
-2. **테스트 배포가 살아 있다** — `demo-a-2.0.0`·`demo-b-2.0.0`·`demo-plain-3.0.0` 컨테이너와 `a.hyuns.uk`·`b.hyuns.uk` 라우트. 계획서 6.1·6.2 재검증에 쓰고 6.4 에서 정리한다.
-3. **CI 검증용 API key `ci-flow-verify`** 가 남아 있다(1일 만료). 6.4 에서 폐기.
+**2026-08-06: 실운영 전 전체 초기화를 했다.** 아래 1~3번(임시 계정·테스트 배포·CI API key)은 그 과정에서 모두 사라져 해소됐다.
+
+1. **owner 계정이 없다.** 초기화로 control DB 가 비었고 `GET /api/bootstrap/status` 가 `required: true` 다. `http://127.0.0.1:18080` 에서 최초 owner 를 다시 만들어야 패널을 쓸 수 있다. 공개 주소에서는 bootstrap 이 403 이다.
+2. **공개 주소 설정도 초기화됐다.** `hyuns.uk` 를 다시 쓰려면 owner 로 로그인해 패널 설정에서 공개 주소를 다시 지정해야 한다. Cloudflare 터널 자체는 스택 밖이라 그대로다.
+3. **control DB 고아 행의 근본 원인은 미해결이다.** 데이터는 사라졌지만 같은 경로로 다시 쌓일 수 있다 → [bug/2026-08-06-control-db-orphan-user-references.md](./bug/2026-08-06-control-db-orphan-user-references.md)
 4. Cloudflare Access 미적용. 패널이 공개 인터넷에 열려 있다.
 5. HSTS `preload` 미적용 — 등재 취소가 어려워 운영자 판단이 필요하다.
 

@@ -753,6 +753,16 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 **실행 계획 정본은 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 다.** 항목별 근거·주의·완료 판정이 거기 있다. 이 체크리스트는 요약이다.
 
+### 전체 초기화 (2026-08-06)
+
+실운영 시작 전 사용자 지시로 상태를 비웠다. 지운 것: `control-data`·`traffic-data`·`artifacts`·`backups`·`nginx-config`·`nginx-logs` 볼륨, 테스트 배포 컨테이너 6개(`demo-*`·`fail-demo-*`), 테스트 이미지 6개. 유지한 것: 자격증명 볼륨 3개(agent·traffic·registry), 사용자 소유 리소스(`poc1*`·`api-proxy2`), `containers-dr-*` 이미지.
+
+전 이미지를 HEAD 로 재빌드했다. nginx 는 재빌드 없이 볼륨만 비우면 이미지에 구운 옛 기본 설정이 복사돼 CSP 수정이 유실된다 — 실제로 한 번 겪고 재빌드 후 다시 볼륨을 비워 해결했다.
+
+검증: 5개 서비스 healthy, `/api/readyz` 6개 check ok, `foreign_key_check` 위반 0, CSP 에 `'wasm-unsafe-eval'` 포함, `audit:runtime` 통과, `GET /api/bootstrap/status` → `required: true`.
+
+**다음 세션 전제: owner 계정이 없다.** `http://127.0.0.1:18080` 에서 bootstrap 으로 만들어야 한다.
+
 ### 오탐 기록
 
 - "관리 plane 컨테이너가 라우트 대상 목록에 노출" — 반증 검증을 통과했으나 실제로는 engine-agent 가 이미 필터한다. 실 API 응답으로 확인.
