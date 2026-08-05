@@ -16,7 +16,7 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "lint": "eslint .",
-        "test": "bun test",
+        "test": "bun test apps/api apps/engine-agent apps/traffic-worker packages && bun run --filter '@containers/web' test",
         "typecheck": "bun run --filter '*' typecheck",
         "check": "bun run typecheck && bun run lint && bun run test && bun run build"
     },
