@@ -28,6 +28,7 @@ import { composeNotificationDelivery } from './compose-notification-delivery'
 import { composeNotificationDestination } from './compose-notification'
 import { composeOperationJob } from './compose-operation-job'
 import { composePanelSetting } from './compose-panel-setting'
+import { composeTrustedProxy } from './compose-trusted-proxy'
 import { composeUpload } from './compose-upload'
 
 type ComposeCore = {
@@ -108,6 +109,12 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         bootOrigin: env.authBaseUrl,
         db,
         environmentTrustedOrigins: env.authTrustedOrigins,
+        nginxClient: clients.engineAgentClient,
+        now,
+    })
+    const { trustedProxyService } = composeTrustedProxy({
+        db,
+        listCandidates: (excluded) => clients.trafficWorkerClient.getProxyCandidates(excluded),
         nginxClient: clients.engineAgentClient,
         now,
     })
@@ -256,6 +263,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         maintenanceService,
         nginxStatusClient: clients.nginxStatusClient,
         panelSettingService,
+        trustedProxyService,
         nginxProxyRouteService,
         notificationDeliveryService,
         notificationDestinationService,

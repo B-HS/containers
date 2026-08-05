@@ -143,6 +143,8 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.PRUNE_PREVIEW_INVALID]: 'prune preview가 올바르지 않습니다.',
     [ERROR_CODE.PRUNE_PREVIEW_STALE]: 'prune preview를 다시 확인해 주세요.',
     [ERROR_CODE.PANEL_SETTING_ORIGIN_INVALID]: '공개 주소에서 hostname 을 읽을 수 없습니다.',
+    [ERROR_CODE.TRUSTED_PROXY_LAST_ENTRY]: '마지막 신뢰 프록시는 삭제할 수 없습니다.',
+    [ERROR_CODE.TRUSTED_PROXY_LIMIT_REACHED]: '신뢰 프록시 등록 상한에 도달했습니다.',
     [ERROR_CODE.STREAM_CLIENT_ABORTED]: '클라이언트가 스트림 연결을 종료했습니다.',
     [ERROR_CODE.STREAM_LIMIT_REACHED]: '동시 스트림 상한에 도달했습니다.',
     [ERROR_CODE.SECRET_KEY_VERSION_MISSING]: '암호화 키 버전을 찾을 수 없습니다.',

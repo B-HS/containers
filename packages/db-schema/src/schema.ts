@@ -400,6 +400,14 @@ export const nginxRoute = sqliteTable(
     ],
 )
 
+export const trustedProxy = sqliteTable('trusted_proxy', {
+    address: text('address').primaryKey(),
+    hostname: text('hostname'),
+    note: text('note'),
+    approvedBy: text('approved_by').references(() => user.id, { onDelete: 'set null' }),
+    approvedAt: integer('approved_at', { mode: 'timestamp' }).notNull(),
+})
+
 export const panelSetting = sqliteTable('panel_setting', {
     id: text('id').primaryKey(),
     publicOrigin: text('public_origin'),
@@ -478,6 +486,7 @@ export const schema = {
     invitation,
     maintenanceState,
     panelSetting,
+    trustedProxy,
     nginxRoute,
     notificationDelivery,
     notificationDestination,

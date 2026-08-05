@@ -5,6 +5,7 @@ import { createTrafficApp } from './compose/create-traffic-app'
 import { createQueryWorker } from './db/create-query-worker'
 import { createTrafficDatabase } from './db/database'
 import { createTrafficIngestionService } from './service/domain/create-traffic-ingestion-service'
+import { createProxyCandidateService } from './service/domain/create-proxy-candidate-service'
 import { createTrafficQueryService } from './service/domain/create-traffic-query-service'
 import { createTrafficRetentionService } from './service/domain/create-traffic-retention-service'
 import { createTrafficBackupService } from './service/domain/create-traffic-backup-service'
@@ -45,6 +46,14 @@ const retentionService = createTrafficRetentionService({
     now: Date.now,
     retentionMs: env.TRAFFIC_RAW_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
 })
+const proxyCandidateService = createProxyCandidateService({
+    accessLogPath: env.ACCESS_LOG_PATH,
+    readTail: async (path, bytes) => {
+        const file = Bun.file(path)
+        const size = file.size
+        return file.slice(Math.max(0, size - bytes), size).text()
+    },
+})
 const queryWorker = createQueryWorker({ filePath: env.TRAFFIC_DB_PATH })
 const queryService = createTrafficQueryService({ now: Date.now, queryClient: queryWorker.client })
 const backupService = createTrafficBackupService({ backupRoot: env.BACKUP_ROOT, database })
@@ -56,6 +65,7 @@ const app = createTrafficApp({
     exportService,
     ingestionService,
     now: () => new Date(),
+    proxyCandidateService,
     queryService,
     retentionService,
     sharedSecret: await loadOrCreateSecret(env.TRAFFIC_SHARED_SECRET_FILE),

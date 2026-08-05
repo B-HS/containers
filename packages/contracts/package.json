@@ -23,6 +23,7 @@
         "./panel-setting": "./src/panel-setting.ts",
         "./registry-credential": "./src/registry-credential.ts",
         "./traffic": "./src/traffic.ts",
+        "./trusted-proxy": "./src/trusted-proxy.ts",
         "./upload": "./src/upload.ts",
         "./user-management": "./src/user-management.ts"
     },

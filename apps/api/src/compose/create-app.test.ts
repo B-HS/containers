@@ -292,6 +292,15 @@ const createAppTestDependencies = () => ({
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
     },
+    trustedProxyService: {
+        approve: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+        getState: async () => ({ approved: [], candidates: [], effectiveSources: [] }),
+        revoke: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+    },
     controlPlaneStatusService: {
         getStatus: async () => ({
             activeJobCount: 0,

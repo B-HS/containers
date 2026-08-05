@@ -6,7 +6,8 @@
     "exports": {
         "./panel-hostname": "./src/panel-hostname.ts",
         "./parse": "./src/parse-nginx-config.ts",
-        "./serialize": "./src/serialize-nginx-config.ts"
+        "./serialize": "./src/serialize-nginx-config.ts",
+        "./trusted-proxy": "./src/trusted-proxy.ts"
     },
     "scripts": {
         "build": "bun build src/parse-nginx-config.ts src/serialize-nginx-config.ts --outdir dist --target bun",

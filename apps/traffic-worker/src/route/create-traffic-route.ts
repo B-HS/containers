@@ -14,19 +14,43 @@ import type { TrafficIngestionService } from '../service/domain/create-traffic-i
 import type { TrafficQueryService } from '../service/domain/create-traffic-query-service'
 import type { TrafficRetentionService } from '../service/domain/create-traffic-retention-service'
 import type { TrafficExportService } from '../service/domain/create-traffic-export-service'
+import type { ProxyCandidateService } from '../service/domain/create-proxy-candidate-service'
 import type { TrafficSseStream } from '../service/shared/create-traffic-sse-stream'
 import { withErrorHandling, type TrafficRouteContext } from '../lib/with-error-handling'
 
 type TrafficRouteDependencies = {
     exportService: TrafficExportService
     ingestionService: Pick<TrafficIngestionService, 'getState'>
+    proxyCandidateService: Pick<ProxyCandidateService, 'list'>
     queryService: TrafficQueryService
     retentionService: Pick<TrafficRetentionService, 'getState'>
     sseStream: TrafficSseStream
 }
 
-export const createTrafficRoute = ({ exportService, ingestionService, queryService, retentionService, sseStream }: TrafficRouteDependencies) =>
+const proxyCandidateQuerySchema = z.object({
+    excluded: z
+        .string()
+        .optional()
+        .transform((value) => (value === undefined || value.length === 0 ? [] : value.split(','))),
+})
+
+export const createTrafficRoute = ({
+    exportService,
+    ingestionService,
+    proxyCandidateService,
+    queryService,
+    retentionService,
+    sseStream,
+}: TrafficRouteDependencies) =>
     new Hono()
+        .get(
+            '/proxy-candidates',
+            describeRoute({ summary: 'access log 의 원본 source 주소 후보', tags: ['traffic'], responses: { 200: { description: '후보 목록' } } }),
+            validator('query', proxyCandidateQuerySchema),
+            withErrorHandling(async (context: TrafficRouteContext<{ query: z.infer<typeof proxyCandidateQuerySchema> }>) =>
+                context.json(await proxyCandidateService.list(context.req.valid('query').excluded), 200),
+            ),
+        )
         .get(
             '/analytics',
             describeRoute({ summary: '트래픽 분석 조회', tags: ['traffic'], responses: { 200: { description: '분석 결과' } } }),
