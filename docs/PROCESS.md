@@ -670,3 +670,20 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - `hyuns.uk` 프록시 라우트 409, 초대 링크 `https://hyuns.uk/...`
 - owner 삭제 200 / 자기 삭제 409, SSE 물린 SIGTERM 12초 exit 0
 - typecheck 8/8 · lint 0 · test 407 · build 8/8 · audit:runtime 5/5
+
+## 작업: seed 제거와 최초 가입자 owner 전환 (2026-08-05 야간)
+
+기준: 사용자 지시 — "seed 아이디/비밀번호는 이제 제거하고 (develop할때만사용) seed 없이 초기화 + 처음 가입자만 운영자".
+
+- [x] a. bootstrap 을 내부 이름에서만 허용 — 공개 주소에서 403. 계정 없는 상태가 공개 노출 중 선점당하지 않게
+- [x] b. 웹이 공개 주소에서는 폼 대신 안내 카드 표시 (ko/en/ja)
+- [x] c. seed 스크립트를 개발 전용으로 — 공개 주소가 설정된 스택은 거부, --allow-configured 로만 우회
+- [x] d. `scripts/reset-accounts.ts` 추가 — dry run 기본, --confirm 필요, 실행 전 DB 사본
+- [ ] e. 실제 계정 초기화와 첫 owner 생성 — 사용자 작업 (파괴적이라 자동 실행하지 않음)
+
+### 실측
+
+- 공개 주소 bootstrap POST 403 `BOOTSTRAP_ORIGIN_FORBIDDEN`
+- 로컬 bootstrap POST 409 `BOOTSTRAP_COMPLETE` (계정이 아직 있는 상태)
+- seed 스크립트가 공개 주소 설정을 감지해 거부
+- reset 스크립트 dry run 이 대상 1건만 보여주고 변경 없음

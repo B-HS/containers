@@ -187,6 +187,18 @@ Management-plane boundary (engine-agent): resources labeled
 ================================================================================
 Auth (better-auth): /api/auth/* — sign-in/email, sign-up/email (404), session.
   /api/bootstrap/status GET (public) | /api/bootstrap/owner POST (first boot)
+  Bootstrap claims the first owner without authentication, so it is refused on
+  the public origin (BOOTSTRAP_ORIGIN_FORBIDDEN 403) and only served on the
+  names that exist before a public origin is configured: 127.0.0.1, localhost,
+  ::1, panel.containers.local, api.containers.local. The web shows an explaining
+  card instead of the form on any other host. There is no seeded account: a
+  fresh install has zero users and the first sign-up on a local name becomes
+  owner. Everyone after that arrives through an invitation.
+  scripts/seed-e2e.ts is a development tool and refuses to run once a public
+  origin is stored (override with --allow-configured). scripts/reset-accounts.ts
+  clears users/roles/accounts/sessions/invitations back to the bootstrap state;
+  it is a dry run unless --confirm is passed and copies the control database to
+  control.sqlite.pre-reset first.
   /api/session GET | /api/invitations POST (owner/admin recent) |
   /api/invitations/accept POST | /api/users GET (owner/admin) |
   /api/users/:id PATCH (owner recent, demote/disable revokes keys+sessions) |

@@ -62,7 +62,7 @@
 
 **검증 수단·테스트**
 
-- `scripts/seed-e2e.ts` — E2E 계정 생성/비밀번호 재설정. 비밀번호는 stdout 1회만, 저장소에 기록하지 않음
+- `scripts/seed-e2e.ts` — **개발 전용** 계정 생성/비밀번호 재설정. 공개 주소가 설정된 스택은 거부. 비밀번호는 stdout 1회만, 저장소에 기록하지 않음
 - 웹 테스트 러너: vitest 대신 `bun test` + `@happy-dom/global-registrator` + Testing Library(`apps/web/bunfig.toml` preload). 루트 `test` 는 두 단계
 - 신규 테스트: nginx `panel-hostname` 7 · `trusted-proxy` 8 · 패널 설정 서비스 13 · 신뢰 프록시 서비스 7 · compose 보안 10 · llm.txt 드리프트 5 · 저장소 스크립트 계약 4 · 사이드바 4 · 웹 포맷/권한 8
 - `successResponse` 가 Promise 를 받으면 컴파일 실패(`apps/api/src/lib/response.ts`) — `await` 누락 시 응답이 조용히 `{"data":{}}` 가 되던 실수를 타입으로 차단
@@ -126,12 +126,12 @@
 - **접속**: `http://127.0.0.1:18080`. **8080 이 아니다** — macOS Docker Desktop 이 그 포트에서 저속 스트림을 버퍼링한다.
 - **호스트**: macOS Docker Desktop 에서만 검증. Linux 는 코드상 지원하나 미검증(README 명시).
 - **외부 노출**: `hyuns.uk` 가 Cloudflare 터널로 연결돼 있다. 터널은 호스트에서 실행(compose 밖). 대시보드 service 는 `http://127.0.0.1:18080`.
-- **로그인**: `owner@containers.local`. 비밀번호는 `bun scripts/seed-e2e.ts --email owner@containers.local --role owner` 로 재설정하고 출력값을 쓴다. 저장소·문서에 기록하지 않는다.
+- **로그인**: seed 계정은 없다. 최초 1회 서버에서 `http://127.0.0.1:18080` 에 접속해 owner 를 만들고, 이후 사용자는 초대로 늘린다. 공개 주소에서는 bootstrap 이 403 이다. 개발 스택에서만 `bun scripts/seed-e2e.ts` 를 쓴다(공개 주소가 설정돼 있으면 거부).
 - **SQLite enum 주의**: Drizzle `text({ enum: [...] })` 는 TypeScript 전용이고 CHECK 제약을 만들지 않는다. 값을 추가해도 `drizzle-kit generate` 는 "No schema changes" — 정상이다.
 - **live nginx config**: 관리 볼륨의 `current.conf` 가 정본. `infra/nginx/nginx.conf` 는 볼륨이 비었을 때만 복사되는 기본값이다.
 - **새 workspace 패키지**: `apps/*/Dockerfile` 4개에 `COPY` 2줄씩 추가해야 한다. 이번에도 `apps/api` 에서 빠뜨렸다가 잡았다.
 - **환경변수**: `BACKUP_INTERVAL_HOURS`·`BACKUP_RETENTION_COUNT`·`UPLOAD_TOTAL_QUOTA_BYTES` 는 `compose.yaml` 에 없어 셸 export 로는 전달되지 않는다. `compose.override.yaml` 에 적어야 한다(README 표에 `override only` 표기).
-- **명령**: `bun run typecheck` / `lint` / `test` / `build` / `format:check`, `bun audit`, `bun run audit:runtime`, `docker compose build && docker compose up -d --wait`, `./scripts/setup.sh`, `./scripts/migration-dry-run.sh`, `bun scripts/seed-e2e.ts`.
+- **명령**: `bun run typecheck` / `lint` / `test` / `build` / `format:check`, `bun audit`, `bun run audit:runtime`, `docker compose build && docker compose up -d --wait`, `./scripts/setup.sh`, `./scripts/migration-dry-run.sh`, `bun scripts/seed-e2e.ts`(개발 전용), `bun scripts/reset-accounts.ts`(파괴적, `--confirm` 필요).
 
 ## 8. 다음 세션 TODO
 
