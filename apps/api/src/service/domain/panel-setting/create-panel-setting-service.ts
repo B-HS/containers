@@ -1,7 +1,7 @@
 import { resolveTrustedOrigins, toOrigin } from '@containers/config/origin'
 import { panelSettingSchema, panelSettingUpdateSchema } from '@containers/contracts/panel-setting'
 import { hostnameCandidateListSchema } from '@containers/contracts/trusted-proxy'
-import { applyPanelHostname, readPanelServerNames } from '@containers/nginx-config/panel-hostname'
+import { applyPanelHostname } from '@containers/nginx-config/panel-hostname'
 import { createAppError } from '../../../lib/error'
 
 type PanelSettingRecord = {
@@ -78,8 +78,10 @@ export const createPanelSettingService = ({
     }
 
     const readHostnameCandidates = async () => {
-        const served = readPanelServerNames((await nginxClient.getNginxConfig()).config) ?? []
-        return hostnameCandidateListSchema.parse(await listHostnameCandidates(served))
+        const trusted = effectiveTrustedOrigins()
+            .map((origin) => hostnameOf(origin))
+            .filter((hostname): hostname is string => hostname !== null)
+        return hostnameCandidateListSchema.parse(await listHostnameCandidates(trusted))
     }
 
     return {

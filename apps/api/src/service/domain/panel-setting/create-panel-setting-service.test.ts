@@ -76,7 +76,16 @@ describe('패널 설정 서비스', () => {
         expect(setting.hostnameCandidates[0]?.rejectedCount).toBe(3)
     })
 
-    test('이미 server_name 에 있는 host 는 후보에서 빠진다', async () => {
+    test('nginx 가 응답해도 신뢰 origin 이 아니면 후보로 남는다', async () => {
+        const { service } = createFixture()
+
+        await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: null })
+        const setting = await service.get()
+
+        expect(setting.hostnameCandidates.map((candidate) => candidate.hostname)).toEqual(['new.example.com'])
+    })
+
+    test('신뢰 origin 이 된 host 는 후보에서 빠진다', async () => {
         const { service } = createFixture()
 
         await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://new.example.com' })
