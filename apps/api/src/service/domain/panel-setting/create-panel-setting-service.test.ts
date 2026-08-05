@@ -60,19 +60,19 @@ describe('패널 설정 서비스', () => {
     test('공개 주소를 저장하면 신뢰 origin 에 더해지고 nginx server_name 이 갱신된다', async () => {
         const { applied, getConfig, service } = createFixture()
 
-        const setting = await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://hyuns.uk' })
+        const setting = await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://panel.example.com' })
 
-        expect(setting.publicOrigin).toBe('https://hyuns.uk')
-        expect(setting.nginxHostname).toBe('hyuns.uk')
-        expect(service.getTrustedOrigins()).toEqual([BOOT_ORIGIN, 'http://localhost:18080', 'https://hyuns.uk'])
+        expect(setting.publicOrigin).toBe('https://panel.example.com')
+        expect(setting.nginxHostname).toBe('panel.example.com')
+        expect(service.getTrustedOrigins()).toEqual([BOOT_ORIGIN, 'http://localhost:18080', 'https://panel.example.com'])
         expect(applied).toHaveLength(1)
-        expect(readPanelServerNames(getConfig())).toEqual(['panel.containers.local', 'localhost', '127.0.0.1', 'hyuns.uk'])
+        expect(readPanelServerNames(getConfig())).toEqual(['panel.containers.local', 'localhost', '127.0.0.1', 'panel.example.com'])
     })
 
     test('환경변수 origin 은 어떤 저장값으로도 지워지지 않는다', async () => {
         const { service } = createFixture()
 
-        await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://hyuns.uk' })
+        await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://panel.example.com' })
 
         expect(service.getTrustedOrigins()).toContain(BOOT_ORIGIN)
         expect(service.getTrustedOrigins()).toContain('http://localhost:18080')
@@ -91,7 +91,7 @@ describe('패널 설정 서비스', () => {
     test('공개 주소를 비우면 hostname 도 제거한다', async () => {
         const { getConfig, service } = createFixture()
 
-        await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://hyuns.uk' })
+        await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://panel.example.com' })
         const cleared = await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: null })
 
         expect(cleared.nginxHostname).toBeNull()
@@ -113,7 +113,7 @@ describe('패널 설정 서비스', () => {
     test('부팅 origin 과 저장된 공개 주소가 다르면 재시작이 필요하다고 알린다', async () => {
         const { service } = createFixture()
 
-        const setting = await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://hyuns.uk' })
+        const setting = await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://panel.example.com' })
 
         expect(setting.restartRequired).toBe(true)
         expect(setting.bootOrigin).toBe(BOOT_ORIGIN)
@@ -130,7 +130,7 @@ describe('패널 설정 서비스', () => {
     test('절대 URL 이 아니면 거부한다', async () => {
         const { applied, service } = createFixture()
 
-        await expect(service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'hyuns.uk' })).rejects.toThrow()
+        await expect(service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'panel.example.com' })).rejects.toThrow()
         await expect(service.update('user-owner', { extraTrustedOrigins: ['ftp://x.example.com'], publicOrigin: null })).rejects.toThrow()
         expect(applied).toHaveLength(0)
     })
@@ -138,8 +138,8 @@ describe('패널 설정 서비스', () => {
     test('hostname 이 그대로면 nginx 를 다시 적용하지 않는다', async () => {
         const { applied, service } = createFixture()
 
-        await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://hyuns.uk' })
-        await service.update('user-owner', { extraTrustedOrigins: ['https://ops.example.com'], publicOrigin: 'https://hyuns.uk' })
+        await service.update('user-owner', { extraTrustedOrigins: [], publicOrigin: 'https://panel.example.com' })
+        await service.update('user-owner', { extraTrustedOrigins: ['https://ops.example.com'], publicOrigin: 'https://panel.example.com' })
 
         expect(applied).toHaveLength(1)
     })

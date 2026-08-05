@@ -4,19 +4,18 @@ set -u
 # 호스트에서 돌던 cloudflared 를 compose 프로필로 옮긴다.
 #
 # 이걸 하면 두 가지가 동시에 해결된다.
-#  1. rate limit 공유: 호스트 cloudflared 는 요청을 게이트웨이 IP(10.89.0.1)로 넣어서
-#     nginx real_ip 가 CF-Connecting-IP 를 무시한다. compose 프로필은 nginx 가 신뢰하는
-#     고정 IP(10.89.0.10)를 받으므로 클라이언트별 rate limit 이 정상 동작한다.
+#  1. rate limit 공유: 호스트 cloudflared 는 요청을 edge 게이트웨이 IP 로 넣어서
+#     nginx real_ip 가 CF-Connecting-IP 를 무시한다. compose 프로필은 nginx 의
+#     set_real_ip_from 이 신뢰하는 고정 IP 를 받으므로 클라이언트별 rate limit 이 동작한다.
 #  2. 토큰 노출: 호스트 실행은 `cloudflared tunnel run --token <TOKEN>` 이라 ps 출력에
 #     토큰이 그대로 보인다. compose 는 TUNNEL_TOKEN 환경변수로만 전달한다.
 #
 # 토큰은 인자로 받지 않는다(인자는 ps 에 남는다). CLOUDFLARE_TUNNEL_TOKEN 환경변수만 쓴다.
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-EXPECTED_CLOUDFLARED_ADDRESS="${CLOUDFLARED_ADDRESS:-10.89.0.10}"
-EDGE_GATEWAY_ADDRESS=10.89.0.1
 CURL_TIMEOUT_SECONDS=20
 ACCESS_LOG_PATH=/var/log/nginx/access.jsonl
+MANAGED_CONFIG_PATH=/etc/nginx/managed/current.conf
 INGRESS_SERVICE_URL=http://nginx:8080
 
 PUBLIC_URL=""
@@ -147,10 +146,15 @@ CLOUDFLARED_CONTAINER="$(docker compose --profile cloudflared ps --quiet cloudfl
 [ -n "$CLOUDFLARED_CONTAINER" ] || fail 'cloudflared 컨테이너를 찾을 수 없습니다.'
 
 ACTUAL_ADDRESS="$(docker inspect "$CLOUDFLARED_CONTAINER" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' | tr ' ' '\n' | grep -v '^$' | head -1)"
-if [ "$ACTUAL_ADDRESS" = "$EXPECTED_CLOUDFLARED_ADDRESS" ]; then
-    ok "cloudflared 가 nginx 가 신뢰하는 주소로 떴습니다: $ACTUAL_ADDRESS"
+[ -n "$ACTUAL_ADDRESS" ] || fail 'cloudflared 컨테이너의 IP 를 읽지 못했습니다.'
+
+TRUSTED_ADDRESSES="$(docker compose exec -T nginx sh -c "sed -n 's/^[[:space:]]*set_real_ip_from[[:space:]]\{1,\}\([^;]*\);.*/\1/p' $MANAGED_CONFIG_PATH" 2> /dev/null | tr -d '\r')"
+[ -n "$TRUSTED_ADDRESSES" ] || fail "nginx 설정에서 set_real_ip_from 을 찾지 못했습니다: $MANAGED_CONFIG_PATH"
+
+if printf '%s\n' "$TRUSTED_ADDRESSES" | grep -qx "${ACTUAL_ADDRESS}/32"; then
+    ok "cloudflared 주소($ACTUAL_ADDRESS)를 nginx real_ip 가 신뢰합니다."
 else
-    fail "cloudflared 주소가 $ACTUAL_ADDRESS 입니다. nginx real_ip 가 신뢰하는 값은 $EXPECTED_CLOUDFLARED_ADDRESS 입니다."
+    fail "nginx real_ip 신뢰 목록($(printf '%s' "$TRUSTED_ADDRESSES" | tr '\n' ' '))에 cloudflared 주소 ${ACTUAL_ADDRESS}/32 가 없습니다. compose 의 CLOUDFLARED_ADDRESS 와 nginx set_real_ip_from 을 맞추세요."
 fi
 
 if docker inspect "$CLOUDFLARED_CONTAINER" --format '{{json .Config.Cmd}}' | grep -q -- '--token'; then
@@ -184,12 +188,15 @@ if [ -z "$PROBE_CLIENT_IP" ]; then
     exit 0
 fi
 
-if [ "$PROBE_CLIENT_IP" = "$EDGE_GATEWAY_ADDRESS" ]; then
-    fail "client_ip 가 여전히 게이트웨이($EDGE_GATEWAY_ADDRESS)입니다. real_ip 가 적용되지 않았습니다."
+EDGE_NETWORK="$(docker inspect "$CLOUDFLARED_CONTAINER" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' | tr ' ' '\n' | grep -v '^$' | head -1)"
+EDGE_GATEWAY_ADDRESS="$(docker network inspect "$EDGE_NETWORK" --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2> /dev/null)"
+
+if [ -n "$EDGE_GATEWAY_ADDRESS" ] && [ "$PROBE_CLIENT_IP" = "$EDGE_GATEWAY_ADDRESS" ]; then
+    fail "client_ip 가 여전히 게이트웨이($EDGE_GATEWAY_ADDRESS)입니다. 호스트 cloudflared 가 아직 붙어 있거나 real_ip 가 적용되지 않았습니다."
 fi
 
-if [ "$PROBE_CLIENT_IP" = "$EXPECTED_CLOUDFLARED_ADDRESS" ]; then
-    fail "client_ip 가 cloudflared 주소($EXPECTED_CLOUDFLARED_ADDRESS)입니다. CF-Connecting-IP 헤더가 오지 않았습니다."
+if [ "$PROBE_CLIENT_IP" = "$ACTUAL_ADDRESS" ]; then
+    fail "client_ip 가 cloudflared 주소($ACTUAL_ADDRESS)입니다. CF-Connecting-IP 헤더가 오지 않았습니다."
 fi
 
 ok "client_ip 가 실제 클라이언트 주소로 기록됩니다: $PROBE_CLIENT_IP"
