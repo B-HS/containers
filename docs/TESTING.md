@@ -229,14 +229,17 @@ Phase 0 baseline에서 M1 Max의 CPU·memory와 랜 회선 조건을 함께 기�
 
 검증하지 않은 항목을 통과로 표시하지 않는다.
 
-## 14. 2026-08-01 현재 검증 checkpoint
+## 14. 2026-08-05 현재 검증 checkpoint
 
-- 전체 34 test files, 158 pass, 530 assertions (2026-08-02 기준)
+- 전체 62 test files, 412 pass (bun test) + web 4 files, 20 pass (happy-dom preload)
+- 웹은 러너가 아니라 preload 가 달라 루트 `test` 스크립트가 두 단계다. raw `bun test` 로는 웹 테스트가 실패하므로 CI 예시는 `bun run test` 를 쓴다(계약 테스트가 강제)
 - workspace typecheck·ESLint·Prettier 통과
 - Next.js production SSR build와 Bun API·Agent·Worker bundle 통과
 - Docker Compose 5개 서비스 health 통과
 - Nginx 보안 header·429, dashboard hydration, backup panel Chromium 검증
 - blue-green·자동/수동 rollback, encrypted secret injection, control·traffic 실제 restore drill 통과
 - live control SQLite integrity `ok`, FK violation 0
+- 실도메인 노출 실측: 외부 로그인 쿠키 `Secure`, HSTS `includeSubDomains`, 공개 주소 bootstrap 403, 패널 자기 도메인 라우트 409, 초대 링크가 공개 주소 사용, SSE 물린 채 SIGTERM 12초 exit 0
+- 리버스 프록시 실측: `a.hyuns.uk`/`b.hyuns.uk` 라우트 2건이 각각 다른 컨테이너로 분기하고 미등록 host 는 catch-all 444
 
 이 checkpoint는 현재 구현 범위의 회귀 기준이며 최종 인수 완료를 뜻하지 않는다. 다음 기능을 추가하면 test count보다 새 위험 경로의 의미 있는 assertion과 실제 runtime 증거를 우선한다.

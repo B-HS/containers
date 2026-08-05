@@ -28,27 +28,30 @@ flowchart LR
 
 middleware는 Host 문자열만 신뢰하지 않고 Nginx가 내부 network에서 서명해 전달한 ingress profile을 검증한다.
 
-| prefix               | 주요 기능                                                       |
-| -------------------- | --------------------------------------------------------------- |
-| `/api/auth/*`        | Better Auth handler                                             |
-| `/api/session`       | 현재 사용자와 capability                                        |
-| `/api/dashboard/*`   | overview, engine health, jobs summary                           |
-| `/api/containers/*`  | list, detail, lifecycle, exec ticket, logs, stats, archive      |
-| `/api/images/*`      | list, inspect, pull, tag, remove, load 연결                     |
-| `/api/networks/*`    | list, inspect, create, connect, disconnect, remove              |
-| `/api/volumes/*`     | list, inspect, create, remove                                   |
-| `/api/nginx/*`       | status, routes, revisions, validate, apply, rollback, error log |
-| `/api/traffic/*`     | overview, series, top, slow, errors, live, export               |
-| `/api/uploads/*`     | upload session, chunks, 검사 결과                               |
-| `/api/deployments/*` | create, detail, versions, rollback                              |
-| `/api/jobs/*`        | 상태, cancel, SSE events                                        |
-| `/api/users/*`       | invite, role, disable                                           |
-| `/api/api-keys/*`    | create, list metadata, revoke, rotate                           |
-| `/api/audit/*`       | filter, detail, export                                          |
-| `/api/backups/*`     | local control·traffic backup list, create, restore, remove      |
-| `/api/system/*`      | engine info, disk usage, backups, maintenance                   |
-| `/ws/exec/:ticket`   | TTY stream                                                      |
-| `/events/docker`     | Docker event SSE                                                |
+| prefix                 | 주요 기능                                                       |
+| ---------------------- | --------------------------------------------------------------- |
+| `/api/auth/*`          | Better Auth handler                                             |
+| `/api/session`         | 현재 사용자와 capability                                        |
+| `/api/dashboard/*`     | overview, engine health, jobs summary                           |
+| `/api/containers/*`    | list, detail, lifecycle, exec ticket, logs, stats, archive      |
+| `/api/images/*`        | list, inspect, pull, tag, remove, load 연결                     |
+| `/api/networks/*`      | list, inspect, create, connect, disconnect, remove              |
+| `/api/volumes/*`       | list, inspect, create, remove                                   |
+| `/api/nginx/*`         | status, routes, revisions, validate, apply, rollback, error log |
+| `/api/traffic/*`       | overview, series, top, slow, errors, live, export               |
+| `/api/uploads/*`       | upload session, chunks, 검사 결과                               |
+| `/api/deployments/*`   | create, detail, versions, rollback                              |
+| `/api/jobs/*`          | 상태, cancel, SSE events                                        |
+| `/api/bootstrap/*`     | 최초 owner 생성 여부, 최초 owner 생성 (로컬 주소 전용)          |
+| `/api/users/*`         | invite, role, disable, delete                                   |
+| `/api/panel-settings`  | 공개 주소·추가 신뢰 origin, 접근 시도된 host 후보               |
+| `/api/trusted-proxies` | 앞단 프록시 승인·해제, 관측된 source 주소 후보                  |
+| `/api/api-keys/*`      | create, list metadata, revoke, rotate                           |
+| `/api/audit/*`         | filter, detail, export                                          |
+| `/api/backups/*`       | local control·traffic backup list, create, restore, remove      |
+| `/api/system/*`        | engine info, disk usage, backups, maintenance                   |
+| `/ws/exec/:ticket`     | TTY stream                                                      |
+| `/events/docker`       | Docker event SSE                                                |
 
 ### 2.1 인증 방식 (구현 기준)
 
@@ -58,6 +61,7 @@ middleware는 Host 문자열만 신뢰하지 않고 Nginx가 내부 network에�
 
 - **session**: Better Auth 세션 쿠키 + `user_role` 역할 검사(`requireRole`).
 - **recent session**: 위와 같되 세션이 최근 15분 안에 인증돼야 한다(`requireRecentRole`). 파괴적·보안 민감 조작에만 요구한다.
+- **bootstrap**: 계정이 하나도 없을 때 최초 owner 를 만드는 인증 없는 경로다. 그래서 공개 주소에서는 `BOOTSTRAP_ORIGIN_FORBIDDEN`(403)으로 거부하고, 공개 주소가 설정되기 전부터 존재하는 이름(`127.0.0.1`·`localhost`·`::1`·`panel.containers.local`·`api.containers.local`)에서만 받는다. 이후 사용자는 초대로만 늘어난다. seed 계정은 없다.
 - **API key**: `authorization: Bearer ctk_...`. `Authorization` 헤더가 있으면 route가 API key 경로로 분기하고, 없으면 세션 경로로 간다. 키는 sha256 해시로만 저장되며 scope·만료·분당 rate limit(`API_KEY_RATE_LIMIT_PER_MINUTE`, 기본 120)을 적용한다. `backup:write`·`secret:write`는 **발급·사용 모두 owner에게만** 허용된다.
 
 | 경로                                                                                                                                                                 | API key scope               | session 요구                              |
@@ -93,6 +97,11 @@ middleware는 Host 문자열만 신뢰하지 않고 Nginx가 내부 network에�
 | Docker 제어(`/api/containers` 생성·actions·exec, `/api/images/*`(목록 제외), `/api/networks/*`, `/api/volumes/*`, `/api/system/prune*`, `/api/registry-credentials`) | 불가                        | 조회는 전 역할, 변경은 recent owner·admin |
 | SSE·exec stream(`/api/stream/*`, `/api/containers/:id/exec-tickets`, `/api/exec/ws/:ticket`)                                                                         | 불가                        | 전 역할                                   |
 | `/api/auth/*`, `/api/session`, `/api/users`, `/api/invitations`                                                                                                      | 불가                        | Better Auth 세션                          |
+| `GET /api/bootstrap/status`                                                                                                                                          | 불가                        | 불필요                                    |
+| `POST /api/bootstrap/owner`                                                                                                                                          | 불가                        | 불필요, 단 로컬 주소에서만                |
+| `PATCH`·`DELETE /api/users/:id`                                                                                                                                      | 불가                        | recent owner                              |
+| `GET /api/panel-settings` / `PUT`                                                                                                                                    | 불가                        | owner·admin / recent owner                |
+| `GET /api/trusted-proxies` / `POST`·`DELETE`                                                                                                                         | 불가                        | owner·admin / recent owner                |
 
 CI·자동화가 배포 전 구간을 무인으로 수행하려면 `artifact:upload`, `image:load`, `deployment:read`, `deployment:write`, `job:read`가 필요하고, 배포 후 검증까지 하려면 `engine:read`·`control-plane:read`를, 교착 job 해소까지 하려면 `job:write`를 추가한다. 실제 워크플로는 [ci-examples/github-actions-deploy.yml](./ci-examples/github-actions-deploy.yml)에 있다.
 
@@ -107,6 +116,16 @@ CI·자동화가 배포 전 구간을 무인으로 수행하려면 `artifact:upl
 - `NGINX_*`, `TRAFFIC_*`
 - `UPLOAD_*`, `DEPLOYMENT_*`, `BACKUP_*`, `JOB_*`
 - `VALIDATION_ERROR`, `CONFLICT`, `INTERNAL_ERROR`
+
+### 3.1 세션 응답과 쿠키
+
+`GET /api/session` 은 `expiresAt`·`role`·`user(id/email/name)` 만 돌려준다. 세션 토큰은 HttpOnly 쿠키에만 있고 응답 본문에 담지 않는다.
+
+Better Auth 는 쿠키의 `Secure` 여부를 인스턴스 생성 시 한 번 정한다. loopback http 와 공개 https 를 동시에 지원할 수 없으므로 `useSecureCookies` 를 끄고, 응답 미들웨어가 `x-forwarded-proto` 가 https 인 요청에만 `Secure` 를 덧붙인다. 쿠키 **이름은 바꾸지 않아** 기존 세션이 끊기지 않는다. Nginx 는 그 헤더를 `$scheme` 이 아니라 앞단 프록시가 보낸 값에서 유도한다(TLS 는 Nginx 앞에서 끝난다).
+
+사용자 id 는 UUID 가 아니다. Better Auth 가 sign-up 으로 만든 계정은 자체 형식 id 를 쓰므로 `:id` 는 빈 값만 거르는 문자열이다.
+
+자기 자신의 계정은 변경·삭제할 수 없다(`SELF_MODIFICATION_FORBIDDEN`). 그 외에는 다른 owner 도 강등·비활성화·삭제할 수 있어 자격증명을 잃어도 대응 경로가 있고, 마지막 owner 는 아무도 대신 조작할 수 없어 그대로 남는다.
 
 장시간 operation은 즉시 `202`와 job을 반환한다. 동기 endpoint timeout을 길게 늘려 pull, load, build, prune, export, deployment를 기다리지 않는다.
 

@@ -33,11 +33,15 @@ real_ip_header CF-Connecting-IP;
 real_ip_recursive on;
 ```
 
-신뢰 대역은 `edge` 네트워크의 cloudflared 고정 IP 하나로 좁힌다. 대역 밖에서 온 요청의 헤더는 무시되므로 위조로 rate limit 키를 바꿀 수 없다. real_ip 모듈이 `$remote_addr` 자체를 치환하기 때문에 `map $remote_addr $containers_client_ip`, `limit_req_zone $containers_client_ip`, access log `client_ip`, upstream으로 전달하는 `X-Real-IP`가 모두 별도 수정 없이 원본 IP 기준이 된다. engine-agent 보호 계약도 map 소스로 `$remote_addr`을 요구할 뿐이라 영향받지 않는다.
+기본값은 loopback 하나뿐이고, **실제 신뢰 목록의 정본은 `trusted_proxy` 테이블**이다. 설정 파일에 주소를 박으면 앞단 구성이 바뀔 때 조용히 어긋나 rate limit 이 전체 공유로 되돌아가므로, 패널 **신뢰 프록시** 화면에서 관측된 주소를 승인해 `set_real_ip_from` 을 교체한다. 후보는 access log 의 원본 source 주소에서 뽑고 역방향 DNS 를 붙여 보여준다. 대역 밖에서 온 요청의 헤더는 무시되므로 위조로 rate limit 키를 바꿀 수 없다. 결정 근거는 [acknowledge/0035](./acknowledge/0035-trusted-proxy-approval.md)에 있다. real_ip 모듈이 `$remote_addr` 자체를 치환하기 때문에 `map $remote_addr $containers_client_ip`, `limit_req_zone $containers_client_ip`, access log `client_ip`, upstream으로 전달하는 `X-Real-IP`가 모두 별도 수정 없이 원본 IP 기준이 된다. engine-agent 보호 계약도 map 소스로 `$remote_addr`을 요구할 뿐이라 영향받지 않는다.
+
+원본 프로토콜도 같은 이유로 `$scheme` 을 쓰지 않는다. TLS 는 Nginx 앞에서 끝나 `$scheme` 은 항상 `http` 이므로, `map $http_x_forwarded_proto $containers_forwarded_proto` 로 앞단 값에서 유도해 upstream 에 넘긴다. API 는 이 값으로 세션 쿠키의 `Secure` 부착 여부를 요청마다 결정한다.
 
 `cf_ray`·`country`는 여전히 요청 헤더 원문을 그대로 기록한다. 신뢰 대역 밖에서 온 요청에서는 위조 가능한 값이므로 분석 시 검증된 값으로 다루지 않는다.
 
-알 수 없는 Host로 온 요청은 catch-all `default_server`가 `444`로 끊는다. 등록한 `server_name` 밖의 도메인은 패널·API에 도달하지 않는다. 노출 경로별 설정과 도메인 전환 절차는 [EXPOSURE.md](./EXPOSURE.md)를 따른다.
+알 수 없는 Host로 온 요청은 catch-all `default_server`가 `444`로 끊는다. 등록한 `server_name` 밖의 도메인은 패널·API에 도달하지 않는다. 앞단에서 와일드카드로 받아도 실제로 어떤 호스트를 열지는 이 목록이 단독으로 결정한다.
+
+패널 자신의 공개 주소는 프록시 라우트 대상이 될 수 없다. 보호 hostname 목록은 부팅 시 고정하지 않고 호출 시점에 현재 신뢰 origin 을 포함해 평가한다. 노출 경로별 설정과 도메인 전환 절차는 [EXPOSURE.md](./EXPOSURE.md)를 따른다.
 
 ## 3. 설정 모델
 

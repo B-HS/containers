@@ -305,7 +305,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] g. 전체 gate — typecheck·lint·format:check·test 통과 (build·Compose 재배포 실측은 미수행)
 - [x] h. 의존 타입 Pick 축소 — create-app.ts(deployment·release·upload)와 route 2곳을 실사용 메서드로 좁히고, create-app.test.ts 의 dead stub 6개(loadArtifact·run·runRollback·cleanupExpiredContainers·reconcileInterrupted·finalizeSession) 제거
 
-- [x] i. 전역 에러 팩토리 통일 — 백엔드 3앱(api·engine-agent·traffic-worker)의 `throw new Error(...)` 약 120건과 throw 아닌 에러 값 생성(reject·destroy 인자 등)을 전부 `createAppError(...)` 로 치환, traffic-worker 에 `src/lib/app-error.ts` 신규 생성. 잔존 grep 0건, 전 게이트(typecheck·lint·format:check·test 158 pass) 통과. web 의 `throw new Error` 는 프론트 영역이라 대상 아님.
+- [x] i. 전역 에러 팩토리 통일 — 백엔드 3앱(api·engine-agent·traffic-worker)의 `throw new Error(...)` 약 120건과 throw 아닌 에러 값 생성(reject·destroy 인자 등)을 전부 `createAppError(...)` 로 치환, traffic-worker 에 `src/lib/error.ts` 신규 생성. 잔존 grep 0건, 전 게이트(typecheck·lint·format:check·test 158 pass) 통과. web 의 `throw new Error` 는 프론트 영역이라 대상 아님.
 
 미적용(별도 결정 대기): backup restore 응답 봉투 통일, `loadArtifact` 파라미터 순서, 기존 handler 의 terminal 미표시 오류 통일, resource lock 의 partial unique index 강화.
 
@@ -687,3 +687,24 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - 로컬 bootstrap POST 409 `BOOTSTRAP_COMPLETE` (계정이 아직 있는 상태)
 - seed 스크립트가 공개 주소 설정을 감지해 거부
 - reset 스크립트 dry run 이 대상 1건만 보여주고 변경 없음
+
+## 작업: docs 전수 정합 + 리버스 프록시 실측 (2026-08-05 야간)
+
+기준: 사용자 지시 — "docs 완벽하게 정합 및 누락된/추가된 내용 다 넣어서 코드와 똑같이", "보안적으로 점검해서 docs 확인", "a.{domain}/b.{domain} 컨테이너 2개로 리버스 프록시 테스트".
+
+- [x] a. 문서의 깨진 코드 경로 전수 교정 — HANDOFF-STATUS 16곳(리팩토링 이전 경로), PROCESS 1곳
+- [x] b. API-DATA-AUTH 에 신규 엔드포인트·인증층·세션/쿠키 계약 반영
+- [x] c. SECURITY §16 추가 — 신뢰 프록시, bootstrap 제한, 세션 토큰·쿠키, 보호 hostname, 종료 드레인
+- [x] d. NGINX-TRAFFIC §2.1 갱신 — set_real_ip_from 정본이 DB, forwarded proto map
+- [x] e. RUNBOOK §10·§11 추가 — owner 상실 대응, 공개 주소 403 대응
+- [x] f. EXPOSURE §2.2.1 추가 — 최초 계정은 로컬에서
+- [x] g. TESTING checkpoint 갱신 (34 files/158 pass → 62 files/412 pass + web 20)
+- [x] h. HANDOFF 문서 지도에 누락 7건 보강
+- [x] i. 리버스 프록시 로컬 실측 — a/b 라우트 분기, 미등록 host 444
+- [ ] j. 외부(터널) 실측 — 사용자가 `*.hyuns.uk` public hostname 추가 후
+
+### 실측 (로컬)
+
+- `Host: a.hyuns.uk` → `<h1>A SITE</h1>`, `Host: b.hyuns.uk` → `<h1>B SITE</h1>`
+- `Host: c.hyuns.uk` → 연결 종료(catch-all 444)
+- nginx `containers-routes` 블록에 server 2개가 각각 다른 컨테이너로 proxy_pass

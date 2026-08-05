@@ -30,9 +30,9 @@ API 키에는 root-equivalent scope를 기본 발급하지 않는다. owner가 �
 
 ## 4. 인증·세션
 
-- Better Auth email/password를 기본으로 하고 최초 소유자 생성 후 bootstrap endpoint를 영구 잠근다.
+- Better Auth email/password를 기본으로 하고 최초 소유자 생성 후 bootstrap endpoint를 영구 잠근다. bootstrap 자체는 인증이 없으므로 로컬 이름에서만 받는다(§16).
 - 공개 signup은 비활성화하고 초대 token은 단회·짧은 만료로 둔다.
-- production cookie는 Secure, HttpOnly, SameSite=Lax 또는 Strict, 좁은 Path를 사용한다.
+- 쿠키는 HttpOnly, SameSite=Lax 이며 https 요청에는 `Secure` 가 붙는다. loopback http 도 함께 지원해야 해서 요청별로 결정한다(§16).
 - 비밀번호 재설정·로그인·API key 검증은 rate limit과 audit 대상이다.
 - destructive와 break-glass 작업은 최근 인증 시각을 확인하고 오래된 session이면 재인증한다.
 - Cloudflare Access는 관리 도메인 외곽 방어선으로 권장하되 애플리케이션 인증·인가를 대체하지 않는다.
@@ -201,3 +201,39 @@ Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 act
 - 회귀 테스트: 실제 `infra/nginx/nginx.conf` 통과, decoy 블록 거부, rate limit 없는 두 번째 `/api/` 거부, nested location 우회 거부, burst 상한 초과 거부.
 
 구현 중 파서 자체의 결함도 드러났다. `# 주석` 줄 바로 다음의 블록 헤드를 주석 노드가 삼켜 블록 계층이 무너졌고, 같은 파서를 쓰는 **웹 GUI 편집기가 주석 있는 config 를 손상시킬 수 있는 경로**였다. statement 가 주석으로 시작하면 줄 끝에서 종결하도록 고치고 패키지에 회귀 테스트를 추가했다.
+
+## 16. 2026-08-05 실운영 노출 점검 반영
+
+실제 도메인으로 외부 접속을 열고 점검하면서 확인한 것들이다. 결정 근거는 [acknowledge/0035](./acknowledge/0035-trusted-proxy-approval.md)·[0036](./acknowledge/0036-public-origin-single-source-and-shutdown.md)에 있다.
+
+### 앞단 프록시 신뢰를 DB 로 옮김
+
+`set_real_ip_from` 이 설정 파일에 박혀 있었다. 그 값이 어긋나면 모든 요청의 클라이언트 IP 가 게이트웨이 하나로 수렴해 **rate limit 버킷을 외부 전원이 공유**하는데, 실패가 로그에도 드러나지 않는다.
+
+- 기본값은 loopback 하나뿐이고, 실제 신뢰 목록은 `trusted_proxy` 테이블이 정본이다.
+- 후보는 nginx access log 의 **원본 source 주소**에서 뽑는다. traffic DB 는 수집 시 `x.y.z.0` 으로 마스킹하므로(§12) `/32` 승인에 쓸 수 없다.
+- 전체 대역(`0.0.0.0/0`·`::/0`·`any`)과 CIDR 표기를 거부하고, 마지막 한 개는 지울 수 없다.
+- **실제 클라이언트 IP 를 승인하면 안 된다.** 승인하면 그 클라이언트가 forwarded 헤더를 위조해 임의 IP 를 주장할 수 있다. 화면에는 후보로 뜨므로 운영자가 구분해야 한다.
+
+### 최초 owner 생성 경로
+
+bootstrap 은 인증 없이 첫 owner 를 만든다. 계정이 없는 상태에서 패널이 공개 노출돼 있으면 **인터넷 누구나 선점**할 수 있다.
+
+- 공개 주소가 설정되기 전부터 존재하는 이름에서만 허용하고, 그 밖에서는 `BOOTSTRAP_ORIGIN_FORBIDDEN`(403)이다.
+- 계정이 생긴 뒤에는 `BOOTSTRAP_COMPLETE`(409)로 영구 잠긴다.
+- seed 계정은 배포에 포함되지 않는다. `scripts/seed-e2e.ts` 는 개발 도구이고 공개 주소가 저장된 스택에서 실행을 거부한다.
+
+### 세션 쿠키와 토큰
+
+- `GET /api/session` 이 세션 토큰 원문을 반환했다. HttpOnly 쿠키의 목적을 무효화하므로 요약 응답으로 바꿨다.
+- 공개 https 로그인 쿠키에 `Secure` 가 없었다. Better Auth 는 이 값을 생성 시 한 번 정해 loopback http 와 공개 https 를 함께 지원할 수 없으므로, 응답 미들웨어가 `x-forwarded-proto` 가 https 인 요청에만 `Secure` 를 덧붙인다. Nginx 는 그 헤더를 `$scheme`(항상 http)이 아니라 앞단 프록시 값에서 유도한다.
+- HSTS 에 `includeSubDomains` 를 더했다. `preload` 는 등재 취소가 어려워 운영자 판단으로 남겼다.
+
+### 관리 plane 자기 보호 (보완)
+
+- 보호 hostname 을 부팅 배열에서 호출 시점 평가로 바꿔 **패널 자신의 공개 주소로 프록시 라우트를 만드는 것**을 막는다. 이전에는 공개 주소가 목록에 없었다.
+- owner 계정을 삭제·비활성화할 수 없어 자격증명 유출에 대응할 방법이 없었다. 자기 자신만 불변으로 좁히고 삭제 경로를 열었다. owner 만 호출할 수 있고 자기 자신은 대상이 될 수 없으므로 마지막 owner 는 그대로 남는다.
+
+### 가용성
+
+종료 신호에 job worker·주기 작업을 멈추고 HTTP 를 8초까지 드레인한 뒤 강제 종료하고 DB 를 닫는다. 드레인 상한이 없으면 장수 SSE 하나가 종료를 22초 붙잡아 compose 기본 grace 를 넘기고 SIGKILL 이 된다(실측). `stop_grace_period` 는 20초다.

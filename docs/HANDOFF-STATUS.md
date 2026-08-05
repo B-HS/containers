@@ -82,7 +82,9 @@ Compose 서비스와 권한 경계:
 - API key별 minute rate limit
 - 중요 mutation의 최근 15분 인증
 
-개발 Owner email은 `owner@containers.local`이다. 비밀번호는 저장소 문서에 의도적으로 기록하지 않는다. 새 세션은 사용자에게 받거나 승인된 로컬 testing context를 사용한다.
+배포에는 seed 계정이 없다. 최초 1회 로컬 이름(`http://127.0.0.1:18080`)에서 bootstrap 으로 owner 를 만들고, 이후 사용자는 초대로 늘린다. 공개 주소에서는 bootstrap 이 403 이다.
+
+개발 스택에서는 `bun scripts/seed-e2e.ts` 로 계정을 만들 수 있고, 공개 주소가 저장된 스택에서는 스스로 거부한다(`--allow-configured` 로만 우회). 비밀번호는 stdout 에 한 번만 나오며 저장소·문서에 기록하지 않는다.
 
 ### Docker 제어
 
@@ -163,7 +165,7 @@ Compose 서비스와 권한 경계:
 - `GET /api/jobs`·`GET /api/jobs/:id`·`GET /api/jobs/:id/events`·`POST /api/jobs/:id/cancel` (owner·admin session, 취소는 최근 15분 인증 + audit)
 - 자동 backup 이 첫 소비자: 1분 due-check(최신 backup 시각 + interval 로 next-run 유도, 재시작 안전), unique enqueue 로 중복 방지
 - `GET /api/jobs/backup-schedule` 와 패널 작업 큐 위젯(owner·admin)이 job 목록·취소·interval·last success/failure·next run 을 노출한다
-- 외부 enqueue endpoint 없음. api·engine-agent·traffic-worker 세 앱 모두 `lib/app-error.ts` 의 `createAppError` 로 오류를 던진다.
+- 외부 enqueue endpoint 없음. api·engine-agent·traffic-worker 세 앱 모두 `lib/error.ts` 의 `createAppError` 로 오류를 던진다.
 - 추가 소비자: `backup.restore`, `image.pull`, `system.prune`, `traffic.export`, `deploy.load`, `deploy.release`, `deploy.rollback`, `upload.finalize`. 잔여는 live 24시간 주기 실행 증거(g-2)다.
 
 ## 5. 최근 checkpoint의 주요 파일
@@ -175,21 +177,21 @@ Compose 서비스와 권한 경계:
 - `apps/api/src/service/domain/job/` — operation-job·backup-schedule·job-handlers
 - `apps/api/src/service/domain/maintenance/create-maintenance-service.ts`
 - `apps/api/src/route/job/`, `route/maintenance/`, `route/stream/`, `route/backup/`(restore job 전환), `route/control/`(kill·update·wait·top·changes·pull·tag)
-- `apps/api/src/compose/create-app.ts` (mutation gate), `apps/api/src/lib/app-error.ts`
-- `apps/engine-agent/src/service/create-engine-stream-service.ts`, `create-stream-parsers.ts`, `route/create-engine-stream-route.ts`
-- `apps/engine-agent/src/docker/create-docker-engine-client.ts` (stream 헬퍼·kill/update·wait/top/changes·pull/tag)
-- `apps/web/src/widgets/job-control/`, `features/live-log-stream/`, `entities/job/`, `entities/maintenance/`
-- `apps/web/src/widgets/prune-control/`, `apps/web/src/entities/infrastructure/infrastructure.api.ts`
-- `apps/engine-agent/src/service/create-registry-credential-service.ts`, `apps/web/src/widgets/registry-control/registry-control-widget.tsx`
+- `apps/api/src/compose/create-app.ts` (mutation gate), `apps/api/src/lib/error.ts`
+- `apps/engine-agent/src/service/domain/create-engine-stream-service.ts`, `create-stream-parsers.ts`, `route/create-engine-stream-route.ts`
+- `apps/engine-agent/src/service/shared/create-docker-engine-client.ts` (stream 헬퍼·kill/update·wait/top/changes·pull/tag)
+- `apps/web/src/widgets/job/`, `features/live-log-stream/`, `entities/job/`, `entities/maintenance/`
+- `apps/web/src/widgets/prune/`, `apps/web/src/entities/infrastructure/infrastructure.api.ts`
+- `apps/engine-agent/src/service/domain/create-registry-credential-service.ts`, `apps/web/src/widgets/registry/registry-widget.tsx`
 - `packages/contracts/src/registry-credential.ts`
-- `packages/contracts/src/traffic.ts`, `apps/traffic-worker/src/service/create-traffic-ingestion-service.ts`, `create-traffic-export-service.ts`
+- `packages/contracts/src/traffic.ts`, `apps/traffic-worker/src/service/domain/create-traffic-ingestion-service.ts`, `create-traffic-export-service.ts`
 - `apps/api/src/route/traffic/create-traffic-route.ts`, `apps/web/src/features/traffic-live-tail/`, `traffic-export-control/`
 - `docs/acknowledge/0014` ~ `0021`
 
 보안 경계:
 
 - `infra/nginx/nginx.conf`
-- `apps/engine-agent/src/service/create-nginx-config-service.ts`
+- `apps/engine-agent/src/service/domain/create-nginx-config-service.ts`
 - `apps/api/src/compose/create-app.ts`
 - `apps/api/src/service/domain/api-key/create-api-key-service.ts`
 - `docs/acknowledge/0012-edge-security-rate-limit.md`
@@ -199,11 +201,11 @@ Compose 서비스와 권한 경계:
 - `packages/contracts/src/backup.ts`
 - `apps/api/src/service/domain/backup/create-backup-service.ts`
 - `apps/api/src/route/backup/create-backup-route.ts`
-- `apps/api/src/traffic/create-traffic-worker-client.ts`
-- `apps/traffic-worker/src/service/create-traffic-backup-service.ts`
+- `apps/api/src/service/shared/traffic-worker-client/create-traffic-worker-client.ts`
+- `apps/traffic-worker/src/service/domain/create-traffic-backup-service.ts`
 - `apps/traffic-worker/src/route/create-backup-route.ts`
 - `apps/web/src/entities/backup/backup.api.ts`
-- `apps/web/src/widgets/backup-control/backup-control-widget.tsx`
+- `apps/web/src/widgets/backup/backup-widget.tsx`
 - `docs/BACKUP-RESTORE.md`
 - `docs/acknowledge/0013-local-backup-restore-runtime.md`
 
@@ -211,8 +213,8 @@ Compose 서비스와 권한 경계:
 
 - `apps/api/src/service/domain/deployment/create-deployment-release-service.ts`
 - `apps/api/src/service/domain/deployment/create-deployment-secret-service.ts`
-- `apps/web/src/widgets/deployment-control/deployment-control-widget.tsx`
-- `apps/web/src/widgets/deployment-secret-control/deployment-secret-control-widget.tsx`
+- `apps/web/src/widgets/deployment/deployment-widget.tsx`
+- `apps/web/src/widgets/deployment/deployment-secret-widget.tsx`
 - `docs/acknowledge/0009-blue-green-deployment-runtime.md`부터 `0011-secret-storage-disk-watermark.md`
 
 ## 6. 확정 검증 증거

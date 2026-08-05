@@ -258,7 +258,52 @@ curl -s 'localhost:18080/api/audit?limit=100' | jq '.data[] | select(.authMethod
 
 ---
 
-## 10. 사고 후 정리
+## 10. owner 계정 상실 · 자격증명 유출
+
+**증상** — owner 비밀번호를 잃었다. 또는 owner 세션이 탈취된 정황이 있다.
+
+**owner 가 둘 이상이면**
+
+다른 owner 로 로그인해 해당 계정을 비활성화하거나 삭제한다. 자기 자신은 대상이 될 수 없다(`SELF_MODIFICATION_FORBIDDEN`).
+
+```bash
+curl -s localhost:18080/api/users | jq '.data[] | {id, email, role, disabledAt}'
+curl -sX PATCH localhost:18080/api/users/<id> -H 'content-type: application/json' -d '{"disabled":true}'
+curl -sX DELETE localhost:18080/api/users/<id>
+```
+
+비활성화·강등·삭제는 그 사용자의 세션을 지우고 그가 만든 API key 를 폐기한다.
+
+**owner 가 하나뿐이면**
+
+패널 안에서 되돌릴 방법이 없다. 서버에서 계정을 초기 상태로 되돌리고 다시 만든다. 계정 관련 테이블만 지우고 배포·nginx·트래픽 데이터는 남는다.
+
+```bash
+bun scripts/reset-accounts.ts              # 대상만 보여준다
+bun scripts/reset-accounts.ts --confirm    # 실행 전 control.sqlite.pre-reset 사본을 남긴다
+```
+
+그다음 서버에서 `http://127.0.0.1:18080` 에 접속해 첫 owner 를 다시 만든다. **공개 주소에서는 403 이다.** 되돌리려면 `control.sqlite.pre-reset` 를 원위치에 복사하고 api 를 재시작한다.
+
+**확인** — `GET /api/bootstrap/status` 가 `required: true` → 새 owner 생성 후 `false`, 감사 로그에 `bootstrap.owner` `success` 가 남는다.
+
+---
+
+## 11. 공개 주소로 로그인이 403 INVALID_ORIGIN
+
+**증상** — 도메인으로 패널은 열리는데 로그인만 실패한다. nginx access log 에 그 host 의 `444` 가 쌓인다.
+
+**원인** — 그 host 가 신뢰 origin 에 없다. nginx `server_name` 과 인증 origin 은 별개 값이라 한쪽만 맞으면 이 상태가 된다.
+
+**조치** — 패널 **공개 주소** 화면을 연다. 접근이 시도된 host 가 요청 수·거부 수와 함께 후보로 뜬다. 해당 host 를 골라 저장하면 `server_name` 과 신뢰 origin 이 함께 적용된다. 신뢰 origin 은 즉시 반영되고, 쿠키·생성 링크에 쓰이는 base URL 은 `restartRequired` 안내대로 api 재시작 후 적용된다.
+
+환경변수 origin 은 하한선으로 항상 남으므로 잘못 저장해도 loopback 로그인은 살아 있다.
+
+**확인** — 그 도메인에서 로그인 200, 응답 쿠키에 `Secure` 가 붙는다.
+
+---
+
+## 12. 사고 후 정리
 
 - 원인·조치·타임라인을 `docs/history/`에 남긴다. 반복되면 `docs/quality-assurance/`에 점검 체크리스트로 승격한다.
 - 절차가 실제와 달랐던 부분은 **이 문서를 그 자리에서 고친다.** 문서와 코드가 어긋나면 코드가 진실이다.
