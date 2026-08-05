@@ -1,0 +1,9 @@
+UPDATE `user` SET `created_at` = `created_at` / 1000 WHERE `created_at` > 100000000000;--> statement-breakpoint
+UPDATE `user` SET `updated_at` = `updated_at` / 1000 WHERE `updated_at` > 100000000000;--> statement-breakpoint
+UPDATE `account` SET `created_at` = `created_at` / 1000 WHERE `created_at` > 100000000000;--> statement-breakpoint
+UPDATE `account` SET `updated_at` = `updated_at` / 1000 WHERE `updated_at` > 100000000000;--> statement-breakpoint
+UPDATE `account` SET `access_token_expires_at` = `access_token_expires_at` / 1000 WHERE `access_token_expires_at` > 100000000000;--> statement-breakpoint
+UPDATE `account` SET `refresh_token_expires_at` = `refresh_token_expires_at` / 1000 WHERE `refresh_token_expires_at` > 100000000000;--> statement-breakpoint
+UPDATE `user_role` SET `created_at` = `created_at` / 1000 WHERE `created_at` > 100000000000;--> statement-breakpoint
+UPDATE `user_role` SET `updated_at` = `updated_at` / 1000 WHERE `updated_at` > 100000000000;--> statement-breakpoint
+UPDATE `user_role` SET `disabled_at` = `disabled_at` / 1000 WHERE `disabled_at` > 100000000000;

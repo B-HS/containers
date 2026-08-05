@@ -43,9 +43,11 @@ const hashPassword = (password: string) =>
 
 const APPLY_SCRIPT = `import { Database } from 'bun:sqlite'
 
+const MILLISECONDS_PER_SECOND = 1_000
+
 const database = new Database(process.env.SEED_E2E_DATABASE_PATH ?? '')
 const email = process.env.SEED_E2E_EMAIL ?? ''
-const now = Date.now()
+const now = Math.floor(Date.now() / MILLISECONDS_PER_SECOND)
 const existing = database.query('select id from user where email = ?').get(email) as { id: string } | null
 const userId = existing?.id ?? (process.env.SEED_E2E_USER_ID ?? '')
 

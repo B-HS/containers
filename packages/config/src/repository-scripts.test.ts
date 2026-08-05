@@ -31,4 +31,19 @@ describe('저장소 스크립트 계약', () => {
     test('런타임 보안 감사 스크립트가 등록돼 있다', () => {
         expect(rootScripts['audit:runtime']).toBe('bun scripts/audit-runtime-security.ts')
     })
+
+    test('seed 스크립트가 auth 테이블에 초 단위 timestamp 를 쓴다', () => {
+        const source = readRepositoryFile('scripts/seed-e2e.ts')
+
+        expect(source).toContain('Math.floor(Date.now() / MILLISECONDS_PER_SECOND)')
+        expect(source).not.toMatch(/(^|[^/])\bnow = Date\.now\(\)/m)
+    })
+
+    test('seed 스크립트가 쓰는 auth 컬럼은 초 단위 timestamp 로 선언돼 있다', () => {
+        const schema = readRepositoryFile('packages/db-schema/src/schema.ts')
+        const seededColumns = ['created_at', 'updated_at', 'disabled_at']
+        const millisecondColumns = seededColumns.filter((column) => schema.includes(`'${column}', { mode: 'timestamp_ms' }`))
+
+        expect(millisecondColumns).toEqual([])
+    })
 })
