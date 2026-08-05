@@ -34,7 +34,7 @@ export const buildDeploymentManifestServiceDb = (db: ControlDatabase): Deploymen
         return record
     },
     insert: async (row) => {
-        await db.insert(deploymentManifest).values(row as never)
+        await db.insert(deploymentManifest).values(row)
     },
 })
 

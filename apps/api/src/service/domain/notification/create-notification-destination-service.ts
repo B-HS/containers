@@ -1,3 +1,4 @@
+import type { NotificationDeliveryStatus, NotificationDestination } from '@containers/contracts/notification'
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto'
 import {
     notificationDestinationDeleteSchema,
@@ -20,7 +21,7 @@ type DestinationRow = {
     initializationVector: string
     keyVersion: number
     name: string
-    type: string
+    type: NotificationDestination['type']
     updatedAt: Date
     version: number
 }
@@ -28,7 +29,7 @@ type DestinationRow = {
 type DeliveryRow = {
     createdAt: Date
     failureCode: string | null
-    status: string
+    status: NotificationDeliveryStatus
     updatedAt: Date
 }
 

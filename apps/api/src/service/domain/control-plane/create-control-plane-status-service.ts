@@ -1,3 +1,4 @@
+import type { OperationJobStatus } from '@containers/contracts/operation-job'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -27,7 +28,7 @@ type AppliedMigrationRecord = {
 
 type ControlPlaneStatusServiceDb = {
     checkIntegrity: () => Promise<string | undefined>
-    countActiveJobs: (statuses: string[]) => Promise<number>
+    countActiveJobs: (statuses: OperationJobStatus[]) => Promise<number>
     listMigrations: () => Promise<AppliedMigrationRecord[]>
 }
 

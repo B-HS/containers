@@ -1,13 +1,8 @@
+import { ASSIGNABLE_USER_ROLE_VALUES, USER_ROLE_VALUES } from '@containers/contracts/user-management'
 import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
-export const USER_ROLE = {
-    ADMIN: 'admin',
-    AUDITOR: 'auditor',
-    OPERATOR: 'operator',
-    OWNER: 'owner',
-    VIEWER: 'viewer',
-} as const
+export { USER_ROLE, USER_ROLE_VALUES } from '@containers/contracts/user-management'
 
 export const user = sqliteTable(
     'user',
@@ -79,7 +74,7 @@ export const userRole = sqliteTable('user_role', {
     userId: text('user_id')
         .primaryKey()
         .references(() => user.id, { onDelete: 'cascade' }),
-    role: text('role', { enum: [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR] }).notNull(),
+    role: text('role', { enum: USER_ROLE_VALUES }).notNull(),
     disabledAt: integer('disabled_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
@@ -91,7 +86,7 @@ export const invitation = sqliteTable(
         id: text('id').primaryKey(),
         tokenHash: text('token_hash').notNull(),
         email: text('email').notNull(),
-        role: text('role', { enum: [USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR] }).notNull(),
+        role: text('role', { enum: ASSIGNABLE_USER_ROLE_VALUES }).notNull(),
         createdBy: text('created_by')
             .notNull()
             .references(() => user.id, { onDelete: 'cascade' }),
@@ -333,6 +328,7 @@ export const operationJob = sqliteTable(
                 'deploy.rollback',
                 'image.pull',
                 'notification.deliver',
+                'secret.rotate',
                 'system.prune',
                 'traffic.export',
                 'upload.finalize',

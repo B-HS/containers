@@ -28,13 +28,10 @@ export const buildNotificationDeliveryServiceDb = (db: ControlDatabase): Notific
     },
     listQueued: async () => db.select().from(notificationDelivery).where(eq(notificationDelivery.status, 'queued')),
     insert: async (record) => {
-        await db.insert(notificationDelivery).values(record as never)
+        await db.insert(notificationDelivery).values(record)
     },
     update: async (id, values) => {
-        await db
-            .update(notificationDelivery)
-            .set(values as never)
-            .where(eq(notificationDelivery.id, id))
+        await db.update(notificationDelivery).set(values).where(eq(notificationDelivery.id, id))
     },
 })
 

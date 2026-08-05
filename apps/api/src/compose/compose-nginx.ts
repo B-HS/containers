@@ -22,13 +22,10 @@ export const buildNginxProxyRouteServiceDb = (db: ControlDatabase): NginxProxyRo
         return record
     },
     insert: async (record) => {
-        await db.insert(nginxRoute).values(record as never)
+        await db.insert(nginxRoute).values(record)
     },
     update: async (id, record) => {
-        await db
-            .update(nginxRoute)
-            .set(record as never)
-            .where(eq(nginxRoute.id, id))
+        await db.update(nginxRoute).set(record).where(eq(nginxRoute.id, id))
     },
     delete: async (id) => {
         await db.delete(nginxRoute).where(eq(nginxRoute.id, id))

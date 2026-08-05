@@ -1,3 +1,4 @@
+import type { OperationJobStatus } from '@containers/contracts/operation-job'
 import type { Database } from 'bun:sqlite'
 import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
@@ -8,7 +9,7 @@ import { createServiceHealthProbe } from '../service/domain/health/create-servic
 import { STALL_THRESHOLD_MS } from '../service/domain/job/create-operation-job-service'
 import type { MaintenanceService } from '../service/domain/maintenance/create-maintenance-service'
 
-const ACTIVE_JOB_STATUSES = ['queued', 'running', 'cancelling']
+const ACTIVE_JOB_STATUSES: OperationJobStatus[] = ['queued', 'running', 'cancelling']
 const RUNNING_JOB_STATUS = 'running'
 
 type ComposeHealthDependencies = {
@@ -30,7 +31,7 @@ export const buildReadinessServiceDb = (db: ControlDatabase, sqlite: Database): 
         const [record] = await db
             .select({ count: sql<number>`count(*)` })
             .from(operationJob)
-            .where(inArray(operationJob.status, ACTIVE_JOB_STATUSES as never))
+            .where(inArray(operationJob.status, ACTIVE_JOB_STATUSES))
         return record?.count ?? 0
     },
     countStalledJobs: async (heartbeatBefore) => {

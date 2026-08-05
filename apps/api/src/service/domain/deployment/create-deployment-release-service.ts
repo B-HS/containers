@@ -1,3 +1,4 @@
+import type { DeploymentRelease } from '@containers/contracts/deployment'
 import { randomUUID } from 'node:crypto'
 import { deploymentReleaseListSchema, deploymentReleaseSchema, type DeploymentManifest } from '@containers/contracts/deployment'
 import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
@@ -21,7 +22,7 @@ type ReleaseRow = {
     nginxConfigSha256: string | null
     nginxRouteId: string | null
     previousReleaseId: string | null
-    status: string
+    status: DeploymentRelease['status']
     updatedAt: Date
 }
 
@@ -33,7 +34,7 @@ type ReleaseUpdateValues = Partial<{
     nginxConfigSha256: string
     nginxRouteId: string
     previousReleaseId: string
-    status: string
+    status: DeploymentRelease['status']
     updatedAt: Date
 }>
 
@@ -56,12 +57,12 @@ type DeploymentReleaseServiceDb = {
         id: string
         manifestId: string
         previousReleaseId: string | null
-        status: string
+        status: DeploymentRelease['status']
         updatedAt: Date
     }) => Promise<void>
     list: () => Promise<ReleaseRow[]>
-    listByStatuses: (statuses: string[]) => Promise<ReleaseRow[]>
-    findActiveByManifestName: (manifestName: string, statuses: string[]) => Promise<ReleaseIdRecord | undefined>
+    listByStatuses: (statuses: DeploymentRelease['status'][]) => Promise<ReleaseRow[]>
+    findActiveByManifestName: (manifestName: string, statuses: DeploymentRelease['status'][]) => Promise<ReleaseIdRecord | undefined>
     findPreviousHealthy: (manifestName: string) => Promise<PreviousReleaseRecord | undefined>
     update: (id: string, values: ReleaseUpdateValues) => Promise<void>
 }

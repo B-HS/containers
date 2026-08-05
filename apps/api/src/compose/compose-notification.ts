@@ -32,13 +32,10 @@ export const buildNotificationDestinationServiceDb = (db: ControlDatabase): Noti
         return record
     },
     insert: async (record) => {
-        await db.insert(notificationDestination).values(record as never)
+        await db.insert(notificationDestination).values(record)
     },
     update: async (id, values) => {
-        await db
-            .update(notificationDestination)
-            .set(values as never)
-            .where(eq(notificationDestination.id, id))
+        await db.update(notificationDestination).set(values).where(eq(notificationDestination.id, id))
     },
     delete: async (id) => {
         await db.delete(notificationDestination).where(eq(notificationDestination.id, id))

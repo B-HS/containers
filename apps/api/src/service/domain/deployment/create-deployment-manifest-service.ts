@@ -1,3 +1,4 @@
+import type { DeploymentManifest } from '@containers/contracts/deployment'
 import { createHash, randomUUID } from 'node:crypto'
 import {
     deploymentManifestInputSchema,
@@ -27,8 +28,8 @@ type ManifestRow = {
     nanoCpus: number
     network: string
     pidsLimit: number
-    protocol: string
-    restartPolicy: string
+    protocol: DeploymentManifest['protocol']
+    restartPolicy: DeploymentManifest['restartPolicy']
     rolloutObservationSeconds: number
     rolloutRollbackRetentionSeconds: number
     routeHostname: string

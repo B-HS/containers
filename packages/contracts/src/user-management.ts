@@ -1,7 +1,18 @@
 import { z } from 'zod'
 
-export const managedUserRoleSchema = z.enum(['admin', 'auditor', 'operator', 'owner', 'viewer'])
-export const assignableUserRoleSchema = z.enum(['admin', 'auditor', 'operator', 'viewer'])
+export const USER_ROLE = {
+    ADMIN: 'admin',
+    AUDITOR: 'auditor',
+    OPERATOR: 'operator',
+    OWNER: 'owner',
+    VIEWER: 'viewer',
+} as const
+
+export const USER_ROLE_VALUES = [USER_ROLE.ADMIN, USER_ROLE.AUDITOR, USER_ROLE.OPERATOR, USER_ROLE.OWNER, USER_ROLE.VIEWER] as const
+export const ASSIGNABLE_USER_ROLE_VALUES = [USER_ROLE.ADMIN, USER_ROLE.AUDITOR, USER_ROLE.OPERATOR, USER_ROLE.VIEWER] as const
+
+export const managedUserRoleSchema = z.enum(USER_ROLE_VALUES)
+export const assignableUserRoleSchema = z.enum(ASSIGNABLE_USER_ROLE_VALUES)
 
 export const managedUserSchema = z.object({
     createdAt: z.iso.datetime(),

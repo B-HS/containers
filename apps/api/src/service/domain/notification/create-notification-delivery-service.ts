@@ -1,3 +1,4 @@
+import type { NotificationDeliveryStatus, NotificationEventType } from '@containers/contracts/notification'
 import { randomUUID } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIPv6 } from 'node:net'
@@ -15,13 +16,15 @@ import type { NotificationDestinationService } from './create-notification-desti
 const DELIVERY_MAX_ATTEMPTS = 3
 const CANCELLED_FAILURE_CODE = 'JOB_CANCELLED'
 
-const FAILURE_EVENT_BY_JOB_KIND: Partial<Record<OperationJobKind, (typeof NOTIFICATION_EVENT_TYPE)[keyof typeof NOTIFICATION_EVENT_TYPE]>> = {
+const FAILURE_EVENT_BY_JOB_KIND: Record<OperationJobKind, NotificationEventType | null> = {
     [OPERATION_JOB_KIND.BACKUP_CREATE]: NOTIFICATION_EVENT_TYPE.BACKUP_FAILED,
     [OPERATION_JOB_KIND.BACKUP_RESTORE]: NOTIFICATION_EVENT_TYPE.RESTORE_FAILED,
     [OPERATION_JOB_KIND.DEPLOY_LOAD]: NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
     [OPERATION_JOB_KIND.DEPLOY_RELEASE]: NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
     [OPERATION_JOB_KIND.DEPLOY_ROLLBACK]: NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
     [OPERATION_JOB_KIND.IMAGE_PULL]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
+    [OPERATION_JOB_KIND.NOTIFICATION_DELIVER]: null,
+    [OPERATION_JOB_KIND.SECRET_ROTATE]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
     [OPERATION_JOB_KIND.SYSTEM_PRUNE]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
     [OPERATION_JOB_KIND.TRAFFIC_EXPORT]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
     [OPERATION_JOB_KIND.UPLOAD_FINALIZE]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
@@ -169,24 +172,24 @@ type EnqueueJob = (input: {
 type DeliveryRow = {
     createdAt: Date
     destinationId: string
-    eventType: string
+    eventType: NotificationEventType
     failureCode: string | null
     id: string
     jobId: string | null
     sourceJobId: string
-    status: string
+    status: NotificationDeliveryStatus
     updatedAt: Date
 }
 
 type DeliveryInsertRecord = {
     createdAt: Date
     destinationId: string
-    eventType: string
+    eventType: NotificationEventType
     failureCode: string | null
     id: string
     jobId?: string | null
     sourceJobId: string
-    status: string
+    status: NotificationDeliveryStatus
     updatedAt: Date
 }
 
@@ -194,7 +197,10 @@ type NotificationDeliveryServiceDb = {
     findById: (id: string) => Promise<DeliveryRow | undefined>
     listQueued: () => Promise<DeliveryRow[]>
     insert: (record: DeliveryInsertRecord) => Promise<void>
-    update: (id: string, values: { failureCode?: string | null; jobId?: string | null; status?: string; updatedAt: Date }) => Promise<void>
+    update: (
+        id: string,
+        values: { failureCode?: string | null; jobId?: string | null; status?: NotificationDeliveryStatus; updatedAt: Date },
+    ) => Promise<void>
 }
 
 type NotificationDeliveryServiceDependencies = {
@@ -229,7 +235,10 @@ const buildEmbed = (payload: NotificationDeliverJobPayload) => {
 }
 
 export const createNotificationDeliveryService = ({ db, destinationService, enqueue, now }: NotificationDeliveryServiceDependencies) => {
-    const updateDelivery = async (id: string, values: { failureCode?: string | null; jobId?: string | null; status?: string }) => {
+    const updateDelivery = async (
+        id: string,
+        values: { failureCode?: string | null; jobId?: string | null; status?: NotificationDeliveryStatus },
+    ) => {
         await db.update(id, { ...values, updatedAt: now() })
     }
 
@@ -283,7 +292,7 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
         }
         if (job.status === 'succeeded') {
             const skipped = (job.result as { skipped?: boolean } | null)?.skipped === true
-            const values: { failureCode?: string | null; status: string } = { status: NOTIFICATION_DELIVERY_STATUS.DELIVERED }
+            const values: { failureCode?: string | null; status: NotificationDeliveryStatus } = { status: NOTIFICATION_DELIVERY_STATUS.DELIVERED }
             if (skipped) {
                 values.failureCode = 'NOTIFICATION_DESTINATION_DISABLED'
             }
@@ -385,7 +394,7 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
             return
         }
         const eventType = FAILURE_EVENT_BY_JOB_KIND[job.kind]
-        if (eventType === undefined) {
+        if (eventType === null) {
             return
         }
         const destinations = (await destinationService.list()).filter(

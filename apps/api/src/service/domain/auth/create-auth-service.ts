@@ -1,16 +1,9 @@
+import { USER_ROLE } from '@containers/contracts/user-management'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { managedUserListSchema, managedUserSchema, managedUserUpdateSchema } from '@containers/contracts/user-management'
 import type { Auth } from '../../../auth/create-auth'
 import { createAppError } from '../../../lib/error'
-
-const USER_ROLE = {
-    ADMIN: 'admin',
-    AUDITOR: 'auditor',
-    OPERATOR: 'operator',
-    OWNER: 'owner',
-    VIEWER: 'viewer',
-} as const
 
 const ownerBootstrapSchema = z.object({
     email: z.email(),

@@ -17,15 +17,15 @@ export const buildOperationJobServiceDb = (db: ControlDatabase): OperationJobSer
         return record
     },
     insert: async (record) => {
-        await db.insert(operationJob).values(record as never)
+        await db.insert(operationJob).values(record)
     },
     insertEvent: async (record) => {
         await db.insert(operationJobEvent).values(record)
     },
     listByKindsAndStatuses: async (input) => {
         const conditions = [
-            input.kind === undefined ? undefined : eq(operationJob.kind, input.kind as never),
-            input.status === undefined ? undefined : eq(operationJob.status, input.status as never),
+            input.kind === undefined ? undefined : eq(operationJob.kind, input.kind),
+            input.status === undefined ? undefined : eq(operationJob.status, input.status),
         ].filter((condition) => condition !== undefined)
         return db
             .select()
@@ -42,9 +42,9 @@ export const buildOperationJobServiceDb = (db: ControlDatabase): OperationJobSer
             .orderBy(sql`rowid`),
     findActiveByKind: async (input) => {
         const conditions = [
-            eq(operationJob.kind, input.kind as never),
+            eq(operationJob.kind, input.kind),
             input.resourceKey === undefined ? undefined : eq(operationJob.resourceKey, input.resourceKey),
-            inArray(operationJob.status, ['queued', 'running', 'cancelling'] as never),
+            inArray(operationJob.status, ['queued', 'running', 'cancelling']),
         ].filter((condition) => condition !== undefined)
         const [record] = await db
             .select()
@@ -65,26 +65,20 @@ export const buildOperationJobServiceDb = (db: ControlDatabase): OperationJobSer
     claim: async (id, values) => {
         const [record] = await db
             .update(operationJob)
-            .set(values as never)
+            .set(values)
             .where(and(eq(operationJob.id, id), eq(operationJob.status, 'queued')))
             .returning()
         return record
     },
     update: async (id, values) => {
-        await db
-            .update(operationJob)
-            .set(values as never)
-            .where(eq(operationJob.id, id))
+        await db.update(operationJob).set(values).where(eq(operationJob.id, id))
     },
     listInterrupted: async (workerId) =>
         db
             .select()
             .from(operationJob)
             .where(
-                and(
-                    inArray(operationJob.status, ['running', 'cancelling'] as never),
-                    or(isNull(operationJob.workerId), eq(operationJob.workerId, workerId)),
-                ),
+                and(inArray(operationJob.status, ['running', 'cancelling']), or(isNull(operationJob.workerId), eq(operationJob.workerId, workerId))),
             ),
     listStalled: async (heartbeatBefore) =>
         db
@@ -92,12 +86,12 @@ export const buildOperationJobServiceDb = (db: ControlDatabase): OperationJobSer
             .from(operationJob)
             .where(
                 and(
-                    inArray(operationJob.status, ['running', 'cancelling'] as never),
+                    inArray(operationJob.status, ['running', 'cancelling']),
                     or(isNull(operationJob.heartbeatAt), lt(operationJob.heartbeatAt, heartbeatBefore)),
                 ),
             ),
     deleteFinishedBefore: async (threshold, statuses) => {
-        await db.delete(operationJob).where(and(inArray(operationJob.status, statuses as never), lt(operationJob.finishedAt, threshold)))
+        await db.delete(operationJob).where(and(inArray(operationJob.status, statuses), lt(operationJob.finishedAt, threshold)))
     },
 })
 

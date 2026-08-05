@@ -163,6 +163,8 @@ export const notificationDeliverySchema = z.object({
 })
 
 export type NotificationDeliverJobPayload = z.infer<typeof notificationDeliverJobPayloadSchema>
+export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>
+export type NotificationDeliveryStatus = z.infer<typeof notificationDeliveryStatusSchema>
 export type NotificationDestination = z.infer<typeof notificationDestinationSchema>
 export type NotificationDestinationUpsert = z.infer<typeof notificationDestinationUpsertSchema>
 export type NotificationDelivery = z.infer<typeof notificationDeliverySchema>

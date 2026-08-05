@@ -6,6 +6,7 @@ import {
     operationJobSchema,
     type OperationJob,
     type OperationJobKind,
+    type OperationJobStatus,
 } from '@containers/contracts/operation-job'
 import { createAppError } from '../../../lib/error'
 
@@ -79,7 +80,7 @@ type OperationJobRow = {
     finishedAt: Date | null
     heartbeatAt: Date | null
     id: string
-    kind: string
+    kind: OperationJobKind
     maxAttempts: number
     payload: string
     progressStep: string | null
@@ -87,7 +88,7 @@ type OperationJobRow = {
     result: string | null
     scheduledAt: Date
     startedAt: Date | null
-    status: string
+    status: OperationJobStatus
     updatedAt: Date
 }
 
@@ -104,12 +105,12 @@ type OperationJobInsertRecord = {
     createdAt: Date
     createdBy: string | null
     id: string
-    kind: string
+    kind: OperationJobKind
     maxAttempts: number
     payload: string
     resourceKey: string | null
     scheduledAt: Date
-    status: string
+    status: OperationJobStatus
     updatedAt: Date
 }
 
@@ -117,18 +118,18 @@ type OperationJobServiceDb = {
     findById: (id: string) => Promise<OperationJobRow | undefined>
     insert: (record: OperationJobInsertRecord) => Promise<void>
     insertEvent: (record: OperationJobEventRow) => Promise<void>
-    listByKindsAndStatuses: (input: { kind?: string; status?: string; limit: number }) => Promise<OperationJobRow[]>
+    listByKindsAndStatuses: (input: { kind?: OperationJobKind; status?: OperationJobStatus; limit: number }) => Promise<OperationJobRow[]>
     listEventsByJob: (jobId: string) => Promise<OperationJobEventRow[]>
-    findActiveByKind: (input: { kind: string; resourceKey: string | undefined }) => Promise<OperationJobRow | undefined>
+    findActiveByKind: (input: { kind: OperationJobKind; resourceKey: string | undefined }) => Promise<OperationJobRow | undefined>
     claimNext: (now: Date) => Promise<OperationJobRow | undefined>
     claim: (
         id: string,
-        values: { attempt: number; heartbeatAt: Date; startedAt: Date; status: string; updatedAt: Date; workerId: string },
+        values: { attempt: number; heartbeatAt: Date; startedAt: Date; status: OperationJobStatus; updatedAt: Date; workerId: string },
     ) => Promise<OperationJobRow | undefined>
     update: (id: string, values: Partial<Omit<OperationJobRow, 'id'>> & { updatedAt: Date }) => Promise<void>
     listInterrupted: (workerId: string) => Promise<OperationJobRow[]>
     listStalled: (heartbeatBefore: Date) => Promise<OperationJobRow[]>
-    deleteFinishedBefore: (threshold: Date, statuses: string[]) => Promise<void>
+    deleteFinishedBefore: (threshold: Date, statuses: OperationJobStatus[]) => Promise<void>
 }
 
 type OperationJobServiceDependencies = {

@@ -27,20 +27,16 @@ export const buildDeploymentReleaseServiceDb = (db: ControlDatabase): Deployment
         return record
     },
     insert: async (record) => {
-        await db.insert(deploymentRelease).values(record as never)
+        await db.insert(deploymentRelease).values(record)
     },
     list: async () => db.select().from(deploymentRelease).orderBy(desc(deploymentRelease.createdAt)),
-    listByStatuses: async (statuses) =>
-        db
-            .select()
-            .from(deploymentRelease)
-            .where(inArray(deploymentRelease.status, statuses as never)),
+    listByStatuses: async (statuses) => db.select().from(deploymentRelease).where(inArray(deploymentRelease.status, statuses)),
     findActiveByManifestName: async (manifestName, statuses) => {
         const [record] = await db
             .select({ id: deploymentRelease.id })
             .from(deploymentRelease)
             .innerJoin(deploymentManifest, eq(deploymentRelease.manifestId, deploymentManifest.id))
-            .where(and(eq(deploymentManifest.name, manifestName), inArray(deploymentRelease.status, statuses as never)))
+            .where(and(eq(deploymentManifest.name, manifestName), inArray(deploymentRelease.status, statuses)))
             .limit(1)
         return record
     },
@@ -59,10 +55,7 @@ export const buildDeploymentReleaseServiceDb = (db: ControlDatabase): Deployment
         return record
     },
     update: async (id, values) => {
-        await db
-            .update(deploymentRelease)
-            .set(values as never)
-            .where(eq(deploymentRelease.id, id))
+        await db.update(deploymentRelease).set(values).where(eq(deploymentRelease.id, id))
     },
 })
 

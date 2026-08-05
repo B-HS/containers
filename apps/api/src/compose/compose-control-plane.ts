@@ -29,7 +29,7 @@ export const buildControlPlaneStatusServiceDb = (db: ControlDatabase, sqlite: Da
         const [record] = await db
             .select({ count: sql<number>`count(*)` })
             .from(operationJob)
-            .where(inArray(operationJob.status, statuses as never))
+            .where(inArray(operationJob.status, statuses))
         return record?.count ?? 0
     },
     listMigrations: async (): Promise<AppliedMigrationRecord[]> => {

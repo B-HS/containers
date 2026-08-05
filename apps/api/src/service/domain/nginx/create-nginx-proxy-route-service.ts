@@ -15,8 +15,8 @@ type NginxRouteRow = {
     hostname: string
     id: string
     path: string
-    pathMode: string
-    protocol: string
+    pathMode: NginxProxyRoute['pathMode']
+    protocol: NginxProxyRoute['protocol']
     stripPrefix: boolean
     targetContainer: string
     targetPort: number
@@ -30,7 +30,7 @@ type NginxRouteIdRecord = {
 
 type NginxProxyRouteServiceDb = {
     list: () => Promise<NginxRouteRow[]>
-    findCollision: (hostname: string, path: string, pathMode: string) => Promise<NginxRouteIdRecord | undefined>
+    findCollision: (hostname: string, path: string, pathMode: NginxProxyRoute['pathMode']) => Promise<NginxRouteIdRecord | undefined>
     insert: (record: NginxRouteRow) => Promise<void>
     update: (id: string, record: Omit<NginxRouteRow, 'createdAt' | 'id' | 'updatedAt'> & { updatedAt: Date }) => Promise<void>
     delete: (id: string) => Promise<void>
