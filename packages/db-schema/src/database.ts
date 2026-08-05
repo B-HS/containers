@@ -18,8 +18,22 @@ export const createControlDatabase = ({ filePath, migrationsFolder }: ControlDat
     const db = drizzle({ client: sqlite, schema })
 
     try {
+        sqlite.exec('PRAGMA foreign_keys = OFF')
         migrate(db, { migrationsFolder })
+        sqlite.exec('PRAGMA foreign_keys = ON')
+        const violations = sqlite.query('PRAGMA foreign_key_check').all() as Array<{ parent: string; table: string }>
+        if (violations.length > 0) {
+            const byTable = violations.reduce<Record<string, number>>(
+                (counted, violation) => ({
+                    ...counted,
+                    [`${violation.table}→${violation.parent}`]: (counted[`${violation.table}→${violation.parent}`] ?? 0) + 1,
+                }),
+                {},
+            )
+            console.error(JSON.stringify({ byTable, event: 'control-database.foreign-key.violation', filePath, total: violations.length }))
+        }
     } catch (error) {
+        sqlite.exec('PRAGMA foreign_keys = ON')
         console.error(
             JSON.stringify({
                 event: 'control-database.migrate.failed',
