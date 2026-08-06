@@ -727,7 +727,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 ### P1 — 마찰
 
 - [x] 5. `parse-api-error.ts` 배열 지원 + `onError` 인자 사용 통일 — 검증 issue 배열·`details.rejections` 를 읽고 `parseApiErrorCode` 로 코드를 보존한다. 아티팩트 검사의 raw tar/zod 예외를 `ARCHIVE_INVALID`·`ARCHIVE_METADATA_INVALID` 로 정규화하고 재시도 대상에서 뺐다
-- [ ] 6. 단계 간 CTA 링크 4곳
+- [x] 6. 단계 간 CTA 링크 4곳 — 개요 온보딩 카드(4단계 진행), artifact load 성공 시 태그+컨테이너 만들기, 이미지 행 링크, 컨테이너 생성 후 라우트 화면 프리필
 - [ ] 7. 라우트 수정(`PUT /nginx/routes/:id`) + `pathMode`·`enabled` UI 노출
 - [ ] 8. 배포 관리 라우트 소유권 표시(`managedBy`)
 - [ ] 9. job 진행 폴링·이벤트 타임라인·전역 배지

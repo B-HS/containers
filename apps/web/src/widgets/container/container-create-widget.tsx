@@ -19,6 +19,7 @@ import { Spinner } from '@shared/ui/spinner'
 import { Textarea } from '@shared/ui/textarea'
 import { WidgetSection } from '@shared/common/widget-section'
 import { CONTAINER_RUNTIME_PROFILE } from '@containers/contracts/container-runtime'
+import { useSearchParams } from 'next/navigation'
 import { Link, useRouter } from '../../i18n/navigation'
 
 const splitLines = (value: string) =>
@@ -47,12 +48,14 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) 
     const [writablePaths, setWritablePaths] = useState('')
     const t = useTranslations('Dashboard')
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const requestedImage = searchParams.get('image') ?? ''
     const imageList = useGetImages()
     const infrastructure = useGetInfrastructure()
     const createContainer = useCreateContainer()
     const images = imageList.data ?? []
     const networks = (infrastructure.data?.networks ?? []).filter((candidate) => candidate.driver === 'bridge')
-    const selectedImage = image || images[0]?.repoTags[0] || images[0]?.id || ''
+    const selectedImage = image || requestedImage || images[0]?.repoTags[0] || images[0]?.id || ''
 
     if (!CREATE_ROLES.includes(role)) {
         return null
@@ -91,6 +94,10 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) 
                 onError: (error) => toast.error(error instanceof Error ? error.message : t('containerCreateFailed')),
                 onSuccess: () => {
                     toast.success(t('containerCreated'))
+                    if (port) {
+                        router.push(`/nginx/routes?container=${encodeURIComponent(name)}&port=${encodeURIComponent(port)}`)
+                        return
+                    }
                     router.push('/containers')
                 },
             },

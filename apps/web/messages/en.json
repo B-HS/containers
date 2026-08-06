@@ -781,7 +781,16 @@
         "deploymentStackStatusFailed": "Failed",
         "deploymentStackStatusHealthy": "Healthy",
         "deploymentStackStatusReleasing": "Releasing",
-        "deploymentStackStatusRolledBack": "Rolled back"
+        "deploymentStackStatusRolledBack": "Rolled back",
+        "artifactLoadedTitle": "Image loaded",
+        "artifactCreateContainer": "Create a container from this image",
+        "onboardingTitle": "Getting started",
+        "onboardingDescription": "The remaining steps from upload to domain routing, in order.",
+        "onboardingArtifact": "Upload an image archive",
+        "onboardingContainer": "Create a container",
+        "onboardingRoute": "Connect a domain route",
+        "onboardingStack": "Register a compose stack",
+        "onboardingDone": "Done"
     },
     "Nav": {
         "brand": "Containers",

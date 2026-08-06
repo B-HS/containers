@@ -55,7 +55,7 @@ const operationJobDetailQueryOptions = (jobId: string) =>
 type UseOperationJobPollingParams = {
     failureLabel: string
     onFailed?: (failureCode: string | null) => void | Promise<void>
-    onSucceeded?: () => void | Promise<void>
+    onSucceeded?: (result: Record<string, unknown> | null) => void | Promise<void>
 }
 
 export const useOperationJobPolling = ({ failureLabel, onFailed, onSucceeded }: UseOperationJobPollingParams) => {
@@ -67,13 +67,14 @@ export const useOperationJobPolling = ({ failureLabel, onFailed, onSucceeded }: 
     })
 
     const status = query.data?.status
+    const result = query.data?.result
     const failureCode = status === OPERATION_JOB_STATUS.FAILED ? (query.data?.failureCode ?? null) : undefined
     const isJobActive = jobId !== undefined && status !== undefined && ACTIVE_JOB_STATUSES.includes(status)
 
     useEffect(() => {
-        if (status === OPERATION_JOB_STATUS.SUCCEEDED) void onSucceeded?.()
+        if (status === OPERATION_JOB_STATUS.SUCCEEDED) void onSucceeded?.(result ?? null)
         if (status === OPERATION_JOB_STATUS.FAILED) void onFailed?.(failureCode ?? null)
-    }, [failureCode, onFailed, onSucceeded, status])
+    }, [failureCode, onFailed, onSucceeded, result, status])
 
     const trackJob = (job: OperationJob) => {
         setJobId(job.id)

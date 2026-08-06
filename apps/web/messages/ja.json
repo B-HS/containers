@@ -781,7 +781,16 @@
         "deploymentStackStatusFailed": "失敗",
         "deploymentStackStatusHealthy": "正常",
         "deploymentStackStatusReleasing": "デプロイ中",
-        "deploymentStackStatusRolledBack": "ロールバック"
+        "deploymentStackStatusRolledBack": "ロールバック",
+        "artifactLoadedTitle": "イメージを読み込みました",
+        "artifactCreateContainer": "このイメージでコンテナを作成",
+        "onboardingTitle": "開始ステップ",
+        "onboardingDescription": "アップロードからドメイン接続まで、残りの手順を順に案内します。",
+        "onboardingArtifact": "イメージアーカイブをアップロード",
+        "onboardingContainer": "コンテナを作成",
+        "onboardingRoute": "ドメインルートを接続",
+        "onboardingStack": "compose スタックを登録",
+        "onboardingDone": "完了"
     },
     "Nav": {
         "brand": "Containers",

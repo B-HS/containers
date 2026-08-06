@@ -2,6 +2,7 @@
 
 import type { FC } from 'react'
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import type { NginxProxyRoute } from '@containers/contracts/nginx'
 import { useCreateNginxRoute, useGetNginxRoutes, useRemoveNginxRoute } from '@entities/nginx/nginx.query'
@@ -25,6 +26,7 @@ const SKELETON_ROW_COUNT = 3
 
 export const NginxRouteControlWidget: FC<NginxRouteControlWidgetProps> = ({ labels, role, routableNetworks }) => {
     const [busy, setBusy] = useState<string>()
+    const searchParams = useSearchParams()
     const containerList = useGetContainerList()
     const containers = (containerList.data ?? []).map((container) => ({
         exposedPorts: container.exposedPorts,
@@ -70,6 +72,7 @@ export const NginxRouteControlWidget: FC<NginxRouteControlWidgetProps> = ({ labe
                 <NginxRouteCreateForm
                     busy={busy === 'create'}
                     containers={containers}
+                    defaultTarget={{ container: searchParams.get('container') ?? '', port: searchParams.get('port') ?? '' }}
                     labels={labels}
                     onCreate={(input) => void create(input)}
                     routableNetworks={routableNetworks}

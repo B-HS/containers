@@ -781,7 +781,16 @@
         "deploymentStackStatusFailed": "실패",
         "deploymentStackStatusHealthy": "정상",
         "deploymentStackStatusReleasing": "배포 중",
-        "deploymentStackStatusRolledBack": "되돌림"
+        "deploymentStackStatusRolledBack": "되돌림",
+        "artifactLoadedTitle": "이미지를 불러왔습니다",
+        "artifactCreateContainer": "이 이미지로 컨테이너 만들기",
+        "onboardingTitle": "시작 단계",
+        "onboardingDescription": "업로드부터 도메인 연결까지 남은 단계를 순서대로 안내합니다.",
+        "onboardingArtifact": "이미지 아카이브 업로드",
+        "onboardingContainer": "컨테이너 만들기",
+        "onboardingRoute": "도메인 라우트 연결",
+        "onboardingStack": "compose 스택 등록",
+        "onboardingDone": "완료"
     },
     "Nav": {
         "brand": "Containers",

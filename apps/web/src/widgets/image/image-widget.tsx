@@ -74,6 +74,7 @@ export const ImageWidget: FC<ImageWidgetProps> = ({ role }) => {
                             <TableHead>{t('image')}</TableHead>
                             <TableHead>{t('imageId')}</TableHead>
                             <TableHead className="text-right">{t('size')}</TableHead>
+                            <TableHead className="text-right">{t('containerCreate')}</TableHead>
                             {canRemove ? <TableHead className="text-right">{t('remove')}</TableHead> : null}
                         </TableRow>
                     </TableHeader>
@@ -91,6 +92,11 @@ export const ImageWidget: FC<ImageWidgetProps> = ({ role }) => {
                                         {image.id.replace(/^sha256:/, '').slice(0, SHORT_ID_LENGTH)}
                                     </TableCell>
                                     <TableCell className="text-right text-text-muted">{formatBytes(image.sizeBytes)}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button asChild size="xs" variant="outline">
+                                            <Link href={{ pathname: '/containers/new', query: { image: displayName } }}>{t('containerCreate')}</Link>
+                                        </Button>
+                                    </TableCell>
                                     {canRemove ? (
                                         <TableCell className="text-right">
                                             <ImageRemoveDialog

@@ -19,6 +19,17 @@ import { Spinner } from '@shared/ui/spinner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@shared/ui/table'
 import { WidgetSection } from '@shared/common/widget-section'
 import { ArtifactUploadForm } from '@widgets/artifact/artifact-upload-form'
+import { Link } from '../../i18n/navigation'
+
+const LOADED_IMAGE_PREFIX = 'Loaded image: '
+
+const readLoadedTags = (result: Record<string, unknown> | null) => {
+    const messages = result?.messages
+    if (!Array.isArray(messages)) return []
+    return messages
+        .filter((message): message is string => typeof message === 'string' && message.startsWith(LOADED_IMAGE_PREFIX))
+        .map((message) => message.slice(LOADED_IMAGE_PREFIX.length).trim())
+}
 
 const UPLOAD_ROLES = ['owner', 'admin', 'operator']
 const LOAD_ROLES = ['owner', 'admin']
@@ -30,6 +41,7 @@ type ArtifactWidgetProps = {
 }
 
 export const ArtifactWidget: FC<ArtifactWidgetProps> = ({ role }) => {
+    const [loadedTags, setLoadedTags] = useState<string[]>([])
     const [loadingArtifactId, setLoadingArtifactId] = useState<string>()
     const translations = useTranslations('Dashboard')
     const queryClient = useQueryClient()
@@ -40,13 +52,18 @@ export const ArtifactWidget: FC<ArtifactWidgetProps> = ({ role }) => {
         onFailed: (code) => {
             toast.error(code ?? translations('jobFailedUnknown'))
         },
-        onSucceeded: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY.ARTIFACT.ALL }),
+        onSucceeded: (result) => {
+            setLoadedTags(readLoadedTags(result))
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.ARTIFACT.ALL })
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.IMAGE.ALL })
+        },
     })
 
     const items = artifacts.data ?? []
     const busy = loadArtifact.isPending || isJobActive
 
     const load = (artifactId: string) => {
+        setLoadedTags([])
         setLoadingArtifactId(artifactId)
         loadArtifact.mutate(artifactId, {
             onError: (loadError) => {
@@ -66,6 +83,26 @@ export const ArtifactWidget: FC<ArtifactWidgetProps> = ({ role }) => {
     return (
         <WidgetSection id="artifact-control-title" title={translations('artifactControl')} badge={items.length}>
             {UPLOAD_ROLES.includes(role) ? <ArtifactUploadForm /> : null}
+            {loadedTags.length > 0 ? (
+                <Alert aria-live="polite" className="mx-6">
+                    <AlertTitle>{translations('artifactLoadedTitle')}</AlertTitle>
+                    <AlertDescription>
+                        <div className="grid gap-2">
+                            <span className="font-mono break-all">{loadedTags.join(', ')}</span>
+                            <div className="flex flex-wrap gap-2">
+                                <Button asChild size="xs" variant="outline">
+                                    <Link href={{ pathname: '/containers/new', query: { image: loadedTags[0] ?? '' } }}>
+                                        {translations('artifactCreateContainer')}
+                                    </Link>
+                                </Button>
+                                <Button asChild size="xs" variant="outline">
+                                    <Link href="/images">{translations('imageControl')}</Link>
+                                </Button>
+                            </div>
+                        </div>
+                    </AlertDescription>
+                </Alert>
+            ) : null}
             {failureCode !== undefined ? (
                 <Alert aria-live="polite" variant="destructive" className="mx-6">
                     <AlertTitle>{translations('jobFailedTitle')}</AlertTitle>

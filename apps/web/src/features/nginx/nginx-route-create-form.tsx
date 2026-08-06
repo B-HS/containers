@@ -25,6 +25,7 @@ type RouteTargetCandidate = {
 type NginxRouteCreateFormProps = {
     busy: boolean
     containers: RouteTargetCandidate[]
+    defaultTarget: { container: string; port: string }
     labels: {
         bodySize: string
         container: string
@@ -43,12 +44,12 @@ type NginxRouteCreateFormProps = {
     routableNetworks: string[]
 }
 
-export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, containers, labels, onCreate, routableNetworks }) => {
+export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, containers, defaultTarget, labels, onCreate, routableNetworks }) => {
     const [errors, setErrors] = useState<Record<string, string>>({})
     const [protocol, setProtocol] = useState<NginxRouteInput['protocol']>('http')
     const [stripPrefix, setStripPrefix] = useState(false)
-    const [targetContainer, setTargetContainer] = useState('')
-    const [targetPort, setTargetPort] = useState('')
+    const [targetContainer, setTargetContainer] = useState(defaultTarget.container)
+    const [targetPort, setTargetPort] = useState(defaultTarget.port)
 
     const isReachable = (candidate: RouteTargetCandidate) =>
         candidate.state !== 'running' || candidate.networks.some((network) => routableNetworks.includes(network))
