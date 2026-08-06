@@ -5,8 +5,9 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { AUDIT_RESULTS, AUDIT_TARGET_TYPES } from '@containers/contracts/audit'
 import { AUDIT_DEFAULT_FILTERS, toAuditSearchParams, type AuditFilters } from '@entities/audit/audit.api'
-import { useGetAuditEvents } from '@entities/audit/audit.query'
+import { useGetAuditEvents, useGetAuditIntegrity } from '@entities/audit/audit.query'
 import { AuditEventRow } from '@features/audit-event-row/audit-event-row'
+import { AuditIntegrityNotice } from '@features/audit-integrity-notice/audit-integrity-notice'
 import { Badge } from '@shared/ui/badge'
 import { Button } from '@shared/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@shared/ui/empty'
@@ -29,6 +30,7 @@ export const AuditWidget: FC = () => {
     const [filters, setFilters] = useState<AuditFilters>(AUDIT_DEFAULT_FILTERS)
     const t = useTranslations('Dashboard')
     const eventsQuery = useGetAuditEvents(filters)
+    const integrityQuery = useGetAuditIntegrity()
     const events = eventsQuery.data?.data ?? []
     const pagination = eventsQuery.data?.pagination
     const total = pagination?.total ?? 0
@@ -66,6 +68,15 @@ export const AuditWidget: FC = () => {
 
     return (
         <WidgetSection id="audit-log-title" title={t('auditLog')} badge={total}>
+            {integrityQuery.data !== undefined && (
+                <AuditIntegrityNotice
+                    brokenEntryLabel={t('auditIntegrityBrokenEntry')}
+                    brokenLabel={t('auditIntegrityBroken', { sequence: integrityQuery.data.brokenAt ?? 0 })}
+                    intactLabel={t('auditIntegrityIntact', { checked: integrityQuery.data.checked })}
+                    integrity={integrityQuery.data}
+                    unchainedLabel={t('auditIntegrityUnchained', { count: integrityQuery.data.unchained })}
+                />
+            )}
             <form
                 aria-label={t('auditFilter')}
                 className="grid gap-4 bg-surface-3 p-4 sm:grid-cols-2 xl:grid-cols-4"

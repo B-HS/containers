@@ -1,7 +1,7 @@
 'use client'
 
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import { parseAuditPage, toAuditSearchParams, type AuditFilters } from '@entities/audit/audit.api'
+import { parseAuditIntegrity, parseAuditPage, toAuditSearchParams, type AuditFilters } from '@entities/audit/audit.api'
 import { clientFetch } from '@shared/lib/client-fetch'
 import { QUERY_KEY } from '@shared/lib/query-key'
 
@@ -15,3 +15,11 @@ export const auditQueryOptions = (filters: AuditFilters) => {
 }
 
 export const useGetAuditEvents = (filters: AuditFilters) => useQuery(auditQueryOptions(filters))
+
+export const auditIntegrityQueryOptions = () =>
+    queryOptions({
+        queryKey: QUERY_KEY.AUDIT.INTEGRITY,
+        queryFn: async () => parseAuditIntegrity(await clientFetch('/api/audit/integrity')),
+    })
+
+export const useGetAuditIntegrity = () => useQuery(auditIntegrityQueryOptions())

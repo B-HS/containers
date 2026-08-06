@@ -1,7 +1,11 @@
-import { AUDIT_PAGE_SIZE_DEFAULT, auditEventListSchema, auditPaginationSchema } from '@containers/contracts/audit'
+import { AUDIT_PAGE_SIZE_DEFAULT, auditEventListSchema, auditIntegritySchema, auditPaginationSchema } from '@containers/contracts/audit'
 import { z } from 'zod'
 
 const responseSchema = z.object({ data: auditEventListSchema, pagination: auditPaginationSchema, success: z.literal(true) })
+
+const integrityResponseSchema = z.object({ data: auditIntegritySchema, success: z.literal(true) })
+
+export const parseAuditIntegrity = (payload: unknown) => integrityResponseSchema.parse(payload).data
 
 export type AuditFilters = {
     actorEmail: string

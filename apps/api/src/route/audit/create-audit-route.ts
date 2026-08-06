@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
-import { auditQuerySchema } from '@containers/contracts/audit'
+import { auditIntegritySchema, auditQuerySchema } from '@containers/contracts/audit'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { paginatedResponse, successResponse } from '../../lib/response'
@@ -34,7 +34,7 @@ export const createAuditRoute = ({ auditService, authService }: AuditRouteDepend
             withErrorHandling(async (context: ApiRouteContext) => {
                 await authService.requireRole(context.req.raw.headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.AUDITOR])
                 try {
-                    return context.json(successResponse(await auditService.verifyIntegrity()), 200)
+                    return context.json(successResponse(auditIntegritySchema.parse(await auditService.verifyIntegrity())), 200)
                 } catch (error) {
                     throw toUnavailable(error)
                 }

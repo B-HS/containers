@@ -75,6 +75,15 @@ export const auditEventPageSchema = z.object({
     pagination: auditPaginationSchema,
 })
 
+export const auditIntegritySchema = z.object({
+    anchorSequence: z.number().int().min(0),
+    brokenAt: z.number().int().min(1).nullable(),
+    brokenEntry: z.object({ createdAt: z.iso.datetime(), id: z.string().min(1), operation: z.string().min(1), result: z.string().min(1) }).nullable(),
+    checked: z.number().int().min(0),
+    unchained: z.number().int().min(0),
+})
+
+export type AuditIntegrity = z.infer<typeof auditIntegritySchema>
 export type AuditResult = (typeof AUDIT_RESULTS)[number]
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number]
 export type AuditEvent = z.infer<typeof auditEventSchema>

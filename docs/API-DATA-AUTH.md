@@ -97,6 +97,7 @@ middleware는 Host 문자열만 신뢰하지 않고 Nginx가 내부 network에�
 | `/api/nginx/*` 변경(`config/apply`, routes CUD)                                                               | 불가                        | recent owner·admin                                                               |
 | `/api/traffic/*`                                                                                              | 불가                        | 전 역할(export·health는 owner·admin)                                             |
 | `/api/audit`                                                                                                  | 불가                        | owner·admin·viewer·auditor                                                       |
+| `GET /api/audit/integrity`                                                                                    | 불가                        | owner·admin·auditor                                                              |
 | `/api/api-keys` 조회                                                                                          | 불가                        | owner·admin                                                                      |
 | `/api/api-keys` 생성·폐기                                                                                     | 불가                        | recent owner·admin (`backup:write`·`secret:write` 를 포함해 만들면 recent owner) |
 | `/api/maintenance` 조회 / 변경                                                                                | 불가                        | 전 역할 / recent owner                                                           |
@@ -183,7 +184,9 @@ Better Auth 는 쿠키의 `Secure` 여부를 인스턴스 생성 시 한 번 정
 
 ### 5.5 운영
 
-- `audit_log`: append-only operation record. 실제 컬럼은 id, actorId, authMethod, operation, targetType, targetId, requestId, result, sourceIp, detail, createdAt 이다. user agent·jobId·before/after·duration 전용 컬럼은 없고 필요한 값은 `detail` JSON 에 넣는다
+- `audit_log`: append-only operation record. 실제 컬럼은 id, actorId, authMethod, operation, targetType, targetId, requestId, result, sourceIp, detail, createdAt, sequence, previousHash, entryHash 다. user agent·jobId·before/after·duration 전용 컬럼은 없고 필요한 값은 `detail` JSON 에 넣는다. 뒤 3개는 tamper-evident chain 이며 기능 도입 전 기록은 null 이다(`GET /api/audit/integrity` 가 `unchained` 로 센다)
+- `audit_chain_anchor`: 보존 정리로 지운 구간의 마지막 hash 와 sequence. 정리 이후에도 체인을 이어서 검증한다
+- `login_lockout`: 주소별 로그인 연속 실패와 잠금 해제 시각. 없는 주소도 같은 방식으로 세어 잠금 응답이 계정 유무를 알려주지 않는다
 - `panel_setting`(단일 행), `trusted_proxy`, `maintenance_state` 도 control DB 에 있다
 - `saved_view` 는 미구현이다
 - `system_setting`: typed non-secret setting과 version
