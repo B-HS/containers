@@ -120,6 +120,13 @@ Deployment:      deployment(id, artifactId, containerId, status, createdBy)
                           containerId, containerName, nginxRouteId,
                           nginxConfigSha256, status, failureCode, createdBy,
                           activatedAt, finishedAt)
+                 deployment_stack(id, name, version, manifestIdsJson,
+                          serviceOrderJson, createdBy)  compose 원문은 보관하지
+                          않는다. manifestIdsJson 은 serviceOrderJson 과 같은 순서
+                 deployment_stack_release(id, stackId, releaseIdsJson, status,
+                          failureCode, createdBy, finishedAt)
+                          status ∈ releasing, healthy, failed, rolled-back
+                          스택당 releasing 은 부분 unique index 로 1건만 허용
 Jobs:            operation_job(id, kind, status, payload, result, resourceKey,
                           failureCode, attempt, maxAttempts, createdBy,
                           scheduledAt, ... )  kind ∈ backup.create,
@@ -133,8 +140,12 @@ Jobs:            operation_job(id, kind, status, payload, result, resourceKey,
 compose stack:   manifest route 는 nullable 이다. route=null 이면 내부 서비스라
                  nginx 라우트를 만들지 않고 컨테이너 probe 로만 관찰한다.
                  compose 변환은 패널 label(containers.route.hostname 등)로 라우팅을
-                 받고 privileged·host namespace·docker socket·호스트 bind mount·
-                 평문 environment 를 400 으로 거부한다.
+                 받고 거부 8종(privileged·host namespace·devices·docker socket·
+                 호스트 bind mount·금지 capability·평문 environment·값 없는
+                 environment 키)을 400 으로 막는다. 무시한 키는 응답 ignored 에 남는다.
+                 저장은 POST /api/deployment-stacks 한 트랜잭션(스택 1 + manifest N),
+                 미리보기는 POST /api/deployment-stacks/preview 로 저장하지 않는다.
+                 이미지 태그→digest 맵은 스택당 getImages() 1회로 만든다.
 Nginx routes:    nginx_route(id, hostname, path, pathMode, targetContainer,
                           targetPort, protocol, stripPrefix, timeoutSeconds,
                           bodySizeMegabytes, enabled)
@@ -260,6 +271,9 @@ Deployment:      /api/artifacts/:artifactId/load POST (deployment:write or admin
                  /api/deployment-releases GET | POST (owner recent) |
                  .../:id/rollback POST (owner recent)
                  /api/deployment-manifests/:manifestId/releases POST
+                 /api/deployment-stacks GET/:id GET (deployment:read) |
+                 /api/deployment-stacks/preview POST | /api/deployment-stacks POST
+                 (deployment:write or recent owner·admin)
                  /api/deployment-secrets GET/POST/DELETE (admin recent write)
 Jobs:            /api/jobs GET, /api/jobs/backup-schedule GET,
                  /api/jobs/:id GET, .../events GET, .../cancel POST (owner)

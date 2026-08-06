@@ -6,6 +6,7 @@ import {
     type ComposeRejection,
 } from '@containers/contracts/deployment-stack'
 import { FORBIDDEN_CONTAINER_CAPABILITIES } from '@containers/contracts/container-runtime'
+import type { ImageSummary } from '@containers/contracts/engine-control'
 import { createAppError } from './error'
 
 const SECRET_REFERENCE_PREFIX = 'secret:'
@@ -17,6 +18,8 @@ const INTERNAL_PORT_LABEL = 'containers.internal-port'
 const DOCKER_SOCKET_PATH = '/var/run/docker.sock'
 const HOST_NAMESPACE_KEYS = ['ipc', 'network_mode', 'pid', 'uts'] as const
 const DEFAULT_HEALTH_PATH = '/'
+const IMPLICIT_TAG_SUFFIX = ':latest'
+const UNTAGGED_MARKER = '<none>'
 const SECONDS_PER_MINUTE = 60
 const SECONDS_PER_HOUR = 3_600
 const MILLISECONDS_PER_SECOND = 1_000
@@ -117,7 +120,15 @@ const collectRejections = (service: string, definition: ComposeService): Compose
         }
     }
     for (const entry of parseEnvironmentEntries(definition.environment)) {
-        if (entry.value !== undefined && entry.value.length > 0 && !entry.value.startsWith(SECRET_REFERENCE_PREFIX)) {
+        if (entry.value === undefined || entry.value.length === 0) {
+            rejections.push({
+                detail: `${entry.key} 에 값이 없다. secret:<reference> 형식으로 적는다.`,
+                rule: COMPOSE_REJECTION_RULE.ENVIRONMENT_VALUE_MISSING,
+                service,
+            })
+            continue
+        }
+        if (!entry.value.startsWith(SECRET_REFERENCE_PREFIX)) {
             rejections.push({
                 detail: `${entry.key} 값을 그대로 담을 수 없다. secret:<reference> 형식만 받는다.`,
                 rule: COMPOSE_REJECTION_RULE.PLAINTEXT_ENVIRONMENT,
@@ -177,6 +188,23 @@ const orderServices = (dependencies: Map<string, string[]>) => {
     }
     for (const name of [...dependencies.keys()].sort()) visit(name)
     return ordered
+}
+
+/**
+ * Maps every compose `image` reference form to the local image config digest.
+ * Keys are repo tags, the tag-less form of `:latest` tags, and repo digest references.
+ */
+export const buildImageDigestByReference = (images: ImageSummary[]) => {
+    const byReference = new Map<string, string>()
+    for (const image of images) {
+        for (const tag of image.repoTags) {
+            if (tag.includes(UNTAGGED_MARKER)) continue
+            byReference.set(tag, image.id)
+            if (tag.endsWith(IMPLICIT_TAG_SUFFIX)) byReference.set(tag.slice(0, -IMPLICIT_TAG_SUFFIX.length), image.id)
+        }
+        for (const digestReference of image.repoDigests) byReference.set(digestReference, image.id)
+    }
+    return byReference
 }
 
 export const convertComposeStack = ({ compose, imageDigestByReference, stackName, stackVersion }: ComposeStackConversionInput) => {

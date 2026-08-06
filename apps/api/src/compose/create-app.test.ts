@@ -252,6 +252,18 @@ const createAppTestDependencies = () => ({
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
     },
+    deploymentStackService: {
+        create: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+        get: async () => {
+            throw createAppError('DEPLOYMENT_STACK_NOT_FOUND')
+        },
+        list: async () => [],
+        preview: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+    },
     engineAgentClient: createEngineAgentClientStub(),
     nginxStatusClient: {
         getStatus: async () => ({

@@ -21,6 +21,7 @@ import { composeDeployment } from './compose-deployment'
 import { composeDeploymentManifest } from './compose-deployment-manifest'
 import { composeDeploymentRelease } from './compose-deployment-release'
 import { composeDeploymentSecret } from './compose-deployment-secret'
+import { composeDeploymentStack } from './compose-deployment-stack'
 import { composeHealth } from './compose-health'
 import { composeMaintenance } from './compose-maintenance'
 import { composeNginxProxyRoute } from './compose-nginx'
@@ -139,6 +140,12 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
     })
     const { deploymentService } = composeDeployment({ db, engineAgentClient: clients.engineAgentClient })
     const { deploymentManifestService } = composeDeploymentManifest({
+        db,
+        engineAgentClient: clients.engineAgentClient,
+        protectedHostnames: () => [...env.protectedHostnames, ...panelSettingService.getProtectedHostnames()],
+        protectedNetworks: PROTECTED_NETWORKS,
+    })
+    const { deploymentStackService } = composeDeploymentStack({
         db,
         engineAgentClient: clients.engineAgentClient,
         protectedHostnames: () => [...env.protectedHostnames, ...panelSettingService.getProtectedHostnames()],
@@ -266,6 +273,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         deploymentReleaseService,
         deploymentSecretService,
         deploymentService,
+        deploymentStackService,
         engineAgentClient: clients.engineAgentClient,
         maintenanceService,
         nginxStatusClient: clients.nginxStatusClient,

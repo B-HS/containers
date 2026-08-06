@@ -385,6 +385,7 @@ export type ContainerExecResult = z.infer<typeof containerExecResultSchema>
 export type InteractiveExecTicketRequest = z.infer<typeof interactiveExecTicketRequestSchema>
 export type ContainerWaitRequest = z.infer<typeof containerWaitRequestSchema>
 export type ImagePullRequest = z.infer<typeof imagePullRequestSchema>
+export type ImageSummary = z.infer<typeof imageSummarySchema>
 export type ImageTagRequest = z.infer<typeof imageTagRequestSchema>
 export type ImageRemoveRequest = z.infer<typeof imageRemoveRequestSchema>
 export type PrunePreviewRequest = z.infer<typeof prunePreviewRequestSchema>

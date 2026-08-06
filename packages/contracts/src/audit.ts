@@ -7,6 +7,7 @@ export const AUDIT_TARGET_TYPES = [
     'deployment-manifest',
     'deployment-release',
     'deployment-secret',
+    'deployment-stack',
     'image',
     'invitation',
     'job',

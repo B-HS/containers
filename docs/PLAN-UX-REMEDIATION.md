@@ -44,7 +44,7 @@
 ### P1 — compose 스택 (사용자 확정: 본격 지원)
 
 - [x] **3.1 compose 파싱·변환 계약** — 변환기 테스트 13건. manifest `route` 를 nullable 로 바꿔야 했다(내부 서비스). 결정 기록 [acknowledge/0040](./acknowledge/0040-compose-stack-contract.md)
-- [ ] **3.2 스택 저장·조회 API** — `feat(api): compose 스택 등록과 미리보기를 제공한다`
+- [x] **3.2 스택 저장·조회 API** — `feat(api): compose 스택 등록과 미리보기를 제공한다`. migration `0020`, preview/create/list/get 4개 라우트, 테스트 13건. 값 없는 환경변수 키를 거부로 바꿨다(결정 [0041](./acknowledge/0041-deployment-stack-persistence.md)). **실측은 6.2 에서 한다 — 아직 실제 compose 로 저장해 본 적이 없다**
 - [ ] **3.3 스택 릴리스 오케스트레이션** — `feat(deployment): 스택 단위 순차 배포와 롤백을 구현한다`
 - [ ] **3.4 스택 웹 화면** — `feat(web): compose 업로드와 스택 배포 화면을 추가한다`
 
@@ -119,13 +119,13 @@
 
 ### 1.3 job 실패 표면화
 
-**문제.** `apps/web/src/entities/job/job.query.ts:49-52` 가 `status !== SUCCEEDED` 면 early return 한다. `FAILED` 분기가 없어서, 업로드 finalize 나 이미지 load 가 실패해도 **직전 성공 토스트만 남고 스피너가 조용히 사라진다.** API 는 실패를 명확히 기록한다(`create-job-handlers.ts` 의 `ARTIFACT_DIGEST_MISMATCH`·`UPLOAD_INCOMPLETE`).
+**문제(수정 전 기준).** `apps/web/src/entities/job/job.query.ts` 의 폴링 훅이 `status !== SUCCEEDED` 면 early return 했다. `FAILED` 분기가 없어서, 업로드 finalize 나 이미지 load 가 실패해도 **직전 성공 토스트만 남고 스피너가 조용히 사라진다.** API 는 실패를 명확히 기록한다(`create-job-handlers.ts` 의 `ARTIFACT_DIGEST_MISMATCH`·`UPLOAD_INCOMPLETE`).
 
 부수 문제: `refetchInterval` 이 상수라 **종료된 job 도 1초마다 무한 폴링**한다.
 
 **할 일.**
 
-- `job.query.ts` — `onFailed`/`onSettled` 콜백 추가, `failureCode`·`status` 반환, `refetchInterval` 을 함수형으로 바꿔 활성 상태에서만 폴링.
+- `job.query.ts` — `onFailed`/`onSucceeded` 콜백, `failureCode`·`status` 반환, `refetchInterval` 을 함수형으로 바꿔 활성 상태에서만 폴링. (구현된 이름은 `onSucceeded` 다 — 계획서 초안의 `onSettled` 가 아니다)
 - 소비 위젯 `artifact-widget.tsx`·`artifact-upload-form.tsx` — 실패 토스트 + 인라인 배너, 진행률 초기화.
 
 **완료 판정.** 일부러 sha256 이 어긋난 업로드를 finalize 하면 화면에 실패와 코드가 뜬다. 종료 후 네트워크 탭에 job 폴링이 멈춘다.
@@ -220,13 +220,13 @@ release:     failureCode=DEPLOYMENT_HEALTHCHECK_FAILED, containerName=demo-a-1.0
 **설계.**
 
 1. `POST /api/deployment-stacks/preview` — compose YAML 텍스트(크기 상한)를 받아 파싱하고 **변환 결과를 미리 보여준다.** 저장하지 않는다.
-    - 지원: `services.*.image`, `command`, `entrypoint`, `environment`(키만, 값은 secret 참조 요구), `ports`(컨테이너 포트 추출), `volumes`(named volume 만), `depends_on`, `healthcheck`, `restart`, `networks`(허용 목록 내), `deploy.resources.limits`
-    - 무시: 로컬 개발 전용 키(`build`, `develop`, `profiles`, `env_file` 등) — **무시 목록을 응답에 명시**한다
+    - 지원: `services.*.image`, `command`, `entrypoint`, `environment`(`secret:<reference>` 값만 — 3.1 결과: 값 없는 키는 현재 조용히 버려진다), `ports`(컨테이너 포트만 추출), `volumes`(named volume 만), `depends_on`, `healthcheck`(타이밍만), `restart`, `deploy.resources.limits`
+    - 무시: 로컬 개발 전용 키(`build`·`develop`·`profiles`·`env_file` 등)와 `networks`(스택 서비스는 배포 네트워크에 함께 붙는다) — **무시 목록을 응답에 명시**한다
     - 거부: `privileged`, `pid`/`ipc`/`uts`/`network_mode: host`, `cap_add` 거부목록, 호스트 bind mount, docker socket — **조용히 무시하지 않고 400 으로 거부**한다
 2. `POST /api/deployment-stacks` — 미리보기와 같은 변환을 수행하고 `deployment_stack` + manifest N개를 한 트랜잭션으로 저장한다.
 3. `POST /api/deployment-stacks/{id}/releases` — `depends_on` 위상 정렬 순서로 서비스별 릴리스를 수행하고, 하나라도 실패하면 **이미 전환된 서비스를 역순으로 롤백**한다.
 
-**DB.** `deployment_stack`(id, name, version, composeSource, createdBy, createdAt) + `deployment_manifest.stackId`(nullable, 기존 단일 manifest 와 공존) + `deployment_stack_release`(스택 릴리스 묶음). 기존 단일 manifest 흐름을 깨지 않는다.
+**DB.** 3.1 에서 확정한 계약이 정본이다 — `deploymentStackSchema` 는 `manifestIds: uuid[]` + `serviceOrder: string[]` 를 갖는 **정참조**이고 `composeSource` 필드가 없다. 따라서 `deployment_manifest.stackId` 역참조 안은 폐기했다. 3.2 에서 만든 것: `deployment_stack`(id·name·version·manifestIdsJson·serviceOrderJson·createdBy·createdAt·updatedAt) + `deployment_stack_release`(스택 릴리스 묶음, `status='releasing'` 부분 unique index 로 스택당 1건 잠금), migration `0020`. **compose 원문은 보관하지 않기로 확정했다** → [acknowledge/0041](./acknowledge/0041-deployment-stack-persistence.md). 기존 단일 manifest 흐름은 그대로다.
 
 **주의.**
 

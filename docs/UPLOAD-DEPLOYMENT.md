@@ -174,3 +174,18 @@ manifest 에 `runtime` 블록이 있다(`profile`·`capabilities`·`writablePath
 이미 저장된 manifest 는 migration `0018_manifest_runtime` 의 기본값 `hardened` 로 남아 동작이 바뀌지 않는다. 상세는 [acknowledge/0037](./acknowledge/0037-container-runtime-profile.md).
 
 **아티팩트는 이미지 아카이브만 받는다.** 정적 파일을 올려 호스트 경로로 마운트하는 방식은 열지 않는다 — 호스트 bind mount 는 컨테이너 탈출 경로이기 때문이다. 정적 파일은 이미지에 구워 올린다.
+
+## compose 스택 (2026-08-06)
+
+§1 표의 "Compose bundle" 은 초기 구상이다. **실제 구현은 compose 파일을 아티팩트로 올리지 않는다.** 이미지는 기존 업로드 경로로 먼저 올려 두고, compose 원문은 API 본문(텍스트, 256KiB 상한)으로 보낸다.
+
+| 엔드포인트                            | 하는 일                                                                     |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| `POST /api/deployment-stacks/preview` | 변환 결과·의존 순서·무시한 키를 돌려준다. **아무것도 저장하지 않는다**      |
+| `POST /api/deployment-stacks`         | 같은 변환을 수행하고 스택 1건 + manifest N건을 **한 트랜잭션**으로 저장한다 |
+
+- 이미지 태그는 로컬 이미지의 config digest 로 해석한다. 태그→digest 맵은 **스택당 `getImages()` 1회**로 만들고, 태그·`:latest` 생략형·`repo@sha256:` 참조를 키로 넣는다. 맵에 없는 태그는 `DEPLOYMENT_IMAGE_DIGEST_NOT_FOUND` 다.
+- manifest 이름은 `<스택>-<서비스>` 이고 버전은 스택 버전을 그대로 쓴다. 같은 이름·버전 manifest 가 이미 있으면 저장하지 않고 409 다.
+- 저장은 `deployment_stack.manifestIdsJson` 을 `serviceOrderJson` 과 같은 순서로 남긴다. 3.3 의 순차 배포·역순 롤백이 이 순서를 쓴다.
+- compose 원문은 보관하지 않는다. 저장 정본은 변환된 manifest 다 → [acknowledge/0041](./acknowledge/0041-deployment-stack-persistence.md).
+- 거부 규칙과 label 계약은 [acknowledge/0040](./acknowledge/0040-compose-stack-contract.md) 이 정본이다.

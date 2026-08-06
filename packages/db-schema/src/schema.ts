@@ -316,6 +316,52 @@ export const deploymentRelease = sqliteTable(
     ],
 )
 
+export const deploymentStack = sqliteTable(
+    'deployment_stack',
+    {
+        id: text('id').primaryKey(),
+        name: text('name').notNull(),
+        version: text('version').notNull(),
+        manifestIdsJson: text('manifest_ids_json').notNull(),
+        serviceOrderJson: text('service_order_json').notNull(),
+        createdBy: text('created_by')
+            .notNull()
+            .references(() => user.id, { onDelete: 'restrict' }),
+        createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+        updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    },
+    (table) => [
+        uniqueIndex('deployment_stack_name_version_unique').on(table.name, table.version),
+        index('deployment_stack_created_at_idx').on(table.createdAt),
+    ],
+)
+
+export const deploymentStackRelease = sqliteTable(
+    'deployment_stack_release',
+    {
+        id: text('id').primaryKey(),
+        stackId: text('stack_id')
+            .notNull()
+            .references(() => deploymentStack.id, { onDelete: 'restrict' }),
+        releaseIdsJson: text('release_ids_json').notNull(),
+        status: text('status', { enum: ['releasing', 'healthy', 'failed', 'rolled-back'] }).notNull(),
+        failureCode: text('failure_code'),
+        createdBy: text('created_by')
+            .notNull()
+            .references(() => user.id, { onDelete: 'restrict' }),
+        createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+        updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+        finishedAt: integer('finished_at', { mode: 'timestamp' }),
+    },
+    (table) => [
+        uniqueIndex('deployment_stack_release_active_unique')
+            .on(table.stackId)
+            .where(sql`${table.status} = 'releasing'`),
+        index('deployment_stack_release_stack_id_idx').on(table.stackId),
+        index('deployment_stack_release_created_at_idx').on(table.createdAt),
+    ],
+)
+
 export const operationJob = sqliteTable(
     'operation_job',
     {
@@ -484,6 +530,8 @@ export const schema = {
     deploymentManifest,
     deploymentRelease,
     deploymentSecret,
+    deploymentStack,
+    deploymentStackRelease,
     invitation,
     maintenanceState,
     panelSetting,

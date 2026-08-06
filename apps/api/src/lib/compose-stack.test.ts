@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { convertComposeStack } from './compose-stack'
+import { composeRejectionListSchema } from '@containers/contracts/deployment-stack'
+import { buildImageDigestByReference, convertComposeStack } from './compose-stack'
 import { isAppError } from './error'
 
 const IMAGE_DIGEST = `sha256:${'a'.repeat(64)}`
@@ -18,6 +19,15 @@ const captureCode = (execute: () => unknown) => {
         return null
     } catch (error) {
         return isAppError(error) ? error.code : 'UNKNOWN'
+    }
+}
+
+const captureRejections = (execute: () => unknown) => {
+    try {
+        execute()
+        return []
+    } catch (error) {
+        return isAppError(error) ? composeRejectionListSchema.parse(error.details?.rejections) : []
     }
 }
 
@@ -205,5 +215,49 @@ services:
         expect(captureCode(() => convert('services:\n  app:\n    image: app:1.0.0\n    expose: ["8080"]\n    command: npm start\n'))).toBe(
             'DEPLOYMENT_STACK_SHELL_FORM_UNSUPPORTED',
         )
+    })
+
+    test('값 없는 환경변수 키를 어느 서비스의 어느 키인지 밝혀 거부한다', () => {
+        const rejections = captureRejections(() =>
+            convert(`
+services:
+  app:
+    image: app:1.0.0
+    expose: ["8080"]
+    environment:
+      - LOG_LEVEL
+      - EMPTY_VALUE=
+`),
+        )
+
+        expect(rejections).toEqual([
+            { detail: 'LOG_LEVEL 에 값이 없다. secret:<reference> 형식으로 적는다.', rule: 'environment-value-missing', service: 'app' },
+            { detail: 'EMPTY_VALUE 에 값이 없다. secret:<reference> 형식으로 적는다.', rule: 'environment-value-missing', service: 'app' },
+        ])
+    })
+})
+
+describe('이미지 태그 digest 맵', () => {
+    const image = {
+        createdAt: '2026-08-06T00:00:00.000Z',
+        id: IMAGE_DIGEST,
+        repoDigests: [`app@${OTHER_DIGEST}`],
+        repoTags: ['app:1.0.0', 'app:latest', '<none>:<none>'],
+        sharedSizeBytes: 0,
+        sizeBytes: 1,
+    }
+
+    test('태그와 태그 생략형과 digest 참조를 모두 키로 만든다', () => {
+        const byReference = buildImageDigestByReference([image])
+
+        expect(byReference.get('app:1.0.0')).toBe(IMAGE_DIGEST)
+        expect(byReference.get('app:latest')).toBe(IMAGE_DIGEST)
+        expect(byReference.get('app')).toBe(IMAGE_DIGEST)
+        expect(byReference.get(`app@${OTHER_DIGEST}`)).toBe(IMAGE_DIGEST)
+    })
+
+    test('태그를 잃은 이미지는 키로 만들지 않는다', () => {
+        expect(buildImageDigestByReference([image]).has('<none>:<none>')).toBe(false)
+        expect(buildImageDigestByReference([{ ...image, repoDigests: [], repoTags: [] }]).size).toBe(0)
     })
 })

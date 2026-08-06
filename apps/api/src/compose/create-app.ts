@@ -16,6 +16,7 @@ import { createInteractiveExecProxyRoute } from '../route/control/create-interac
 import { createDeploymentManifestRoute } from '../route/deployment/create-deployment-manifest-route'
 import { createDeploymentReleaseRoute } from '../route/deployment/create-deployment-release-route'
 import { createDeploymentSecretRoute } from '../route/deployment/create-deployment-secret-route'
+import { createDeploymentStackRoute } from '../route/deployment/create-deployment-stack-route'
 import { createDeploymentRoute } from '../route/deployment/create-deployment-route'
 import { createEngineRoute } from '../route/engine/create-engine-route'
 import { createEngineStreamProxyRoute } from '../route/stream/create-engine-stream-proxy-route'
@@ -40,6 +41,7 @@ import type { DeploymentService } from '../service/domain/deployment/create-depl
 import type { DeploymentManifestService } from '../service/domain/deployment/create-deployment-manifest-service'
 import type { DeploymentReleaseService } from '../service/domain/deployment/create-deployment-release-service'
 import type { DeploymentSecretService } from '../service/domain/deployment/create-deployment-secret-service'
+import type { DeploymentStackService } from '../service/domain/deployment/create-deployment-stack-service'
 import type { SecretRotationService } from '../service/domain/deployment/create-secret-rotation-service'
 import { createEngineService } from '../service/domain/engine/create-engine-service'
 import { createHealthService } from '../service/domain/health/create-health-service'
@@ -80,6 +82,7 @@ type AppDependencies = {
     deploymentReleaseService: Pick<DeploymentReleaseService, 'create' | 'get' | 'list' | 'prepareRollback'>
     deploymentSecretService: Pick<DeploymentSecretService, 'list' | 'remove' | 'resolve' | 'upsert'>
     deploymentService: Pick<DeploymentService, 'getLoaded'>
+    deploymentStackService: DeploymentStackService
     engineAgentClient: EngineAgentClient
     nginxStatusClient: NginxStatusClient
     panelSettingService: Pick<PanelSettingService, 'get' | 'update'>
@@ -111,6 +114,7 @@ export const createApp = ({
     deploymentReleaseService,
     deploymentSecretService,
     deploymentService,
+    deploymentStackService,
     engineAgentClient,
     maintenanceService,
     nginxStatusClient,
@@ -145,6 +149,7 @@ export const createApp = ({
     const uploadRoute = createUploadRoute({ apiKeyService, auditService, authService, operationJobService, uploadService })
     const deploymentRoute = createDeploymentRoute({ apiKeyService, auditService, authService, deploymentService, operationJobService })
     const deploymentManifestRoute = createDeploymentManifestRoute({ apiKeyService, auditService, authService, deploymentManifestService })
+    const deploymentStackRoute = createDeploymentStackRoute({ apiKeyService, auditService, authService, deploymentStackService })
     const deploymentReleaseRoute = createDeploymentReleaseRoute({
         apiKeyService,
         auditService,
@@ -234,6 +239,7 @@ export const createApp = ({
         .route('/api', uploadRoute)
         .route('/api', deploymentRoute)
         .route('/api', deploymentManifestRoute)
+        .route('/api', deploymentStackRoute)
         .route('/api', deploymentReleaseRoute)
         .route('/api', deploymentSecretRoute)
         .route('/api', apiKeyRoute)

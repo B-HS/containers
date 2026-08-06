@@ -7,6 +7,7 @@ export const COMPOSE_SERVICE_MAX_COUNT = 32
 export const COMPOSE_REJECTION_RULE = {
     DEVICE_MAPPING: 'device-mapping',
     DOCKER_SOCKET: 'docker-socket',
+    ENVIRONMENT_VALUE_MISSING: 'environment-value-missing',
     FORBIDDEN_CAPABILITY: 'forbidden-capability',
     HOST_BIND_MOUNT: 'host-bind-mount',
     HOST_NAMESPACE: 'host-namespace',
@@ -17,6 +18,7 @@ export const COMPOSE_REJECTION_RULE = {
 export const composeRejectionRuleSchema = z.enum([
     COMPOSE_REJECTION_RULE.DEVICE_MAPPING,
     COMPOSE_REJECTION_RULE.DOCKER_SOCKET,
+    COMPOSE_REJECTION_RULE.ENVIRONMENT_VALUE_MISSING,
     COMPOSE_REJECTION_RULE.FORBIDDEN_CAPABILITY,
     COMPOSE_REJECTION_RULE.HOST_BIND_MOUNT,
     COMPOSE_REJECTION_RULE.HOST_NAMESPACE,
@@ -29,6 +31,8 @@ export const composeRejectionSchema = z.object({
     rule: composeRejectionRuleSchema,
     service: z.string(),
 })
+
+export const composeRejectionListSchema = z.array(composeRejectionSchema)
 
 export const composeIgnoredKeySchema = z.object({
     key: z.string(),

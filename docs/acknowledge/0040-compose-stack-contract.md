@@ -52,11 +52,29 @@ compose `healthcheck` 는 **명령**이고 패널 health check 는 **HTTP 경로
 
 ## 5. 이름 충돌
 
-manifest `name` 은 사실상 전역 유일 키다(`findByIdentity(name)`). 스택마다 `web`·`api` 같은 이름을 쓰면 서로 충돌한다. 그래서 manifest 이름을 **`<스택이름>-<서비스이름>`** 으로 만든다. 스택 이름과 서비스 이름 모두 `deploymentNameSchema` 를 만족해야 한다.
+manifest `name` 은 사실상 전역 유일 키다(`findByIdentity(name)`). 스택마다 `web`·`api` 같은 이름을 쓰면 서로 충돌한다. 그래서 manifest 이름을 **`<스택이름>-<서비스이름>`** 으로 만든다.
+
+검증은 **결합된 문자열 하나에만** 걸린다 — `deploymentNameSchema`(`^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$`, 최대 63자). 그래서 서비스 이름 단독으로는 무효인 값(`1db`)도 스택 이름과 붙어 규칙을 만족하면 통과하고, 각각 유효해도 합쳐서 63자를 넘으면 거부된다.
+
+## 5.1 상한과 에러 코드
+
+- `COMPOSE_SOURCE_MAX_BYTES` 262,144(256KiB), `COMPOSE_SERVICE_MAX_COUNT` 32 (`packages/contracts/src/deployment-stack.ts`).
+- 에러 코드는 `DEPLOYMENT_STACK_*` 14개를 3파일에 등록해 뒀다. 3.1 에서 실제로 던지는 것은 `PARSE_FAILED`·`SERVICES_MISSING`·`SERVICE_LIMIT`·`REJECTED`·`DEPENDENCY_CYCLE`·`DEPENDENCY_MISSING`·`IMAGE_MISSING`·`PORT_MISSING`·`SHELL_FORM_UNSUPPORTED`(전부 400)이고, 나머지 `NOT_FOUND`(404)·`VERSION_EXISTS`(409)·`RELEASE_IN_PROGRESS`(409)·`RELEASE_NOT_FOUND`(404)·`CREATE_FAILED`(400)는 3.2·3.3 용으로 미리 잡아 둔 것이다.
+- 스택 릴리스 상태 계약도 이미 고정돼 있다: `DEPLOYMENT_STACK_RELEASE_STATUS` 4종(`releasing`·`healthy`·`failed`·`rolled-back`)과 `deploymentStackReleaseSchema`.
+- 이미지는 변환기가 직접 조회하지 않는다. `imageDigestByReference: Map<태그, digest>` 를 주입받고, 못 찾으면 `DEPLOYMENT_IMAGE_DIGEST_NOT_FOUND` 를 던진다. 이 맵을 채우는 것은 3.2 의 몫이다.
+
+## 5.2 KNOWN ISSUE — 구현이 문서 원칙과 어긋나는 지점
+
+3.1 구현을 검증하다 찾은 것이다. **코드는 이번 범위에서 고치지 않았고 3.2 에서 정리한다.**
+
+- ~~**값 없는 환경변수 키가 조용히 사라진다.**~~ **3.2 에서 해소했다.** 값이 없거나 빈 항목은 `environment-value-missing` rule 로 거부한다(거부 규칙이 7종 → 8종). 어느 서비스의 어느 키인지 `details.rejections` 에 실린다 → [0041](./0041-deployment-stack-persistence.md). `environmentKeys` 가 compose 경로에서 항상 빈 배열인 것은 이제 버그가 아니라 계약이다 — 모든 환경변수가 secret 참조여야 하기 때문이다.
+- **`internal-port` 결정은 3단계다** — label → `expose` → `ports` 의 컨테이너 포트. §3 표는 2단계까지만 적었다.
+- **multi-document YAML 은 첫 문서만 읽는다.**
+- **`volumes` long syntax(객체형)는 조용히 무시된다.** 문자열 `name:path[:ro]` 만 파싱한다.
 
 ## 6. 남은 것
 
-- 3.2 저장·조회 API(`deployment_stack` 테이블, preview/create 라우트)
-- 3.3 스택 릴리스 오케스트레이션(순차 배포, 실패 시 역순 롤백, 스택 단위 동시성 잠금)
+- ~~3.2 저장·조회 API~~ 완료 → [0041](./0041-deployment-stack-persistence.md)
+- 3.3 스택 릴리스 오케스트레이션(순차 배포, 실패 시 역순 롤백, 스택 단위 동시성 잠금 — `deployment_stack_release` 의 부분 unique index 가 DB 쪽 잠금을 이미 강제한다)
 - 3.4 웹 화면(compose 업로드·미리보기·스택 배포)
 - manifest 폼은 여전히 라우트를 필수로 입력받는다. 내부 서비스를 단일 manifest 로 만들 UI 는 4.7 에서 연다.

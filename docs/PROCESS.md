@@ -766,3 +766,29 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 ### 오탐 기록
 
 - "관리 plane 컨테이너가 라우트 대상 목록에 노출" — 반증 검증을 통과했으나 실제로는 engine-agent 가 이미 필터한다. 실 API 응답으로 확인.
+
+## 작업: 3.2 스택 저장·조회 API (2026-08-06)
+
+계획 정본은 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) §3.x, 계약 정본은 [acknowledge/0040](./acknowledge/0040-compose-stack-contract.md) 이다. 선행(3.1 계약·변환기·테스트 13건)은 이미 있다.
+
+### 착수 전 확정한 것 (사용자 확인 2026-08-06)
+
+- **값 없는 환경변수 키는 유효성 검사 실패다.** 무시도 자동 이관도 아니다. 기존 `details.rejections` 경로에 rule 을 하나 더 두어 어느 서비스의 어느 키인지 화면에 그대로 드러낸다. → ADR 0041
+- **compose 원문은 보관하지 않는다.** 저장 정본은 변환된 manifest 다. `deploymentStackSchema` 에 `composeSource` 가 없는 현재 계약을 그대로 유지한다.
+- **커밋은 수동이다.** 논리 단위가 끝나면 제안만 하고 사용자의 지시로 커밋한다.
+
+### 체크리스트
+
+- [x] a. 값 없는 환경변수 키 거부 — rule `environment-value-missing` 추가(거부 7종 → 8종), 변환기·테스트 반영
+- [x] b. `deployment_stack`·`deployment_stack_release` 스키마 추가 → `generate` 로 migration `0020_clumsy_ezekiel`
+- [x] c. 스택 서비스 + `*ServiceDb` — `insertStack` 한 트랜잭션. manifest row·정책 검사는 `deployment-manifest-row.ts` 로 뽑아 manifest 서비스와 공유
+- [x] d. 태그→digest 맵 — `buildImageDigestByReference`, 스택당 `getImages()` 1회(테스트로 호출 횟수 확인)
+- [x] e. preview·create·list·get 4개 라우트
+- [x] f. 권한 — manifest 라우트와 동일(read 전 역할 / write 는 `deployment:write` 또는 owner·admin 15분)
+- [x] g. 테스트 13건(변환기 3·서비스 6·라우트 4), `llm.txt`·`API-DATA-AUTH.md`·`UPLOAD-DEPLOYMENT.md` 갱신
+- [x] h. 검증 — typecheck 8/8, lint 0, test 467+24, format:check, build 8/8
+- [ ] i. 실측 — 2서비스 compose preview·저장. **미완. 6.2 에서 스택 배포와 함께 한다**
+
+### 완료 판정
+
+2서비스 compose 를 preview 하면 manifest 2개와 무시 목록이 나오고, 저장하면 스택 1건 + manifest 2건이 한 번에 생긴다. 값 없는 환경변수 키가 있으면 저장·미리보기 모두 400 이고 응답에 해당 서비스·키가 들어 있다.
