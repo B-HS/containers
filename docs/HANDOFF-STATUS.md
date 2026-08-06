@@ -293,7 +293,7 @@ Docker Compose 명령은 desktop sandbox에서 권한 승인이 필요할 수 �
 2. restore는 두 DB에 대한 보상 복구이며 분산 원자 transaction이 아니다. (2026-08-01부터 maintenance drain 하에 durable job 으로 실행되어 mutation interleave 는 차단된다)
 3. (해소 2026-08-01) backup scheduler 성공·실패·다음 실행 시각이 `GET /api/jobs/backup-schedule` 와 패널 작업 큐 위젯에 노출된다. backup 실패 alert는 0022의 durable notification job 으로 연동 완료다.
 4. schema migration 간 restore가 지원되지 않는다.
-5. **오프박스 백업이 없다(잔여 위험 1위).** 백업은 원본과 같은 호스트의 `containers_backups` 볼륨에만 있어 디스크 고장·볼륨 삭제면 데이터와 함께 사라진다. R2 client-side 암호화 backup 도 미구현이다. 2026-08-06 사용자 판단으로 보류(둘 곳이 없음) — 저장 위치가 생기면 백업 job 성공 뒤 사본을 하나 더 만드는 작은 작업이다.
+5. **오프박스 백업이 없다(잔여 위험 1위).** 백업은 원본과 같은 호스트의 `containers_backups` 볼륨에만 있어 디스크 고장·볼륨 삭제면 데이터와 함께 사라진다. R2 client-side 암호화 backup 도 미구현이다. 2026-08-06 사용자가 **하지 않기로 결정**했다(둘 곳이 없음). 대가를 알고 감수하는 위험이며, 저장 위치가 생기면 그때 붙인다.
 6. internal credential 무중단 rotation이 없다. **API key 는 2026-08-06 부터 만료가 필수(1~365일)** 라 영구 자격증명은 만들 수 없지만, 교체는 여전히 수동이다.
 7. (해소 2026-08-06) audit hash chain 이 `audit_log.sequence`·`previous_hash`·`entry_hash` 로 구현됐고 `GET /api/audit/integrity` 와 감사 화면이 검증 결과를 보여 준다. 외부 checkpoint 는 하루 1회 `system.report` 알림이 head 해시를 호스트 밖으로 내보내 대신한다 — **알림 대상을 등록하고 구독해야 실제로 동작한다.** server-side filter 는 있고 export 는 여전히 없다.
 8. scanner, SBOM, vulnerability policy와 owner exception이 없다. 배포하는 이미지의 CVE 는 제품 밖 습관(베이스 이미지 재pull·재빌드)에 달려 있다.

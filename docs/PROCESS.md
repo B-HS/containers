@@ -884,3 +884,11 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] **README AI 절 갱신** — `containers-deploy.sh` 와 CI 3종 래퍼 구조를 반영
 - [x] **AI 참조 정합성 강화** — `llm-reference.test.ts` 에 검사 2건 추가: 모든 API 자원·동작이 `llm.txt` 에 있는지, 모든 DB 테이블이 있는지. `/api/deployment-stacks` 를 일부러 깨뜨려 실제로 실패하는 것을 확인했다
 - [x] **문서 정합** — `docs/README.md` 진입점을 HANDOFF 로 정정하고 `bug/`·`llm.txt` 항목 추가, acknowledge 최신 번호 갱신. HANDOFF §6(미해결)·§7(환경)·§8(다음 TODO)·§9(문서 지도)를 현재 상태로 다시 썼다. HANDOFF-STATUS 의 P0·P1 한계를 해소분 반영해 갱신했다. 고아 참조 bug 문서에 해소 절을 붙였다
+
+### 후속: 남은 확인 사항 종료 (2026-08-06)
+
+HANDOFF §6 을 "미해결 질문"에서 "결정 완료"로 바꿨다. 사용자 확인을 기다리는 항목은 없다.
+
+- `containers-dr-*` 이미지 5개(약 770MB) 삭제. 쓰는 컨테이너가 없고 드릴 기록은 문서에 남는다. 삭제 후 스택 5개 healthy·readyz 200 확인
+- 오프박스 백업·Cloudflare Access·`CF-Connecting-IP` 는 **하지 않기로 한 결정**으로 기록했다. 보류가 아니라 대가를 알고 감수하는 선택이다
+- HSTS `preload` 는 비가역성 때문에 넣지 않는 것으로 확정했다
