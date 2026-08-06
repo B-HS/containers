@@ -631,6 +631,7 @@
         "notificationEventDeployFailed": "デプロイ失敗",
         "notificationEventJobFailed": "ジョブ失敗",
         "notificationEventRestoreFailed": "リストア失敗",
+        "notificationEventSystemReport": "運用定期レポート",
         "notificationEvents": "購読イベント",
         "notificationFailed": "通知先の操作に失敗しました。",
         "notificationLastDelivery": "最終送信",

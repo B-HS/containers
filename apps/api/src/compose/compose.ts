@@ -28,6 +28,7 @@ import { composeMaintenance } from './compose-maintenance'
 import { composeNginxProxyRoute } from './compose-nginx'
 import { composeNotificationDelivery } from './compose-notification-delivery'
 import { composeNotificationDestination } from './compose-notification'
+import { composeOperationsReport } from './compose-operations-report'
 import { composeOperationJob } from './compose-operation-job'
 import { composePanelSetting } from './compose-panel-setting'
 import { composeTrustedProxy } from './compose-trusted-proxy'
@@ -138,6 +139,13 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         auth,
         db,
         invitationBaseUrl: () => panelSettingService.getPublicOrigin() ?? env.invitationBaseUrl,
+    })
+    const { operationsReportService } = composeOperationsReport({
+        db,
+        listArtifacts: () => uploadService.listArtifacts(),
+        listBackups: () => backupService.list(),
+        listContainers: () => clients.engineAgentClient.getContainers(),
+        verifyAuditIntegrity: () => auditService.verifyIntegrity(),
     })
     const { deploymentService } = composeDeployment({ db, engineAgentClient: clients.engineAgentClient })
     const { deploymentManifestService } = composeDeploymentManifest({
@@ -266,6 +274,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
 
     return {
         apiKeyService,
+        operationsReportService,
         auth,
         authService,
         auditService,

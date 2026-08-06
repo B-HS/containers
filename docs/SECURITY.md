@@ -145,7 +145,7 @@ blue-green 릴리스가 실패하면 원인이 컨테이너 안에만 남고 패
 - audit row는 append-only이며 애플리케이션에서 update·delete endpoint를 만들지 않는다.
 - actor, authMethod, operation, targetType·targetId, requestId, result, source IP, `detail` JSON, createdAt 을 기록한다. user agent·jobId·before/after·duration 전용 컬럼은 없고 필요한 값만 `detail` 에 넣는다.
 - secret, cookie, API key, full env, exec stdin, raw terminal output은 기록하지 않는다.
-- **각 row 는 이전 row 의 hash 를 포함하는 tamper-evident chain 을 이룬다(2026-08-06 구현).** `audit_log.sequence`·`previous_hash`·`entry_hash` 를 한 트랜잭션에서 채우고, `GET /api/audit/integrity`(owner·admin·auditor)가 체인을 걸어 끊긴 첫 sequence 를 돌려준다. 보존 정리로 지운 구간은 `audit_chain_anchor` 가 마지막 hash 를 붙잡아 이어 검증한다. 기능 도입 전 기록은 hash 가 없어 `unchained` 로 따로 센다. 외부 저장소 checkpoint 는 아직 없어 **가장 최근 기록을 통째로 잘라내는 것은 이 방법으로 탐지되지 않는다**.
+- **각 row 는 이전 row 의 hash 를 포함하는 tamper-evident chain 을 이룬다(2026-08-06 구현).** `audit_log.sequence`·`previous_hash`·`entry_hash` 를 한 트랜잭션에서 채우고, `GET /api/audit/integrity`(owner·admin·auditor)가 체인을 걸어 끊긴 첫 sequence 를 돌려준다. 보존 정리로 지운 구간은 `audit_chain_anchor` 가 마지막 hash 를 붙잡아 이어 검증한다. 기능 도입 전 기록은 hash 가 없어 `unchained` 로 따로 센다. 꼬리를 통째로 잘라내면 남은 체인은 그 자체로 일관되므로 검증만으로는 잡히지 않는다. 그래서 **하루 1회 `system.report` 알림이 head 해시와 sequence 를 호스트 밖(Discord webhook)으로 내보낸다** — 받은 값과 어긋나면 잘려 나간 것이다. 이 안전장치는 알림 대상을 등록하고 `system.report` 를 구독해야 동작한다.
 - root 권한 공격자가 로컬 기록을 모두 바꿀 수 있다는 한계를 문서와 UI에 명시한다.
 
 ## 12. 원본 IP 개인정보 통제
@@ -301,4 +301,4 @@ bootstrap 은 인증 없이 첫 owner 를 만든다. 계정이 없는 상태에�
 
 - `set_real_ip_from 127.0.0.1/32` + `real_ip_header CF-Connecting-IP` 라서 **호스트에서 직접 loopback 에 붙을 수 있는 프로세스는 client IP 를 위조**할 수 있다(감사 source IP·IP 기준 rate limit 에 영향). publish 가 loopback 한정이라 그럴 수 있는 주체는 이미 호스트 권한을 가진 쪽이고, 근본 해결은 Cloudflare Access JWT 검증이다.
 - 패널 앞단에 Cloudflare Access 같은 인증 게이트가 없다. 지금은 누구나 로그인 화면까지는 도달한다.
-- 감사 체인의 외부 checkpoint 가 없다(§11).
+- 감사 체인의 외부 checkpoint 는 `system.report` 알림에 의존한다. 알림 대상을 등록하지 않으면 꼬리 자르기를 탐지할 수단이 없다(§11).

@@ -110,6 +110,10 @@ API keys:        api_key(id, name, prefix, tokenHash, scopes, createdBy,
 Login lockout:   login_lockout(emailKey, failedCount, firstFailedAt, lockedUntil,
                            updatedAt) — 주소별 연속 실패 5회 뒤 1분에서 두 배씩
                            최대 15분. 없는 주소도 같게 세어 계정 유무를 감춘다
+Notification:    event 는 backup.failed·deploy.failed·job.failed·restore.failed·
+                 system.report·test. system.report 는 하루 1회 주기 태스크가
+                 감사 체인 head·24시간 job 성패·로그인 잠금·API 키 만료·컨테이너·
+                 artifact·마지막 백업을 담아 구독 대상 전부에 보낸다
 Uploads:         artifact(id, fileName, mediaType, sha256, sizeBytes, status,
                           storagePath, createdBy)
                  upload_session(id, idempotencyKey, fileName, mediaType,
@@ -268,8 +272,10 @@ Audit:           /api/audit GET (owner/admin/viewer/auditor, read-only, paginate
                  server-side filters actorEmail/targetId/operation/result/
                  targetType/from/to + page/limit, default 50 max 200)
                  /api/audit/integrity GET (owner/admin/auditor) → {anchorSequence,
-                 brokenAt, brokenEntry, checked, unchained}. brokenAt 이 null 이
-                 아니면 그 sequence 에서 체인이 끊겼다
+                 brokenAt, brokenEntry, checked, headHash, headSequence,
+                 unchained}. brokenAt 이 null 이 아니면 그 sequence 에서 끊겼다.
+                 headHash 는 하루 1회 알림(system.report)으로 호스트 밖에 남긴다 —
+                 꼬리를 통째로 자르는 변조는 체인 내부 검증만으로는 못 잡는다
 Backup:          /api/backups GET/POST (owner), /api/backups/:id/restore POST
                  (session-only: an Authorization header is rejected with 403;
                  owner + recent), /api/backups/:id DELETE (owner + recent)

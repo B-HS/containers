@@ -631,6 +631,7 @@
         "notificationEventDeployFailed": "배포 실패",
         "notificationEventJobFailed": "작업 실패",
         "notificationEventRestoreFailed": "복원 실패",
+        "notificationEventSystemReport": "운영 정기 보고",
         "notificationEvents": "구독 이벤트",
         "notificationFailed": "알림 대상 작업에 실패했습니다.",
         "notificationLastDelivery": "마지막 전송",

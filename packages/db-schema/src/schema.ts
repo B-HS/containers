@@ -511,7 +511,9 @@ export const notificationDelivery = sqliteTable(
             .references(() => notificationDestination.id, { onDelete: 'cascade' }),
         jobId: text('job_id').references(() => operationJob.id, { onDelete: 'set null' }),
         sourceJobId: text('source_job_id').notNull(),
-        eventType: text('event_type', { enum: ['backup.failed', 'deploy.failed', 'job.failed', 'restore.failed', 'test'] }).notNull(),
+        eventType: text('event_type', {
+            enum: ['backup.failed', 'deploy.failed', 'job.failed', 'restore.failed', 'system.report', 'test'],
+        }).notNull(),
         failureCode: text('failure_code'),
         status: text('status', { enum: ['queued', 'delivered', 'failed'] }).notNull(),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),

@@ -31,6 +31,10 @@ const FAILURE_EVENT_BY_JOB_KIND: Record<OperationJobKind, NotificationEventType 
     [OPERATION_JOB_KIND.UPLOAD_FINALIZE]: NOTIFICATION_EVENT_TYPE.JOB_FAILED,
 }
 
+const REPORT_EMBED_TITLE = '운영 정기 보고'
+const REPORT_HEALTHY_COLOR = 3_066_993
+const REPORT_BROKEN_MARKER = '끊김'
+
 const FAILURE_EMBED_TITLE = {
     [NOTIFICATION_EVENT_TYPE.BACKUP_FAILED]: '백업 실패',
     [NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED]: '배포 실패',
@@ -214,6 +218,15 @@ type NotificationDeliveryServiceDependencies = {
 export type { NotificationDeliveryServiceDb }
 
 const buildEmbed = (payload: NotificationDeliverJobPayload) => {
+    if (payload.eventType === NOTIFICATION_EVENT_TYPE.SYSTEM_REPORT) {
+        const broken = payload.report.some((field) => field.value.includes(REPORT_BROKEN_MARKER))
+        return {
+            color: broken ? undefined : REPORT_HEALTHY_COLOR,
+            fields: payload.report.map((field) => ({ inline: true, name: field.name, value: field.value })),
+            timestamp: payload.occurredAt,
+            title: REPORT_EMBED_TITLE,
+        }
+    }
     if (payload.eventType === NOTIFICATION_EVENT_TYPE.TEST) {
         return {
             color: 0x2ecc71,
@@ -390,6 +403,42 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
         await updateDelivery(id, { jobId: job.id })
     }
 
+    const broadcastReport = async (report: { name: string; value: string }[]) => {
+        const destinations = (await destinationService.list()).filter(
+            (destination) => destination.enabled && destination.eventTypes.includes(NOTIFICATION_EVENT_TYPE.SYSTEM_REPORT),
+        )
+        for (const destination of destinations) {
+            const id = randomUUID()
+            const timestamp = now()
+            await db.insert({
+                createdAt: timestamp,
+                destinationId: destination.id,
+                eventType: NOTIFICATION_EVENT_TYPE.SYSTEM_REPORT,
+                failureCode: null,
+                id,
+                sourceJobId: id,
+                status: NOTIFICATION_DELIVERY_STATUS.QUEUED,
+                updatedAt: timestamp,
+            })
+            const job = await enqueue({
+                kind: OPERATION_JOB_KIND.NOTIFICATION_DELIVER,
+                maxAttempts: DELIVERY_MAX_ATTEMPTS,
+                payload: notificationDeliverJobPayloadSchema.parse({
+                    deliveryId: id,
+                    destinationId: destination.id,
+                    destinationName: destination.name,
+                    eventType: NOTIFICATION_EVENT_TYPE.SYSTEM_REPORT,
+                    failureCode: null,
+                    occurredAt: timestamp.toISOString(),
+                    report,
+                    sourceJobId: id,
+                }),
+            })
+            await updateDelivery(id, { jobId: job.id })
+        }
+        return destinations.length
+    }
+
     const produce = async (job: OperationJob) => {
         if (job.status !== 'failed' || job.failureCode === null || job.failureCode === CANCELLED_FAILURE_CODE) {
             return
@@ -440,6 +489,7 @@ export const createNotificationDeliveryService = ({ db, destinationService, enqu
     }
 
     return {
+        broadcastReport,
         deliverTest,
         handleDeliver,
         onFinished: async (job: OperationJob) => {

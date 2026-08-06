@@ -80,6 +80,8 @@ export const auditIntegritySchema = z.object({
     brokenAt: z.number().int().min(1).nullable(),
     brokenEntry: z.object({ createdAt: z.iso.datetime(), id: z.string().min(1), operation: z.string().min(1), result: z.string().min(1) }).nullable(),
     checked: z.number().int().min(0),
+    headHash: z.string().min(1).nullable(),
+    headSequence: z.number().int().min(0),
     unchained: z.number().int().min(0),
 })
 

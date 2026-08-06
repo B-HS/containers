@@ -157,7 +157,15 @@ const createAppTestDependencies = () => ({
     auditService: {
         list: async () => ({ data: [], pagination: { limit: 50, page: 1, total: 0, totalPages: 0 } }),
         record: async () => undefined,
-        verifyIntegrity: async () => ({ anchorSequence: 0, brokenAt: null, brokenEntry: null, checked: 0, unchained: 0 }),
+        verifyIntegrity: async () => ({
+            anchorSequence: 0,
+            brokenAt: null,
+            brokenEntry: null,
+            checked: 0,
+            headHash: null,
+            headSequence: 0,
+            unchained: 0,
+        }),
     },
     backupService: {
         create: async () => {

@@ -166,6 +166,7 @@ export const createAuditService = ({ archiveRoot, db, now, retentionDays }: Audi
         let expectedPrevious = anchor?.hash ?? AUDIT_CHAIN_GENESIS
         let cursor = anchor?.sequence ?? 0
         let checked = 0
+        let headHash: string | null = null
         for (;;) {
             const entries = await db.listChainAfter(cursor, ARCHIVE_BATCH_SIZE)
             if (entries.length === 0) {
@@ -177,6 +178,8 @@ export const createAuditService = ({ archiveRoot, db, now, retentionDays }: Audi
                 return {
                     anchorSequence: anchor?.sequence ?? 0,
                     brokenAt,
+                    headHash,
+                    headSequence: cursor,
                     brokenEntry:
                         broken === undefined
                             ? null
@@ -190,13 +193,22 @@ export const createAuditService = ({ archiveRoot, db, now, retentionDays }: Audi
                 break
             }
             expectedPrevious = last.entryHash
+            headHash = last.entryHash
             cursor = last.sequence
             checked += entries.length
             if (entries.length < ARCHIVE_BATCH_SIZE) {
                 break
             }
         }
-        return { anchorSequence: anchor?.sequence ?? 0, brokenAt: null, brokenEntry: null, checked, unchained: await db.countUnchained() }
+        return {
+            anchorSequence: anchor?.sequence ?? 0,
+            brokenAt: null,
+            brokenEntry: null,
+            checked,
+            headHash,
+            headSequence: cursor,
+            unchained: await db.countUnchained(),
+        }
     },
     list: async (input: unknown) => {
         const query = auditQuerySchema.parse(input)

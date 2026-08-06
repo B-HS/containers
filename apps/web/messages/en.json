@@ -631,6 +631,7 @@
         "notificationEventDeployFailed": "Deploy failed",
         "notificationEventJobFailed": "Job failed",
         "notificationEventRestoreFailed": "Restore failed",
+        "notificationEventSystemReport": "Operations report",
         "notificationEvents": "Subscribed events",
         "notificationFailed": "Notification target operation failed.",
         "notificationLastDelivery": "Last delivery",

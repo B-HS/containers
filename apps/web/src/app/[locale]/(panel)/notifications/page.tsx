@@ -42,6 +42,7 @@ const NotificationsPage = async () => {
                             'deploy.failed': translations('notificationEventDeployFailed'),
                             'job.failed': translations('notificationEventJobFailed'),
                             'restore.failed': translations('notificationEventRestoreFailed'),
+                            'system.report': translations('notificationEventSystemReport'),
                         },
                         events: translations('notificationEvents'),
                         failed: translations('notificationFailed'),

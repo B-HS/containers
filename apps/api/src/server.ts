@@ -26,6 +26,7 @@ const JOB_CLEANUP_INTERVAL_MS = HOUR_MS
 const UPLOAD_SESSION_CLEANUP_INTERVAL_MS = 15 * MINUTE_MS
 const ARTIFACT_RETENTION_INTERVAL_MS = 6 * HOUR_MS
 const AUDIT_ARCHIVE_INTERVAL_MS = 12 * HOUR_MS
+const OPERATIONS_REPORT_INTERVAL_MS = 24 * HOUR_MS
 const OPENAPI_SPEC_PATH = '/api/openapi.json'
 const SERVER_IDLE_TIMEOUT_SECONDS = 255
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 8 * 1_000
@@ -161,6 +162,7 @@ const {
     panelSettingService,
     trustedProxyService,
     notificationDeliveryService,
+    operationsReportService,
     notificationDestinationService,
     operationJobService,
     readinessService,
@@ -220,6 +222,13 @@ const recurringTasks = [
         intervalMs: JOB_CLEANUP_INTERVAL_MS,
         name: 'operation-job-cleanup-finished',
         run: () => operationJobService.cleanupFinished(),
+    }),
+    startRecurringTask({
+        intervalMs: OPERATIONS_REPORT_INTERVAL_MS,
+        name: 'operations-report-broadcast',
+        run: async () => {
+            await notificationDeliveryService.broadcastReport(await operationsReportService.build())
+        },
     }),
 ]
 

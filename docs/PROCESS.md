@@ -861,3 +861,15 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 - [x] C1. backup·restore E2E — 백업이 전혀 되지 않던 critical 결함을 찾아 고쳤다(계정 초기화가 외래 키를 끈 채 사용자를 지워 고아 참조 107건). 수정·복구 후 백업 생성 200, 복원 job succeeded, 복원 뒤 `foreign_key_check` 0건·`integrity_check` ok·readyz 6/6
 - [x] C2. 실측 자원 정리 — 스택 1건·컨테이너 4개·manifest(참조 없는 것)·artifact 1건 삭제, API key 폐기, 로컬 토큰 파일 삭제. 릴리스 이력이 참조하는 manifest 2건은 409 로 남는다(의도)
+
+### 후속: 운영 정기 보고 (2026-08-06)
+
+감사 체인의 **꼬리 자르기**는 체인 내부 검증으로 못 잡는다(남은 체인이 그 자체로 일관하다). 그래서 head 를 호스트 밖에 정기적으로 남긴다.
+
+- `system.report` 이벤트 신설(구독 가능 목록·전달 payload·Discord embed 렌더 포함)
+- 하루 1회 주기 태스크(`operations-report-broadcast`)가 보고를 만들어 구독 대상 전부에 보낸다
+- 보고 내용: 감사 체인 상태·head(#sequence + 해시 앞 16자)·체인 이전 기록 수, 24시간 job 성패와 실패 종류, 로그인 잠금 발생·현재 잠김, API 키 활성·30일 내 만료, 컨테이너 실행/전체, artifact 건수·용량, 마지막 백업 시각·크기
+- 사용자가 할 일은 알림 대상 등록과 `system.report` 구독뿐이다
+- 테스트 4건(정상·끊김·지표·빈 상태)
+
+**보류 결정**: 백업 오프박스 사본은 둘 곳이 없어 구현하지 않는다(사용자 판단). `CF-Connecting-IP` 위조도 로컬 권한자 한정·로그 오염뿐이라 손대지 않는다.

@@ -118,7 +118,16 @@ describe('감사 로그 보존', () => {
         const stored = await database.db.select().from(auditLog).orderBy(auditLog.sequence)
         expect(stored.map((row) => row.sequence)).toEqual([1, 2, 3])
         expect(stored.every((row) => row.entryHash !== null && row.previousHash !== null)).toBe(true)
-        expect(await service.verifyIntegrity()).toEqual({ anchorSequence: 0, brokenAt: null, brokenEntry: null, checked: 3, unchained: 0 })
+        const verified = await service.verifyIntegrity()
+        expect({ ...verified, headHash: verified.headHash === null ? null : 'hash' }).toEqual({
+            anchorSequence: 0,
+            brokenAt: null,
+            brokenEntry: null,
+            checked: 3,
+            headHash: 'hash',
+            headSequence: 3,
+            unchained: 0,
+        })
         database.sqlite.close()
     })
 

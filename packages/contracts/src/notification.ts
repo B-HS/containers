@@ -10,6 +10,7 @@ export const NOTIFICATION_EVENT_TYPE = {
     DEPLOY_FAILED: 'deploy.failed',
     JOB_FAILED: 'job.failed',
     RESTORE_FAILED: 'restore.failed',
+    SYSTEM_REPORT: 'system.report',
     TEST: 'test',
 } as const
 
@@ -18,6 +19,7 @@ export const NOTIFICATION_SUBSCRIBABLE_EVENT_TYPES = [
     NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
     NOTIFICATION_EVENT_TYPE.RESTORE_FAILED,
     NOTIFICATION_EVENT_TYPE.JOB_FAILED,
+    NOTIFICATION_EVENT_TYPE.SYSTEM_REPORT,
 ] as const
 
 export const NOTIFICATION_DELIVERY_STATUS = {
@@ -33,6 +35,7 @@ export const notificationEventTypeSchema = z.enum([
     NOTIFICATION_EVENT_TYPE.DEPLOY_FAILED,
     NOTIFICATION_EVENT_TYPE.JOB_FAILED,
     NOTIFICATION_EVENT_TYPE.RESTORE_FAILED,
+    NOTIFICATION_EVENT_TYPE.SYSTEM_REPORT,
     NOTIFICATION_EVENT_TYPE.TEST,
 ])
 
@@ -139,6 +142,13 @@ export const notificationDestinationSchema = z.object({
 
 export const notificationDestinationListSchema = z.array(notificationDestinationSchema)
 
+export const REPORT_FIELD_LIMIT = 24
+
+export const notificationReportFieldSchema = z.object({
+    name: z.string().min(1).max(64),
+    value: z.string().min(1).max(512),
+})
+
 export const notificationDeliverJobPayloadSchema = z.object({
     deliveryId: z.uuid(),
     destinationId: z.uuid(),
@@ -146,6 +156,7 @@ export const notificationDeliverJobPayloadSchema = z.object({
     eventType: notificationEventTypeSchema,
     failureCode: z.string().nullable(),
     occurredAt: z.iso.datetime(),
+    report: z.array(notificationReportFieldSchema).max(REPORT_FIELD_LIMIT).default([]),
     sourceJobId: z.uuid(),
     sourceJobKind: operationJobKindSchema.nullable().default(null),
 })
