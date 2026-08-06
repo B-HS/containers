@@ -1,7 +1,7 @@
 'use client'
 
 import type { FC, FormEvent } from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
@@ -20,6 +20,7 @@ import { Spinner } from '@shared/ui/spinner'
 const DISK_SOFT_WATERMARK = 'DISK_SOFT_WATERMARK'
 
 export const ArtifactUploadForm: FC = () => {
+    const abortRef = useRef<AbortController>(null)
     const [mediaType, setMediaType] = useState<string>(ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE)
     const [progress, setProgress] = useState(0)
     const [selectedFile, setSelectedFile] = useState<File>()
@@ -46,10 +47,19 @@ export const ArtifactUploadForm: FC = () => {
         if (!selectedFile) return
         setProgress(0)
         setStorageWarning(false)
+        const controller = new AbortController()
+        abortRef.current = controller
         uploadArtifact.mutate(
-            { file: selectedFile, mediaType, onProgress: setProgress },
+            { file: selectedFile, mediaType, onProgress: setProgress, signal: controller.signal },
             {
-                onError: (uploadError) => toast.error(uploadError instanceof Error ? uploadError.message : translations('uploadFailed')),
+                onError: (uploadError) => {
+                    setProgress(0)
+                    if (controller.signal.aborted) {
+                        toast.message(translations('uploadCancelled'))
+                        return
+                    }
+                    toast.error(uploadError instanceof Error ? uploadError.message : translations('uploadFailed'))
+                },
                 onSuccess: (result) => {
                     setStorageWarning(result.warnings.includes(DISK_SOFT_WATERMARK))
                     trackJob(result.job)
@@ -83,10 +93,17 @@ export const ArtifactUploadForm: FC = () => {
                     </SelectContent>
                 </Select>
             </div>
-            <Button type="submit" disabled={busy || selectedFile === undefined}>
-                {busy ? <Spinner /> : null}
-                {busy ? translations('uploading') : translations('upload')}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+                <Button type="submit" disabled={busy || selectedFile === undefined}>
+                    {busy ? <Spinner /> : null}
+                    {busy ? translations('uploading') : translations('upload')}
+                </Button>
+                {uploadArtifact.isPending ? (
+                    <Button type="button" variant="outline" onClick={() => abortRef.current?.abort()}>
+                        {translations('uploadCancel')}
+                    </Button>
+                ) : null}
+            </div>
             {progress > 0 ? (
                 <div className="md:col-span-3">
                     <UploadProgress

@@ -200,3 +200,12 @@ manifest 에 `runtime` 블록이 있다(`profile`·`capabilities`·`writablePath
 - 되돌리기까지 실패하면 스택 배포는 `rolled-back` 이 아니라 `failed` 다. 손이 필요한 상태라는 뜻이다.
 - 동시성은 두 겹이다. `deployment_stack_release` 의 부분 unique index(`status='releasing'`)와 서비스의 사전 검사가 같은 스택의 두 번째 배포를 409 로 막는다.
 - API 재기동 시 `releasing` 으로 남은 스택 배포는 `DEPLOYMENT_STACK_RELEASE_INTERRUPTED` 로 `failed` 처리한다. 개별 릴리스는 기존 `reconcileInterrupted` 가 따로 수렴시킨다.
+
+## 업로드 재개와 취소 (2026-08-06)
+
+서버는 처음부터 재개를 전제로 설계돼 있었다(`OFFSET_MISMATCH`, actor+idempotency-key 로 세션 재사용). 클라이언트가 매번 새 UUID 를 만들고 offset 0 부터 보내 그 전제를 쓰지 못했다.
+
+- **idempotency-key 는 파일 sha256** 이다. 같은 파일을 다시 올리면 서버가 같은 세션을 돌려준다.
+- 세션이 `uploading` 이면 `receivedBytes` 부터 이어 올린다. 이미 완료된 세션이면 청크 전송을 건너뛰고 finalize 로 간다(서버가 기존 artifact 를 돌려준다).
+- 취소는 `AbortController` 다. 진행 중인 요청만 끊고 서버 세션은 남는다 — 그래서 같은 파일을 다시 올리면 이어진다. 방치된 세션은 TTL 만료와 시작 시 정리가 지운다.
+- 실측(2026-08-06): 같은 키로 세션을 두 번 만들면 같은 세션 id 를 돌려주고, 4MiB 청크 전송 후 두 번째 응답의 `receivedBytes` 가 4194304 였다.

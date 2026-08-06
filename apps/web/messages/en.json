@@ -800,7 +800,10 @@
         "nginxRouteManaged": "Managed by deployment",
         "nginxRouteManagedRemoveWarning": "This route was created by a deployment. Removing it breaks the service and it is not restored automatically.",
         "jobEvents": "Events",
-        "jobEventsEmpty": "No events were recorded."
+        "jobEventsEmpty": "No events were recorded.",
+        "uploadCancel": "Cancel upload",
+        "uploadCancelled": "The upload was cancelled. Uploading the same file again resumes where it stopped.",
+        "uploadResumed": "Resuming the interrupted upload."
     },
     "Nav": {
         "brand": "Containers",

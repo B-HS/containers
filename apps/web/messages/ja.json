@@ -800,7 +800,10 @@
         "nginxRouteManaged": "デプロイ管理",
         "nginxRouteManagedRemoveWarning": "このルートはデプロイが作成したものです。削除するとサービスが停止し、自動では復旧しません。",
         "jobEvents": "イベント",
-        "jobEventsEmpty": "記録されたイベントはありません。"
+        "jobEventsEmpty": "記録されたイベントはありません。",
+        "uploadCancel": "アップロードを中止",
+        "uploadCancelled": "アップロードを中止しました。同じファイルを再度アップロードすると中断地点から再開します。",
+        "uploadResumed": "中断したアップロードを再開します。"
     },
     "Nav": {
         "brand": "Containers",

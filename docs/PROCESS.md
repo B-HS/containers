@@ -731,7 +731,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] 7. 라우트 수정(`PUT /nginx/routes/:id`) + `pathMode`·`enabled` UI 노출 — 서비스 `update(id, input)` 신설(upsert 는 hostname+path 기준이라 hostname 변경을 못 한다), 표의 사용 스위치와 수정 버튼이 같은 폼을 편집 모드로 연다
 - [x] 8. 배포 관리 라우트 소유권 표시(`managedBy`) — 컬럼 추가(migration 0021, manifest FK set null), 서비스가 `{ managedBy }` 옵션으로 받고 릴리스 6개 호출부가 manifest id 를 남긴다. 패널 생성은 null
 - [x] 9. job 진행 폴링·이벤트 타임라인·전역 배지 — 유휴에도 15초 폴링해야 새로 생긴 job 을 잡는다(활성 데이터가 없으면 폴링이 멈춰 배지가 영영 안 뜨는 결함을 실측으로 발견). 사이드바 배지 라벨은 `Nav` 네임스페이스
-- [ ] 10. 업로드 재개·취소
+- [x] 10. 업로드 재개·취소 — 클라가 매번 새 UUID 를 쓰고 offset 0 부터 보내 서버의 재개 전제를 못 살렸다. 파일 sha256 을 키로 쓰고 세션의 receivedBytes 부터 이어 올린다. 취소는 AbortController 이며 중단한 세션은 TTL 만료·시작 시 정리에 맡긴다
 
 ### P2 — 품질·접근성
 
