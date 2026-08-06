@@ -1,6 +1,6 @@
-# 구현 Handoff — 2026-08-01 KST
+# 구현 Handoff — 구현 범위·한계 (최종 갱신 2026-08-06)
 
-새 세션은 먼저 [RESUME-CHECKLIST.md](./RESUME-CHECKLIST.md)를 실행하고 이 문서에서 구현 범위와 한계를 확인한다. 세부 설계와 충돌하면 실제 runtime·코드·테스트를 가장 강한 증거로 사용한다.
+**이 문서는 구현 범위와 한계를 소유한다. 현재 상태·검증 수치·다음 작업은 [HANDOFF.md](./HANDOFF.md) 가 단독으로 소유한다.** 새 세션은 HANDOFF.md 를 먼저 읽고, [RESUME-CHECKLIST.md](./RESUME-CHECKLIST.md) 의 절차를 실행한 뒤 이 문서에서 구현 범위와 한계를 확인한다. 세부 설계와 충돌하면 실제 runtime·코드·테스트를 가장 강한 증거로 사용한다.
 
 ## 1. 현재 결론
 
@@ -12,7 +12,7 @@
 - durable operation job queue(상태 machine·재시도·취소·timeline·boot reconciliation)가 구현됐고 자동 backup 이 첫 소비자다. [acknowledge/0014](./acknowledge/0014-durable-operation-job-queue.md)
 - Docker events·logs·stats 실시간 SSE 가 Agent 정규화 → API 인증 proxy → 패널 실시간 로그 UI 까지 구현됐다. [acknowledge/0015](./acknowledge/0015-docker-stream-sse.md)
 - 전체 typecheck, ESLint, Prettier가 통과한다.
-- 전체 테스트는 49 files, 314 pass다. (2026-08-05 세션 종료 기준)
+- 전체 테스트 수치는 [HANDOFF.md](./HANDOFF.md) §1 이 소유한다. 이 문서에는 적지 않는다.
 - `bun audit` 취약점 0건이다. 제품 코드에 `any`·`eslint-disable`·`as never` 가 없다. (2026-08-05)
 - container kill·update·rename·wait·top·changes 와 image pull(durable job)·tag 가 agent E2E 로 실측 검증됐다. [acknowledge/0017](./acknowledge/0017-docker-command-completeness.md)
 - Compose project label 기반 관리 plane container·image·network·volume 보호, 자체 prune dry-run preview, image 삭제 dependency impact와 force owner 제한이 구현됐다. [acknowledge/0018](./acknowledge/0018-prune-preview-management-protection.md)
@@ -30,12 +30,12 @@
 
 ## 2. 새 세션 시작 순서
 
-1. `/Users/gkn/.config/opencode/llm-rules/` 아래 규칙을 전부 읽는다.
-2. [RESUME-CHECKLIST.md](./RESUME-CHECKLIST.md), 이 문서, [PROCESS.md](./PROCESS.md), [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md), [quality-assurance/ACCEPTANCE.md](./quality-assurance/ACCEPTANCE.md)를 읽는다.
+1. **[HANDOFF.md](./HANDOFF.md) 를 먼저 읽는다.** 세션 인수인계 단일 진입점이고 현재 상태·다음 작업을 소유한다.
+2. 읽는 순서의 정본은 [RESUME-CHECKLIST.md](./RESUME-CHECKLIST.md) §2 다. 이 문서는 그 순서를 중복 정의하지 않는다.
 3. 작업 영역은 `/Users/gkn/containers`다.
 4. 디자인·컴포넌트 패턴은 `/Users/gkn/flunti-otel`을 읽고 따른다.
 5. `docs/SHADCN-COMPONENTS.md`를 확인하고 기존 `apps/web/src/shared/ui` primitive를 우선 사용한다.
-6. 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `rest-work/deepseekv4`). 변경 범위는 Git 명령으로 판단한다.
+6. 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `dev`). 변경 범위는 Git 명령으로 판단한다.
 7. 기존 Docker image·container·network·volume에는 사용자 소유 리소스가 섞여 있다. 이름이 명백한 이번 테스트 fixture가 아니면 삭제하지 않는다.
 8. `.env`를 생성하거나 수정하지 않는다. 현재 구성은 compose environment와 secret file을 사용한다.
 
@@ -116,7 +116,7 @@ Compose 서비스와 권한 경계:
 - login/general API Nginx limit과 application login/API key limit
 - CSP·COOP·Permissions-Policy·HSTS·nosniff·frame deny
 
-현재 적용된 managed Nginx SHA는 `ccbe28ce36ba39e7b241950bc810f8b8477ea9a3c8814670594baf7b1e2f7d11`이다.
+실행 중 managed Nginx 설정의 SHA 는 고정값이 아니다. `GET /api/nginx/config` 로 확인한다. (2026-08-06 초기화로 `nginx-config` 볼륨이 비워지고 이미지 기본값이 다시 복사됐다)
 
 ### Upload·deployment·secret
 
@@ -185,7 +185,7 @@ Compose 서비스와 권한 경계:
 - `apps/engine-agent/src/service/domain/create-registry-credential-service.ts`, `apps/web/src/widgets/registry/registry-widget.tsx`
 - `packages/contracts/src/registry-credential.ts`
 - `packages/contracts/src/traffic.ts`, `apps/traffic-worker/src/service/domain/create-traffic-ingestion-service.ts`, `create-traffic-export-service.ts`
-- `apps/api/src/route/traffic/create-traffic-route.ts`, `apps/web/src/features/traffic-live-tail/`, `traffic-export-control/`
+- `apps/api/src/route/traffic/create-traffic-route.ts`, `apps/web/src/features/traffic-live-tail/`, `traffic-export/`
 - `docs/acknowledge/0014` ~ `0021`
 
 보안 경계:
@@ -263,17 +263,14 @@ Docker Compose 명령은 desktop sandbox에서 권한 승인이 필요할 수 �
 
 ## 7. 현재 보존 상태
 
-- 유효한 backup 원본: `374f1798-c75f-4152-938d-be2d09d12d51`
-- 유효한 자동 사전 backup: `ddabc56c-ba20-4431-b52d-3ff3ba1b6e1e`
-- 실패 drill에서 만든 무효 backup 3개는 API로 삭제했다.
-- invitation E2E orphan synthetic 사용자 참조는 정리했고 audit row는 actor `NULL`로 보존했다.
-- synthetic deployment manifest·release·secret·route·container는 이전 checkpoint에서 정리됐다.
-- 업로드 검증용 ready artifact와 일부 test image는 패널에 남아 있을 수 있다. 사용자 소유 이미지와 구분 없이 임의 삭제하지 않는다.
-- audit는 append-only이므로 test audit event는 남는다.
-- 임시 cookie 파일은 삭제됐고 저장소에 남아 있지 않다.
-- Phase 12 E2E fixture(`containers-e2e-phase12` 컨테이너, `alpine:3.20`·`containers-e2e-fixture:phase12` 이미지)는 정확한 ID 로 전부 삭제했고 잔재가 없다. 사용자 이미지(`alpine:3.23.3` 등)는 건드리지 않았다.
+**2026-08-06 전체 초기화 이후 상태다.** 이전 checkpoint 의 backup ID·artifact·fixture 기록은 [history/](./history/) 와 `acknowledge/` 의 시점 기록으로만 유효하다.
 
-named volume을 삭제하거나 Compose를 `down -v` 하지 않는다. 현재 control DB, traffic DB, Nginx managed config, artifact, secret key, backups가 들어 있다.
+- 남은 volume 은 자격증명 3종뿐이다: `containers_agent-credentials`, `containers_traffic-credentials`, `containers_registry-credentials`. 내부 HMAC 비밀과 secret 키가 여기 있다.
+- 지운 volume: `control-data`(계정·API 키·감사·배포·라우트·패널 설정), `traffic-data`, `artifacts`, `backups`, `nginx-config`, `nginx-logs`.
+- **owner 계정이 없다.** 로컬 주소 bootstrap 이 선행돼야 한다.
+- 배포 테스트 컨테이너·이미지(`demo-*`·`fail-demo-*`)는 정확한 이름으로 삭제했다. 사용자 소유 리소스(`poc1c`·`poc1d`·`poc1-debug2`·`api-proxy2`)와 `containers-dr-*` 이미지는 건드리지 않았다.
+
+앞으로도 volume 삭제와 `down -v` 는 사용자 명시 지시가 있을 때만 한다.
 
 ## 8. 반드시 고려할 현재 한계
 
@@ -397,9 +394,9 @@ docker compose up -d --wait
 
 ### 검증
 
-typecheck 7/7, lint 0, **test 199 pass**, format:check, build 7/7. Compose 5개 healthy, 미인증 401, 전 패널 라우트 200. 브라우저 실측(라이트·다크, 1440·390) console error 0건 — 실측 중 hydration 불일치 2건(모듈 싱글턴 QueryClient, layout↔page 동일 키 이중 프리페치)을 발견해 근본 수정했다.
+(2026-08-04 시점 증거) typecheck, lint 0, test 199 pass, format:check, build. Compose 5개 healthy, 미인증 401, 전 패널 라우트 200. 브라우저 실측(라이트·다크, 1440·390) console error 0건 — 실측 중 hydration 불일치 2건(모듈 싱글턴 QueryClient, layout↔page 동일 키 이중 프리페치)을 발견해 근본 수정했다.
 
 ### 주의
 
-- E2E용으로 owner 비밀번호를 재설정했다(better-auth `hashPassword`로 `account.password`만 교체, 사용자·역할 행 미변경, integrity `ok`). **값은 저장소 어디에도 기록하지 않는다** — 필요하면 패널에서 다시 변경한다.
+- (시점 기록, 2026-08-04) E2E용으로 owner 비밀번호를 재설정한 적이 있다. **2026-08-06 초기화로 계정 자체가 사라졌으므로 지금은 해당 없다** — 로컬 bootstrap 으로 새로 만든다.
 - 남은 보류 4건은 acknowledge 0029 §8에 있다.

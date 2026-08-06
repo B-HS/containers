@@ -1,20 +1,20 @@
 # 안전 중단·재개 체크리스트
 
-이 문서는 새 Codex 세션, 다른 작업자, 다른 macOS shell에서 프로젝트를 안전하게 재개하기 위한 **단일 실행 진입점**이다. 현재 상태 요약은 이 문서와 [HANDOFF-STATUS.md](./HANDOFF-STATUS.md)에만 갱신하고, `acknowledge/`와 `history/`의 과거 시점 수치는 고치지 않는다.
+이 문서는 새 세션·다른 작업자·다른 macOS shell 에서 프로젝트를 안전하게 재개하기 위한 **실행 절차와 안전 불변식**을 담는다.
 
-## 1. 마지막 확인된 안전 중단점
+**소유권 규칙(2026-08-06 정리).** 현재 상태와 검증 수치는 [HANDOFF.md](./HANDOFF.md) 가 **단독으로** 소유한다. 이 문서는 절차와 불변식, [HANDOFF-STATUS.md](./HANDOFF-STATUS.md) 는 구현 범위·한계(시점 기록)를 소유한다. 같은 수치를 두 곳에 적지 않는다. `acknowledge/`·`history/` 의 과거 시점 수치는 고치지 않는다.
 
-확인 시각: **2026-08-05**
+## 1. 재개 전 알아야 할 상태
 
-- 작업 경로: `/Users/gkn/containers`
-- 이 디렉터리는 Git 저장소다(원격 `origin`, 브랜치 `dev`). 변경 범위는 `git status`·diff 로 판단한다. **2026-08-05 커밋 13건(`2c87a95`~`4b58f4b`)은 아직 push 하지 않았다.**
-- Compose 5개 서비스 `nginx`, `web`, `api`, `engine-agent`, `traffic-worker`가 모두 healthy다.
-- 마지막 전체 gate: typecheck 8/8, ESLint 0, Prettier, **314 tests / 49 files**, build 8/8.
-- 세션 상태 요약은 [HANDOFF.md](./HANDOFF.md)가 소유한다. 이 문서는 재개 절차와 안전 불변식만 담는다.
+- 작업 경로: `/Users/gkn/containers`. Git 저장소(원격 `origin`, 브랜치 `dev`).
+- **현재 검증 수치·커밋·완료 범위는 [HANDOFF.md](./HANDOFF.md) §1·§3 을 본다.** push 여부는 문서가 아니라 `git status -sb` 로 판단한다.
+- **2026-08-06 전체 초기화를 했다.** `control-data`·`traffic-data`·`artifacts`·`backups`·`nginx-config`·`nginx-logs` 볼륨을 지웠고 자격증명 볼륨 3종만 남겼다. 따라서:
+    - **owner 계정이 없다.** `http://127.0.0.1:18080` 에서 bootstrap 으로 최초 owner 를 만들기 전에는 패널·인증 API 를 쓸 수 없다. 공개 주소에서는 bootstrap 이 403 이다.
+    - 공개 주소·신뢰 프록시·API 키·감사 로그·배포·라우트가 전부 비어 있다.
+    - `/data/ingest-checkpoint.json` 은 **첫 트래픽 인입 뒤에 생성된다.** 초기화 직후 `stat` 실패는 정상이다.
+- Compose 5개 서비스 `nginx`·`web`·`api`·`engine-agent`·`traffic-worker` 가 healthy 여야 한다.
 
-아래 §3의 읽기 전용 점검으로 현재 값을 직접 확인한다. `integrity_check`가 `ok`, 활성 durable job 0, checkpoint 권한 `600 bun:bun`이 기대 핵심 결과다.
-
-이 값은 재개 시점의 기대값이지 영구 상수가 아니다. 서비스 uptime, traffic row 수, schedule 시각, job 목록은 정상적으로 변할 수 있다.
+아래 §3의 읽기 전용 점검으로 현재 값을 직접 확인한다. 서비스 uptime, traffic row 수, schedule 시각, job 목록은 정상적으로 변한다.
 
 ## 2. 새 환경에서 읽는 순서
 
@@ -23,7 +23,7 @@
 - [ ] [HANDOFF-STATUS.md](./HANDOFF-STATUS.md)의 구현 범위·한계·검증 증거를 읽는다.
 - [ ] [PROCESS.md](./PROCESS.md)의 마지막 활성 Phase를 읽는다.
 - [ ] [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md)과 [quality-assurance/ACCEPTANCE.md](./quality-assurance/ACCEPTANCE.md)에서 선택한 작업의 완료 조건을 확인한다.
-- [ ] 관련 최신 `acknowledge/` 문서를 읽는다. 현재 최신은 [0038](./acknowledge/0038-nginx-route-target-validation.md)이다.
+- [ ] 관련 `acknowledge/` 문서를 읽는다. **번호가 가장 큰 것이 최신**이다(2026-08-06 기준 0040).
 - [ ] 세션 인수인계는 [HANDOFF.md](./HANDOFF.md)가 단일 진입점이다. 이 체크리스트보다 먼저 읽는다.
 - [ ] UI 변경이면 [SHADCN-COMPONENTS.md](./SHADCN-COMPONENTS.md)와 `/Users/gkn/flunti-otel` 패턴을 먼저 확인한다.
 
@@ -81,8 +81,12 @@ docker compose ps
 - [ ] Nginx runtime config는 volume을 직접 고치지 않는다. authenticated apply, current SHA, syntax test, probe 경로를 사용한다.
 - [ ] 테스트 fixture는 고유 prefix와 정확한 ID로만 생성·정리한다.
 - [ ] dirty 상태를 없애기 위한 reset·checkout·광범위 삭제를 하지 않는다.
+- [ ] **호스트 격리를 우회하지 않는다** — `--privileged`, host namespace(`--pid`·`--ipc`·`--uts`·`--network=host`), `nsenter`, 호스트 루트 마운트, docker socket 마운트(engine-agent 예외), loopback 이 아닌 포트 publish, `sudo`. 상세는 [../CLAUDE.md](../CLAUDE.md) §1·§2.
+- [ ] 스택이 떠 있으면 `bun run audit:runtime` 으로 실행 중 컨테이너의 보안 불변식을 확인한다. `packages/config/src/compose-security.ts` 의 불변식 테스트를 고쳐서 통과시키지 않는다.
 
 ## 5. 완료된 마지막 Phase
+
+**진행 정본은 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 다.** 현재 마일스톤(패널 UX 감사 후속 + compose 스택)의 완료·미완료는 그 체크리스트가 소유한다. 아래 Phase 기록은 그 이전 단계의 시점 기록이다.
 
 Phase 18(control plane upgrade 준비 상태 검증)은 구현·테스트·재배포·runtime 검증까지 완료됐다. Phase 17(durable notification/Discord)의 항목은 아래 §6의 Phase 17 블록에 [x]로 남아 있다.
 
@@ -159,7 +163,7 @@ Phase 18(control plane upgrade 준비 상태 검증)은 구현·테스트·재�
 ## 8. 문서 정합성 규칙
 
 1. 실제 런타임·코드·테스트가 가장 강한 증거다.
-2. 현재 중단점은 이 문서와 `HANDOFF-STATUS.md`가 소유한다.
+2. 현재 상태·검증 수치는 `HANDOFF.md` 가 **단독** 소유한다. 이 문서는 절차·불변식, `HANDOFF-STATUS.md` 는 구현 범위·한계(시점 기록)를 소유한다.
 3. `PROCESS.md`는 수행한 작업 체크리스트, `IMPLEMENTATION-PLAN.md`는 전체 backlog, `ACCEPTANCE.md`는 최종 제품 인수 증거를 소유한다.
 4. `acknowledge/`와 `history/`는 시점 기록이다. 과거 test count와 당시 잔여 항목을 현재값으로 고쳐 쓰지 않는다.
 5. 설계 문서의 “목표”와 “현재 구현”을 같은 문장에 섞지 않는다. 미구현 목표는 명시적으로 표시한다.

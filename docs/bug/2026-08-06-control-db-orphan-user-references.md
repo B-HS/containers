@@ -9,8 +9,8 @@
 부팅 로그에 남는다.
 
 ```
-{"event":"control-database.foreign-key.violation","total":80,
- "byTable":{"audit_log→user":63,"api_key→user":9,"operation_job→user":4,
+{"event":"control-database.foreign-key.violation","total":78,
+ "byTable":{"audit_log→user":62,"api_key→user":9,"operation_job→user":4,
             "trusted_proxy→user":2,"panel_setting→user":1}}
 ```
 
@@ -28,7 +28,8 @@
 ## 조치 (이번에 한 것)
 
 - `createControlDatabase` 가 마이그레이션 **전에** 연결 수준에서 `foreign_keys = OFF`, **후에** 다시 `ON` 으로 되돌린다. SQLite 테이블 재생성 마이그레이션이 성립하려면 필요하다.
-- 마이그레이션 직후 `PRAGMA foreign_key_check` 를 돌려 위반을 테이블별 개수로 로그에 남긴다.
+- 마이그레이션 직후 `PRAGMA foreign_key_check` 를 돌려 위반을 `table→parent` 별 개수와 합계로 로그에 남긴다(`control-database.foreign-key.violation`).
+- migrate 가 throw 하면 catch 에서 `foreign_keys = ON` 을 되돌리고 `control-database.migrate.failed` 를 남긴 뒤 그대로 다시 던진다.
 - **기동은 막지 않는다.** 처음에는 위반 시 throw 했는데, 기존 데이터 불일치 하나로 control plane 전체가 뜨지 않았다. 가용성을 데이터 위생보다 앞에 둔다.
 
 ## 2026-08-06 후속 — control DB 를 초기화했다
@@ -41,6 +42,6 @@
 
 고아 행을 어떻게 할지는 정하지 않았다. 임의로 지우지 않았다.
 
-- `audit_log` 는 append-only 가 원칙이라(`SECURITY.md` §11) 삭제도 수정도 함부로 할 수 없다. 63건이 여기 있다.
+- `audit_log` 는 append-only 가 원칙이라(`SECURITY.md` §11) 삭제도 수정도 함부로 할 수 없다. 62건이 여기 있었다.
 - ~~`api_key` 9건 확인~~ — 초기화로 전부 사라졌다. 소유자 없는 유효 키가 남을 위험은 지금은 없다.
 - 근본 원인 1번(사용자 삭제 경로)이 맞다면 `DELETE /api/users/:id` 가 참조를 어떻게 정리할지(참조 무효화 / 삭제 거부 / 익명화)를 결정해야 한다.

@@ -109,7 +109,7 @@ Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 act
 - idle timeout, max duration, max buffered output, 동시 session 수를 제한한다.
 - WebSocket 연결마다 session과 capability를 재검증하고 session revoke 시 종료한다.
 - logs는 secret pattern redaction을 제공하되 원본 Docker log를 영구 DB에 복제하지 않는 것을 기본으로 한다.
-- redaction 구현은 `packages/config/src/redact-log.ts`(`redactSecretText`·`redactSecretLines`)다. 민감 key 대입(`*password*`·`*secret*`·`*token*`·`*credential*`·`*authorization*` 등), `Bearer`/`Basic` scheme, JWT, URL 자격증명을 `[REDACTED]`로 바꾸고 한 줄을 512자로 자른다.
+- redaction 구현은 `packages/config/src/redact-log.ts`(`redactSecretText`·`redactSecretLines`)다. 민감 key 대입(`*password*`·`*secret*`·`*token*`·`*credential*`·`*authorization*` 등), `Bearer`/`Basic` scheme, JWT, URL 자격증명을 `[REDACTED]`로 바꾸고 한 줄을 512자에서 자른 뒤 말줄임 문자를 붙인다(결과 최대 513자). 프로덕션 진입점은 `redactSecretLines` 하나이고 `redactSecretText` 는 그 내부와 테스트에서만 쓴다.
 - **적용 범위는 배포 실패 진단 한 곳이다**(§19). 컨테이너 로그 조회 API(`GET /api/containers/:id/logs`)와 로그 SSE stream은 원문을 그대로 전달한다 — 이 두 경로는 영구 저장이 없고 호출자가 `engine:read` 권한을 이미 가진 상태이기 때문이다. 로그를 새로 **영속화**하는 경로를 만들면 반드시 위 유틸을 태운다.
 
 ## 19. 배포 실패 진단 저장
@@ -117,9 +117,10 @@ Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 act
 blue-green 릴리스가 실패하면 원인이 컨테이너 안에만 남고 패널에서는 실패 코드 하나만 보였다. 이제 실패 시점에 대상 컨테이너의 상태와 로그 꼬리를 durable job event 로 남긴다.
 
 - 수집 지점: `apps/api/src/service/domain/deployment/create-deployment-release-service.ts` 의 `run` catch. 컨테이너를 중지하기 **전에** 수집한다.
-- 수집 내용: `getContainer` 의 `state.exitCode`·`state.error`·`state.running`·`state.finishedAt`, `getContainerLogs` 의 마지막 **20줄**.
+- 수집 내용: `getContainer` 의 `state.exitCode`·`state.error`·`state.running`·`state.finishedAt`, `getContainerLogs` 로 받은 stdout·stderr(각 tail 20). 두 스트림을 이어붙인 뒤 **합친 결과의 마지막 20줄**만 남긴다 — stderr 가 20줄을 넘으면 stdout 은 남지 않는다.
+- 수집 조건: 컨테이너가 이미 만들어진 뒤의 실패만 대상이다(`containerId` 가 있어야 한다). 생성 이전 실패는 진단이 없다.
 - 저장 위치: `operation_job_event.detail` 한 곳이다. `deployment_release` 행이나 API 오류 응답 `details` 에는 넣지 않는다.
-- 리댁션: 저장 전에 `redactSecretLines` 를 태운다. 빈 줄은 버리고 각 줄을 512자로 자른다.
+- 리댁션: 저장 전에 `redactSecretLines` 를 태운다. 빈 줄은 버리고 각 줄을 512자에서 자른다(말줄임 포함 513자).
 - 노출 범위: job event 조회 권한과 동일하다 — 세션은 owner·admin, API key 는 `job:read`. `GET /api/deployment-releases` 는 전 역할이 볼 수 있으므로 진단을 release 응답에 싣지 않는다.
 - 수집이 실패해도 릴리스 실패 처리 자체는 그대로 진행한다. 진단은 부가 정보이지 실패 경로의 전제가 아니다.
 - 계약은 `packages/contracts/src/deployment.ts` 의 `deploymentFailureDiagnosticsSchema` 이고 job event `detail.step` 이 `failure-diagnostics` 다.

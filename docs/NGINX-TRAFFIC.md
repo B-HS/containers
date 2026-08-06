@@ -224,7 +224,7 @@ p50·p95·p99를 정확히 재계산할 수 있는 histogram bucket을 저장한
 - revision: draft, diff, validation output, author, timestamps, apply·rollback
 - full config: syntax highlight, file tree, diff, 정적 정책·shadow probe 결과, 위험 경고
 - reload history: 성공·실패·rollback과 probe 결과
-- live error log: bounded, secret redaction, level filter
+- live error log: bounded, secret redaction, level filter — **미구현이다.** nginx error log 를 읽는 경로가 코드에 없다. 구현할 때 `packages/config/src/redact-log.ts` 의 `redactSecretLines` 를 태운다(SECURITY §9)
 
 저장 버튼은 draft만 만들고 적용 버튼은 별도다. applied revision을 직접 편집하지 않고 항상 새 revision을 만든다.
 

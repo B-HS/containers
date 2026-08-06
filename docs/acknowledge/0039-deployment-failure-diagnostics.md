@@ -28,7 +28,7 @@ release:     failureCode=DEPLOYMENT_HEALTHCHECK_FAILED, containerName=demo-a-1.0
 
 `SECURITY.md` §9 는 "원본 Docker log 를 영구 DB 에 복제하지 않는 것을 기본으로 한다"고 정한다. 20줄 저장은 그 기본의 **명시적 예외**이므로 범위를 좁혔다.
 
-- 줄 수 상한 20, 줄당 512자 상한, 빈 줄 제거.
+- 줄 수 상한 20(stdout·stderr 를 이어붙인 뒤의 마지막 20줄), 줄당 512자에서 절단 + 말줄임(최대 513자), 빈 줄 제거.
 - 저장 전 `redactSecretLines`(`packages/config/src/redact-log.ts`) 통과.
 - `deployment_release` 행에도, API 오류 응답 `details` 에도 넣지 않는다.
 
@@ -46,11 +46,14 @@ release:     failureCode=DEPLOYMENT_HEALTHCHECK_FAILED, containerName=demo-a-1.0
 
 ## 5. 함께 정리한 것
 
-- **`DEPLOYMENT_RELEASE_FAILED` 가 `ERROR_CODE` 에 없었다.** `create-job-handlers.ts` 가 폴백으로 쓰는 문자열인데 미등록이라, 이 값이 응답 경로에서 `createAppError` 를 타면 `resolveErrorCode` 폴백으로 **500 INTERNAL_ERROR** 가 됐다. 3파일(`error-code`·`error-message`·`error.ts` STATUS_MAP)에 400 으로 등록했다.
+- **`DEPLOYMENT_RELEASE_FAILED` 가 `ERROR_CODE` 에 없었다.** 릴리스 서비스(`create-deployment-release-service.ts` catch 폴백)와 job handler 양쪽이 쓰는 문자열인데 미등록이라, 이 값이 응답 경로에서 `createAppError` 를 타면 `resolveErrorCode` 폴백으로 **500 INTERNAL_ERROR** 가 됐다. 3파일(`error-code`·`error-message`·`error.ts` STATUS_MAP)에 400 으로 등록했다.
 - **시크릿 리댁션 유틸이 코드에 없었다.** `SECURITY.md` §9·`NGINX-TRAFFIC.md` §9·`IMPLEMENTATION-PLAN.md`(체크 완료 표시)가 있다고 기술했지만 저장소 전체에 구현이 없었다. 이번에 만들었고, 적용 범위가 배포 실패 진단 한 곳뿐이라는 사실을 `SECURITY.md` §9 에 명시했다.
 
 ## 6. 한계
 
 - **수동 롤백 실패(`runRollback`)에는 진단이 붙지 않는다.** 이번 범위는 릴리스 실패다. 같은 헬퍼를 재사용하면 되지만 UI 가 `deploy.rollback` job 을 따로 조회해야 해서 분리했다.
 - **로그 조회 API 와 SSE stream 은 여전히 원문이다.** 영속화가 없고 호출자가 이미 `engine:read` 를 가진 경로라 이번 범위에서 제외했다.
-- 웹은 실패한 릴리스에 한해 `deploy.release` job 목록을 조회해 `payload.releaseId` 로 매칭한다. 진단 조회 권한이 없는 역할에는 실패 코드만 보인다.
+- 웹은 실패한 릴리스에 한해 `deploy.release` job 목록을 조회해 `payload.releaseId` 로 매칭하고, 그 job 의 event 중 **마지막 진단 1건**만 보여준다(`findLast`). 클라이언트도 `JOB_VIEWER_ROLES = ['owner','admin']` 로 먼저 가리므로 그 외 역할에는 실패 코드만 보인다.
+- **컨테이너 생성 이전 실패에는 진단이 없다.** 수집이 `containerId` 존재를 전제한다.
+- `failureCode` 자체의 가공 규칙은 이 변경 범위 밖이다: 예외 메시지를 512자로 자르고, 라우트 전환 후 롤백까지 실패하면 `ROLLBACK_FAILED:` 접두가 붙는다. 성공(healthy)인데 `PREVIOUS_CONTAINER_STOP_WARNING` 이 채워지는 경로도 있다.
+- 공개 심볼: `deploymentFailureDiagnosticsSchema`·`DEPLOYMENT_FAILURE_DIAGNOSTICS_STEP`·타입 `DeploymentFailureDiagnostics`(contracts `deployment`), `DeploymentReleaseRunOptions`(릴리스 서비스).
