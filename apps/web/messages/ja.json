@@ -816,7 +816,10 @@
         "deploymentVolumes": "名前付きボリューム — ボリューム名:マウントパス[:ro]",
         "deploymentVolumesHelp": "1 行に 1 つ書きます。ホストパスはマウントできず、名前付きボリュームのみ受け付けます。",
         "deploymentPublished": "公開ドメインで公開する",
-        "deploymentPublishedHelp": "オフにすると内部サービスとしてデプロイします。nginx ルートを作らず、コンテナ probe のみで観察します。"
+        "deploymentPublishedHelp": "オフにすると内部サービスとしてデプロイします。nginx ルートを作らず、コンテナ probe のみで観察します。",
+        "confirmationMismatch": "入力した値が確認文字列と一致しません。",
+        "nginxConfigRoleNotice": "この画面は nginx 設定ファイル全体を扱います。ドメインからコンテナへのプロキシルートはプロキシルート画面で管理します。",
+        "nginxRouteRoleNotice": "この画面は公開ドメインからコンテナへのルートのみを扱います。設定ファイル全体の編集と適用は Nginx 設定画面で行います。"
     },
     "Nav": {
         "brand": "Containers",

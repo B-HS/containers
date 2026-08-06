@@ -816,7 +816,10 @@
         "deploymentVolumes": "명명 볼륨 — 볼륨이름:마운트경로[:ro]",
         "deploymentVolumesHelp": "한 줄에 하나씩 적습니다. 호스트 경로는 마운트할 수 없고 명명 볼륨만 받습니다.",
         "deploymentPublished": "공개 도메인으로 노출",
-        "deploymentPublishedHelp": "끄면 내부 서비스로 배포합니다. nginx 라우트를 만들지 않고 컨테이너 probe 로만 관찰합니다."
+        "deploymentPublishedHelp": "끄면 내부 서비스로 배포합니다. nginx 라우트를 만들지 않고 컨테이너 probe 로만 관찰합니다.",
+        "confirmationMismatch": "입력한 값이 확인 문구와 다릅니다.",
+        "nginxConfigRoleNotice": "이 화면은 nginx 설정 파일 전체를 다룹니다. 도메인에서 컨테이너로 가는 프록시 라우트는 프록시 라우트 화면에서 관리합니다.",
+        "nginxRouteRoleNotice": "이 화면은 공개 도메인에서 컨테이너로 가는 라우트만 다룹니다. 설정 파일 전체 편집과 적용은 Nginx 설정 화면에서 합니다."
     },
     "Nav": {
         "brand": "Containers",

@@ -736,9 +736,9 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 ### P2 — 품질·접근성
 
-- [ ] 11. nginx 편집기 컨테이너 인지, 두 nginx 화면 역할 안내
-- [ ] 12. 접근성 4건(directive 편집기 label, 표 키보드 스크롤, 컨트롤 없는 Label, aria-live)
-- [ ] 13. 삭제 확인 다이얼로그 피드백
+- [x] 11. nginx 편집기 컨테이너 인지, 두 nginx 화면 역할 안내 — upstream 주소는 자유 입력을 유지하되(외부 주소도 유효) 컨테이너 `이름:포트` 를 datalist 로 제안한다
+- [x] 12. 접근성 4건 — directive 입력·삭제 버튼 이름, 표 스크롤 tabIndex, 확인 불일치 aria-live. 컨트롤 없는 Label 2건은 표/배지 묶음의 제목이라 유지
+- [x] 13. 삭제 확인 다이얼로그 피드백 — 대상 문자열 전체 표시(break-all·title)와 불일치 사유 안내
 
 ### compose 스택 (3.x)
 

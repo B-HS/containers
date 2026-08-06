@@ -15,6 +15,7 @@ type RegistryCredentialDetailProps = {
     labels: {
         cancel: string
         confirmation: string
+        confirmationMismatch: string
         confirmRemoveTitle: string
         password: string
         remove: string
@@ -75,6 +76,7 @@ export const RegistryCredentialDetail: FC<RegistryCredentialDetailProps> = ({ bu
                     disabled={busy}
                     expectedValue={credential.name}
                     inputId={`registry-confirm-${credential.id}`}
+                    mismatchLabel={labels.confirmationMismatch}
                     onConfirm={() => onRemove(credential.name)}
                     removeLabel={labels.remove}
                     target={credential.name}

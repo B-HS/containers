@@ -29,6 +29,7 @@ const RegistryPage = async () => {
                     labels={{
                         cancel: translations('cancel'),
                         confirmation: translations('registryConfirmation'),
+                        confirmationMismatch: translations('confirmationMismatch'),
                         confirmRemoveTitle: translations('confirmRemoveTitle'),
                         created: translations('created'),
                         credential: translations('registryCredential'),

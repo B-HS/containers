@@ -1,6 +1,7 @@
 export type NotificationLabels = {
     cancel: string
     confirmation: string
+    confirmationMismatch: string
     confirmRemoveTitle: string
     created: string
     destinationCreate: string

@@ -29,6 +29,7 @@ const NotificationsPage = async () => {
                     labels={{
                         cancel: translations('cancel'),
                         confirmation: translations('notificationConfirmation'),
+                        confirmationMismatch: translations('confirmationMismatch'),
                         confirmRemoveTitle: translations('confirmRemoveTitle'),
                         created: translations('created'),
                         destinationCreate: translations('notificationDestinationCreate'),

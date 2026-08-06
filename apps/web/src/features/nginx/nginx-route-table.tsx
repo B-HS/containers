@@ -15,6 +15,7 @@ type NginxRouteTableProps = {
         actions: string
         cancel: string
         confirmation: string
+        confirmationMismatch: string
         confirmRemoveTitle: string
         container: string
         enabled: string
@@ -82,6 +83,7 @@ export const NginxRouteTable: FC<NginxRouteTableProps> = ({ busyRouteId, canMana
                                 disabled={busyRouteId === route.id}
                                 expectedValue={`${route.hostname}${route.path}`}
                                 inputId={`route-confirm-${route.id}`}
+                                mismatchLabel={labels.confirmationMismatch}
                                 onConfirm={() => onRemove(route, `${route.hostname}${route.path}`)}
                                 removeLabel={labels.remove}
                                 target={`${route.hostname}${route.path}`}

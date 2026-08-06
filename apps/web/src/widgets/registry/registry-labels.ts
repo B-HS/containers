@@ -1,6 +1,7 @@
 export type RegistryLabels = {
     cancel: string
     confirmation: string
+    confirmationMismatch: string
     confirmRemoveTitle: string
     created: string
     credential: string

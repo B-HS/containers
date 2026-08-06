@@ -12,6 +12,7 @@ type NetworkDetailCardProps = {
     labels: {
         cancel: string
         confirmation: string
+        confirmationMismatch: string
         confirmRemoveTitle: string
         containers: string
         driver: string
@@ -66,6 +67,7 @@ export const NetworkDetailCard: FC<NetworkDetailCardProps> = ({ busy, canRemove,
                     disabled={busy}
                     expectedValue={network.name}
                     inputId={`network-confirm-${network.id}`}
+                    mismatchLabel={labels.confirmationMismatch}
                     onConfirm={() => onRemove(network.id, network.name)}
                     removeLabel={labels.remove}
                     target={network.name}

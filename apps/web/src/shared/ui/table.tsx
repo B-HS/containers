@@ -3,7 +3,7 @@ import type { ComponentProps, FC } from 'react'
 import { cn } from '@shared/lib/utils'
 
 const Table: FC<ComponentProps<'table'>> = ({ className, ...props }) => (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    <div data-slot="table-container" className="relative w-full overflow-x-auto focus-visible:outline-2 focus-visible:outline-ring" tabIndex={0}>
         <table data-slot="table" className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
 )

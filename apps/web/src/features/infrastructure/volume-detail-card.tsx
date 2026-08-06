@@ -16,6 +16,7 @@ type VolumeDetailCardProps = {
     labels: {
         cancel: string
         confirmation: string
+        confirmationMismatch: string
         confirmRemoveTitle: string
         containers: string
         driver: string
@@ -61,6 +62,7 @@ export const VolumeDetailCard: FC<VolumeDetailCardProps> = ({ busy, canRemove, l
                         disabled={busy}
                         expectedValue={volume.name}
                         inputId={`volume-confirm-${volume.name}`}
+                        mismatchLabel={labels.confirmationMismatch}
                         onConfirm={() => onRemove(volume.name, volume.name, force)}
                         removeLabel={labels.remove}
                         target={volume.name}

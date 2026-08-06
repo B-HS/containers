@@ -1,6 +1,7 @@
 export type InfrastructureLabels = {
     cancel: string
     confirmation: string
+    confirmationMismatch: string
     confirmRemoveTitle: string
     containers: string
     create: string

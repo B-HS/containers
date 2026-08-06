@@ -24,6 +24,7 @@ type ConfirmRemoveDialogProps = {
     disabled: boolean
     expectedValue: string
     inputId: string
+    mismatchLabel: string
     onConfirm: () => void
     removeLabel: string
     target: string
@@ -39,6 +40,7 @@ export const ConfirmRemoveDialog: FC<ConfirmRemoveDialogProps> = ({
     disabled,
     expectedValue,
     inputId,
+    mismatchLabel,
     onConfirm,
     removeLabel,
     target,
@@ -64,11 +66,25 @@ export const ConfirmRemoveDialog: FC<ConfirmRemoveDialogProps> = ({
                     <AlertDialogDescription>{description}</AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="grid gap-4 bg-surface-3 p-4">
-                    <p className="truncate font-mono text-sm text-text-strong">{target}</p>
+                    <p className="font-mono text-sm break-all text-text-strong" title={target}>
+                        {target}
+                    </p>
                     {children}
                     <div className="grid gap-2">
                         <Label htmlFor={inputId}>{confirmationLabel}</Label>
-                        <Input id={inputId} autoComplete="off" value={value} onChange={(event) => setValue(event.target.value)} />
+                        <Input
+                            aria-describedby={value.length > 0 && value !== expectedValue ? `${inputId}-mismatch` : undefined}
+                            aria-invalid={value.length > 0 && value !== expectedValue}
+                            autoComplete="off"
+                            id={inputId}
+                            onChange={(event) => setValue(event.target.value)}
+                            value={value}
+                        />
+                        {value.length > 0 && value !== expectedValue ? (
+                            <p aria-live="polite" className="text-xs text-danger" id={`${inputId}-mismatch`}>
+                                {mismatchLabel}
+                            </p>
+                        ) : null}
                     </div>
                 </div>
                 <AlertDialogFooter>

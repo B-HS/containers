@@ -5,6 +5,7 @@ import { getNginxRoutes } from '@entities/nginx/nginx.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
+import { ScreenRoleNotice } from '@features/screen-role-notice/screen-role-notice'
 import { PageHeader } from '@shared/common/page-header'
 import { NginxRouteControlWidget } from '@widgets/nginx/nginx-route-control-widget'
 
@@ -33,6 +34,11 @@ const NginxRoutesPage = async () => {
         <HydrationBoundary state={dehydrate(queryClient)}>
             <div className="grid gap-px">
                 <PageHeader description={navTranslations('subtitles.nginxRoutes')} title={navTranslations('items.nginxRoutes')} />
+                <ScreenRoleNotice
+                    counterpartHref="/nginx"
+                    counterpartLabel={navTranslations('items.nginx')}
+                    description={translations('nginxRouteRoleNotice')}
+                />
                 <NginxRouteControlWidget
                     role={session.session.role}
                     routableNetworks={ROUTABLE_NETWORKS}
@@ -41,6 +47,7 @@ const NginxRoutesPage = async () => {
                         bodySize: translations('nginxRouteBodySize'),
                         cancel: translations('cancel'),
                         confirmation: translations('nginxRouteConfirmation'),
+                        confirmationMismatch: translations('confirmationMismatch'),
                         confirmRemoveTitle: translations('confirmRemoveTitle'),
                         container: translations('nginxRouteContainer'),
                         containerUnreachable: translations('nginxRouteContainerUnreachable'),

@@ -45,6 +45,7 @@ const InfrastructurePage = async () => {
                     labels={{
                         cancel: translations('cancel'),
                         confirmation: translations('infrastructureConfirmation'),
+                        confirmationMismatch: translations('confirmationMismatch'),
                         confirmRemoveTitle: translations('confirmRemoveTitle'),
                         containers: translations('containers'),
                         create: translations('create'),

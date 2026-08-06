@@ -12,6 +12,7 @@ import { Button } from '@shared/ui/button'
 import { Checkbox } from '@shared/ui/checkbox'
 import { Input } from '@shared/ui/input'
 import { Label } from '@shared/ui/label'
+import { useGetContainerList } from '@entities/engine/engine.query'
 import { NginxHelpTooltip } from '@features/nginx-help-tooltip/nginx-help-tooltip'
 
 type UpstreamServerModel = {
@@ -93,7 +94,15 @@ type NginxUpstreamEditorProps = {
     onChange: (block: NginxBlock) => void
 }
 
+const UPSTREAM_SUGGESTION_LIST_ID = 'nginx-upstream-address-options'
+
 export const NginxUpstreamEditor: FC<NginxUpstreamEditorProps> = ({ block, onChange }) => {
+    const containerSuggestions = (useGetContainerList().data ?? []).flatMap((container) => {
+        const name = container.names[0]
+        if (name === undefined) return []
+        const ports = container.exposedPorts.map((port) => port.split('/')[0]).filter((port): port is string => port !== undefined)
+        return ports.length === 0 ? [name] : ports.map((port) => `${name}:${port}`)
+    })
     const t = useTranslations('Dashboard')
     const childIndent = getChildIndent(block)
     const [newName, setNewName] = useState('')
@@ -136,6 +145,11 @@ export const NginxUpstreamEditor: FC<NginxUpstreamEditorProps> = ({ block, onCha
 
     return (
         <div className="grid gap-4">
+            <datalist id={UPSTREAM_SUGGESTION_LIST_ID}>
+                {containerSuggestions.map((suggestion) => (
+                    <option key={suggestion} value={suggestion} />
+                ))}
+            </datalist>
             <div className="flex items-center gap-2">
                 <Label className="shrink-0 text-xs" htmlFor={`upstream-name-${block.head}`}>
                     {t('nginxGui.upstreamName')}
@@ -169,6 +183,7 @@ export const NginxUpstreamEditor: FC<NginxUpstreamEditorProps> = ({ block, onCha
                                 <Input
                                     id={`upstream-address-${index}`}
                                     className="h-8 font-mono text-xs"
+                                    list={UPSTREAM_SUGGESTION_LIST_ID}
                                     value={model.address}
                                     onChange={(event) => updateServer(node, { address: event.target.value })}
                                     spellCheck={false}

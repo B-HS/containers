@@ -16,12 +16,13 @@ export const NginxDirectiveRow: FC<NginxDirectiveRowProps> = ({ node, onRemove, 
     <div className="flex items-center gap-2">
         <code className="shrink-0 font-mono text-sm text-text-strong">{node.name}</code>
         <Input
+            aria-label={node.name}
             className="h-8 font-mono text-xs"
             value={node.args.join(' ')}
             onChange={(event) => onValueChange(node, event.target.value)}
             spellCheck={false}
         />
-        <Button type="button" variant="ghost" size="xs" onClick={() => onRemove(node)}>
+        <Button aria-label={`${removeLabel} ${node.name}`} type="button" variant="ghost" size="xs" onClick={() => onRemove(node)}>
             {removeLabel}
         </Button>
     </div>

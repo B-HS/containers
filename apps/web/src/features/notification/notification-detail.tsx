@@ -15,6 +15,7 @@ type NotificationDetailProps = {
     labels: {
         cancel: string
         confirmation: string
+        confirmationMismatch: string
         confirmRemoveTitle: string
         disabled: string
         enabled: string
@@ -87,6 +88,7 @@ export const NotificationDetail: FC<NotificationDetailProps> = ({ busy, destinat
                     disabled={busy}
                     expectedValue={destination.name}
                     inputId={`notification-confirm-${destination.id}`}
+                    mismatchLabel={labels.confirmationMismatch}
                     onConfirm={() => onRemove(destination.name)}
                     removeLabel={labels.remove}
                     target={destination.name}

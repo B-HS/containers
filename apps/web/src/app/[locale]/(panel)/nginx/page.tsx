@@ -4,6 +4,7 @@ import { getNginxConfig } from '@entities/nginx/nginx.api'
 import { API_INTERNAL_URL } from '@shared/lib/api-internal-url'
 import { QUERY_KEY } from '@shared/lib/query-key'
 import { getSession } from '@shared/lib/session'
+import { ScreenRoleNotice } from '@features/screen-role-notice/screen-role-notice'
 import { PageHeader } from '@shared/common/page-header'
 import { NginxConfigWidget } from '@widgets/nginx/nginx-config-widget'
 
@@ -24,6 +25,11 @@ const NginxPage = async () => {
         <HydrationBoundary state={dehydrate(queryClient)}>
             <div className="grid gap-px">
                 <PageHeader description={navTranslations('subtitles.nginx')} title={navTranslations('items.nginx')} />
+                <ScreenRoleNotice
+                    counterpartHref="/nginx/routes"
+                    counterpartLabel={navTranslations('items.nginxRoutes')}
+                    description={translations('nginxConfigRoleNotice')}
+                />
                 <NginxConfigWidget
                     role={session.session.role}
                     labels={{

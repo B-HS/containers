@@ -816,7 +816,10 @@
         "deploymentVolumes": "Named volumes — volume:mountPath[:ro]",
         "deploymentVolumesHelp": "One per line. Host paths cannot be mounted; only named volumes are accepted.",
         "deploymentPublished": "Expose on a public domain",
-        "deploymentPublishedHelp": "Turn off to deploy an internal service. No nginx route is created and health is observed through the container probe."
+        "deploymentPublishedHelp": "Turn off to deploy an internal service. No nginx route is created and health is observed through the container probe.",
+        "confirmationMismatch": "The value does not match the confirmation text.",
+        "nginxConfigRoleNotice": "This screen edits the whole nginx configuration file. Proxy routes from a domain to a container are managed on the proxy routes screen.",
+        "nginxRouteRoleNotice": "This screen only manages routes from a public domain to a container. Edit and apply the whole configuration file on the Nginx configuration screen."
     },
     "Nav": {
         "brand": "Containers",

@@ -3,6 +3,7 @@ export type NginxRouteLabels = {
     bodySize: string
     cancel: string
     confirmation: string
+    confirmationMismatch: string
     confirmRemoveTitle: string
     container: string
     containerUnreachable: string
