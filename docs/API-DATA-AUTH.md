@@ -13,7 +13,7 @@ flowchart LR
 
 - Route는 `createXxxRoute(deps)` factory이며 Hono 인스턴스를 반환한다.
 - 모든 JSON·query·param은 Zod validator를 사용한다.
-- 모든 handler는 `withErrorHandling` 바깥, `withAuth`·`withCapability` 안쪽 순으로 합성한다.
+- 모든 handler는 `withErrorHandling` 으로 감싸고, 그 **안에서** `authService.requireRole` 또는 `requireRecentRole` 을 직접 호출한다. API key 경로가 있으면 `Authorization` 헤더 유무로 분기해 `apiKeyService.authenticate(headers, scope)` 를 쓴다. (`lib/with-auth.ts` 의 `withAuth`·`withAdmin`·`withApiToken` HOF 는 정의만 있고 라우트에서 쓰지 않는다. `withCapability` 는 존재하지 않는다.)
 - Service는 Hono Context와 Drizzle을 받지 않는다.
 - DB query와 transaction은 compose의 `*ServiceDb` 구현에만 둔다.
 - Agent client는 Service dependency이며 Docker SDK type을 도메인에 누출하지 않는다.
@@ -64,48 +64,53 @@ middleware는 Host 문자열만 신뢰하지 않고 Nginx가 내부 network에�
 - **bootstrap**: 계정이 하나도 없을 때 최초 owner 를 만드는 인증 없는 경로다. 그래서 공개 주소에서는 `BOOTSTRAP_ORIGIN_FORBIDDEN`(403)으로 거부하고, 공개 주소가 설정되기 전부터 존재하는 이름(`127.0.0.1`·`localhost`·`::1`·`panel.containers.local`·`api.containers.local`)에서만 받는다. 이후 사용자는 초대로만 늘어난다. seed 계정은 없다.
 - **API key**: `authorization: Bearer ctk_...`. `Authorization` 헤더가 있으면 route가 API key 경로로 분기하고, 없으면 세션 경로로 간다. 키는 sha256 해시로만 저장되며 scope·만료·분당 rate limit(`API_KEY_RATE_LIMIT_PER_MINUTE`, 기본 120)을 적용한다. `backup:write`·`secret:write`는 **발급·사용 모두 owner에게만** 허용된다.
 
-| 경로                                                                                                                                                                 | API key scope               | session 요구                              |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------- |
-| `GET /api/health`                                                                                                                                                    | 불필요                      | 불필요                                    |
-| `GET /api/readyz`                                                                                                                                                    | `control-plane:read` (상세) | 요약은 불필요, 상세는 owner·admin         |
-| `GET /api/artifacts`                                                                                                                                                 | `artifact:read`             | 전 역할                                   |
-| `DELETE /api/artifacts/:artifactId`                                                                                                                                  | 불가                        | recent owner·admin                        |
-| `POST /api/uploads/sessions`, `PUT .../chunks`, `POST .../finalize`                                                                                                  | `artifact:upload`           | owner·admin·operator                      |
-| `POST /api/artifacts/:artifactId/load`                                                                                                                               | `image:load`                | recent owner·admin                        |
-| `GET /api/deployment-manifests`, `GET /api/deployment-releases`(+ `/:id`)                                                                                            | `deployment:read`           | 전 역할                                   |
-| `POST /api/deployment-manifests`                                                                                                                                     | `deployment:write`          | recent owner·admin                        |
-| `POST /api/deployment-manifests/:manifestId/releases`                                                                                                                | `deployment:write`          | recent owner·admin                        |
-| `GET /api/deployment-stacks`(+ `/:id`)                                                                                                                               | `deployment:read`           | 전 역할                                   |
-| `POST /api/deployment-stacks/preview`, `POST /api/deployment-stacks`                                                                                                 | `deployment:write`          | recent owner·admin                        |
-| `GET /api/deployment-stack-releases`(+ `/:id`)                                                                                                                       | `deployment:read`           | 전 역할                                   |
-| `POST /api/deployment-stacks/:stackId/releases`                                                                                                                      | `deployment:write`          | recent owner·admin                        |
-| `POST /api/deployment-releases/:id/rollback`                                                                                                                         | `deployment:write`          | recent owner·admin                        |
-| `GET /api/deployment-secrets`                                                                                                                                        | `secret:read`               | owner·admin                               |
-| `POST`·`DELETE /api/deployment-secrets`                                                                                                                              | `secret:write`(owner)       | recent owner·admin                        |
-| `GET /api/deployment-secrets/key-versions` / `POST /api/deployment-secrets/rotate`                                                                                   | 불가                        | owner·admin / recent owner                |
-| `GET /api/jobs`, `/api/jobs/:id`, `/api/jobs/:id/events`, `/api/jobs/backup-schedule`                                                                                | `job:read`                  | owner·admin                               |
-| `POST /api/jobs/:id/cancel`                                                                                                                                          | `job:write`                 | recent owner·admin                        |
-| `GET /api/backups`                                                                                                                                                   | `backup:read`               | owner                                     |
-| `POST /api/backups`                                                                                                                                                  | `backup:write`(owner)       | recent owner                              |
-| `POST /api/backups/:id/restore`, `DELETE /api/backups/:id`                                                                                                           | 불가                        | recent owner만                            |
-| `GET /api/system/engine`, `/api/containers`, `/api/containers/:id`, `/api/containers/:id/logs`, `/api/images`                                                        | `engine:read`               | 전 역할                                   |
-| `GET /api/control-plane/status`                                                                                                                                      | `control-plane:read`        | owner·admin                               |
-| `/api/nginx/*` 조회                                                                                                                                                  | 불가                        | 전 역할                                   |
-| `/api/nginx/*` 변경(`config/apply`, routes CUD)                                                                                                                      | 불가                        | recent owner·admin                        |
-| `/api/traffic/*`                                                                                                                                                     | 불가                        | 전 역할(export·health는 owner·admin)      |
-| `/api/audit`                                                                                                                                                         | 불가                        | owner·admin·viewer·auditor                |
-| `/api/api-keys` 조회                                                                                                                                                 | 불가                        | owner·admin                               |
-| `/api/api-keys` 생성·폐기                                                                                                                                            | 불가                        | recent 세션(폐기는 recent owner·admin)    |
-| `/api/maintenance` 조회 / 변경                                                                                                                                       | 불가                        | 전 역할 / recent owner                    |
-| `/api/notification-destinations`                                                                                                                                     | 불가                        | owner·admin                               |
-| Docker 제어(`/api/containers` 생성·actions·exec, `/api/images/*`(목록 제외), `/api/networks/*`, `/api/volumes/*`, `/api/system/prune*`, `/api/registry-credentials`) | 불가                        | 조회는 전 역할, 변경은 recent owner·admin |
-| SSE·exec stream(`/api/stream/*`, `/api/containers/:id/exec-tickets`, `/api/exec/ws/:ticket`)                                                                         | 불가                        | 전 역할                                   |
-| `/api/auth/*`, `/api/session`, `/api/users`, `/api/invitations`                                                                                                      | 불가                        | Better Auth 세션                          |
-| `GET /api/bootstrap/status`                                                                                                                                          | 불가                        | 불필요                                    |
-| `POST /api/bootstrap/owner`                                                                                                                                          | 불가                        | 불필요, 단 로컬 주소에서만                |
-| `PATCH`·`DELETE /api/users/:id`                                                                                                                                      | 불가                        | recent owner                              |
-| `GET /api/panel-settings` / `PUT`                                                                                                                                    | 불가                        | owner·admin / recent owner                |
-| `GET /api/trusted-proxies` / `POST`·`DELETE`                                                                                                                         | 불가                        | owner·admin / recent owner                |
+| 경로                                                                                                          | API key scope               | session 요구                                                                     |
+| ------------------------------------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------- |
+| `GET /api/health`                                                                                             | 불필요                      | 불필요                                                                           |
+| `GET /api/readyz`                                                                                             | `control-plane:read` (상세) | 요약은 불필요, 상세는 owner·admin                                                |
+| `GET /api/artifacts`                                                                                          | `artifact:read`             | 전 역할                                                                          |
+| `DELETE /api/artifacts/:artifactId`                                                                           | 불가                        | recent owner·admin                                                               |
+| `POST /api/uploads/sessions`, `PUT .../chunks`, `POST .../finalize`                                           | `artifact:upload`           | owner·admin·operator                                                             |
+| `POST /api/artifacts/:artifactId/load`                                                                        | `image:load`                | recent owner·admin                                                               |
+| `GET /api/deployment-manifests`, `GET /api/deployment-releases`(+ `/:id`)                                     | `deployment:read`           | 전 역할                                                                          |
+| `POST /api/deployment-manifests`                                                                              | `deployment:write`          | recent owner·admin                                                               |
+| `POST /api/deployment-manifests/:manifestId/releases`                                                         | `deployment:write`          | recent owner·admin                                                               |
+| `GET /api/deployment-stacks`(+ `/:id`)                                                                        | `deployment:read`           | 전 역할                                                                          |
+| `POST /api/deployment-stacks/preview`, `POST /api/deployment-stacks`                                          | `deployment:write`          | recent owner·admin                                                               |
+| `GET /api/deployment-stack-releases`(+ `/:id`)                                                                | `deployment:read`           | 전 역할                                                                          |
+| `POST /api/deployment-stacks/:stackId/releases`                                                               | `deployment:write`          | recent owner·admin                                                               |
+| `POST /api/deployment-releases/:id/rollback`                                                                  | `deployment:write`          | recent owner·admin                                                               |
+| `GET /api/deployment-secrets`                                                                                 | `secret:read`               | owner·admin                                                                      |
+| `POST`·`DELETE /api/deployment-secrets`                                                                       | `secret:write`(owner)       | recent owner·admin                                                               |
+| `GET /api/deployment-secrets/key-versions` / `POST /api/deployment-secrets/rotate`                            | 불가                        | owner·admin / recent owner                                                       |
+| `GET /api/jobs`, `/api/jobs/:id`, `/api/jobs/:id/events`, `/api/jobs/backup-schedule`                         | `job:read`                  | owner·admin                                                                      |
+| `POST /api/jobs/:id/cancel`                                                                                   | `job:write`                 | recent owner·admin                                                               |
+| `GET /api/backups`                                                                                            | `backup:read`               | owner                                                                            |
+| `POST /api/backups`                                                                                           | `backup:write`(owner)       | recent owner                                                                     |
+| `POST /api/backups/:id/restore`                                                                               | 불가                        | recent owner만                                                                   |
+| `DELETE /api/backups/:id`                                                                                     | `backup:write`              | recent owner                                                                     |
+| `GET /api/system/engine`, `/api/containers`, `/api/containers/:id`, `/api/containers/:id/logs`, `/api/images` | `engine:read`               | 전 역할                                                                          |
+| `GET /api/control-plane/status`                                                                               | `control-plane:read`        | owner·admin                                                                      |
+| `/api/nginx/*` 조회                                                                                           | 불가                        | 전 역할                                                                          |
+| `/api/nginx/*` 변경(`config/apply`, routes CUD)                                                               | 불가                        | recent owner·admin                                                               |
+| `/api/traffic/*`                                                                                              | 불가                        | 전 역할(export·health는 owner·admin)                                             |
+| `/api/audit`                                                                                                  | 불가                        | owner·admin·viewer·auditor                                                       |
+| `/api/api-keys` 조회                                                                                          | 불가                        | owner·admin                                                                      |
+| `/api/api-keys` 생성·폐기                                                                                     | 불가                        | recent owner·admin (`backup:write`·`secret:write` 를 포함해 만들면 recent owner) |
+| `/api/maintenance` 조회 / 변경                                                                                | 불가                        | 전 역할 / recent owner                                                           |
+| `/api/notification-destinations` 조회 / 변경·test                                                             | 불가                        | owner·admin / recent owner·admin                                                 |
+| Docker 제어(`/api/containers` 생성·actions, `/api/images/*`(목록 제외), `/api/networks/*`, `/api/volumes/*`)  | 불가                        | 조회는 전 역할, 변경은 recent owner·admin                                        |
+| `POST /api/containers/:id/wait`                                                                               | 불가                        | owner·admin·operator (recent 아님)                                               |
+| `GET /api/images/:id/removal-impact`, `GET /api/system/prune-preview`                                         | 불가                        | owner·admin                                                                      |
+| `POST /api/system/prune`, `/api/registry-credentials` 변경                                                    | 불가                        | recent owner만 (admin 불가)                                                      |
+| SSE stream(`/api/stream/*`)                                                                                   | 불가                        | 전 역할                                                                          |
+| exec(`/api/containers/:id/exec-tickets`, `/api/exec/ws/:ticket`)                                              | 불가                        | recent owner만                                                                   |
+| `/api/auth/*`, `/api/session`, `/api/users`, `/api/invitations`                                               | 불가                        | Better Auth 세션                                                                 |
+| `GET /api/bootstrap/status`                                                                                   | 불가                        | 불필요                                                                           |
+| `POST /api/bootstrap/owner`                                                                                   | 불가                        | 불필요, 단 로컬 주소에서만                                                       |
+| `PATCH`·`DELETE /api/users/:id`                                                                               | 불가                        | recent owner                                                                     |
+| `GET /api/panel-settings` / `PUT`                                                                             | 불가                        | owner·admin / recent owner                                                       |
+| `GET /api/trusted-proxies` / `POST`·`DELETE`                                                                  | 불가                        | owner·admin / recent owner                                                       |
 
 CI·자동화가 배포 전 구간을 무인으로 수행하려면 `artifact:upload`, `image:load`, `deployment:read`, `deployment:write`, `job:read`가 필요하고, 배포 후 검증까지 하려면 `engine:read`·`control-plane:read`를, 교착 job 해소까지 하려면 `job:write`를 추가한다. 실제 워크플로는 [ci-examples/github-actions-deploy.yml](./ci-examples/github-actions-deploy.yml)에 있다.
 
@@ -147,33 +152,27 @@ Better Auth 는 쿠키의 `Secure` 여부를 인스턴스 생성 시 한 번 정
 ### 5.1 인증
 
 - Better Auth core: user, session, account, verification
-- `user_role`: userId, role, createdAt
-- API key plugin tables와 permission metadata
+- `user_role`: userId(PK), role, disabledAt, createdAt, updatedAt — `disabledAt` 이 있으면 세션이 없는 것으로 취급한다
+- `api_key`: 자체 테이블이다(Better Auth 플러그인이 아니다). id, name, prefix, tokenHash, scopes, createdBy, expiresAt, revokedAt, lastUsedAt
 - `invitation`: tokenHash, email, role, createdBy, expiresAt, acceptedAt, revokedAt
 
-### 5.2 Docker metadata
+### 5.2 Docker metadata — 미구현
 
-- `docker_target`: id, name, endpointType, status, engineVersion, apiVersion, lastSeenAt
-- `resource_metadata`: targetId, resourceType, resourceId, displayName, managed, labels, lastSeenAt
-- `resource_snapshot`: targetId, resourceType, resourceId, observedAt, normalizedJson, stateHash
-
-snapshot은 짧게 보존하고 현재 판단에 사용하지 않는다.
+`docker_target`·`resource_metadata`·`resource_snapshot` 은 초기 구상이고 **테이블이 없다.** Docker 리소스는 매 요청 engine-agent 로 조회하고 저장하지 않는다.
 
 ### 5.3 Nginx
 
 - `nginx_route`: stable route identity와 desired fields. `managedBy` 는 이 라우트를 만든 `deployment_manifest` id 이고 패널이 만들면 `null` 이다(수정해도 유지된다). 수정은 `PUT /api/nginx/routes/:id`
-- `nginx_revision`: revision, parent, status, renderedChecksum, author, createdAt
-- `nginx_revision_file`: revisionId, relativePath, content, contentChecksum
-- `nginx_apply`: revisionId, previousRevisionId, status, validationOutput, probeOutput, startedAt, finishedAt
+- `nginx_revision`·`nginx_revision_file`·`nginx_apply` 는 **미구현이다.** 설정 원본은 관리 볼륨의 `current.conf` 하나이고 이력은 engine-agent 가 파일로 보관한다. §2 표의 revisions·validate·rollback 도 같은 이유로 아직 없다
 
 ### 5.4 upload·deployment·job
 
-- `upload`: type, originalName, byteSize, digest, state, owner, expiresAt
-- `upload_chunk`: uploadId, index, byteSize, digest, receivedAt
+- `upload_session`: id, idempotencyKey, fileName, mediaType, expectedSha256, expectedSizeBytes, receivedBytes, status(`uploading`·`completed`·`rejected`), temporaryPath, createdBy, expiresAt
+- `upload_chunk`: id, sessionId, offsetBytes, sizeBytes, sha256, createdAt
 - chunk 본문은 요청 스트림을 그대로 파일 offset 에 이어 쓰고 sha256 을 증분 계산한다. 최대 64 MiB chunk 를 통째로 메모리에 올리지 않으며, digest 가 어긋나면 `receivedBytes` 를 전진시키지 않아 같은 offset 재전송이 덮어쓴다. finalize 가 파일 전체 sha256 을 다시 검증하므로 실패한 chunk 의 잔여 바이트는 결과에 영향을 주지 않는다.
-- `artifact_scan`: uploadId, scanner, policyVersion, result, findingsSummary
-- `deployment`: name, currentVersionId, routeId, status
-- `deployment_version`: deploymentId, artifactId, imageDigest, containerId, manifestJson, status
+- `artifact_scan` 은 **미구현이다**(scanner 자체가 없다).
+- 실제 배포 테이블은 `deployment`(id, artifactId, containerId, status, createdBy — 이미지 load 이력), `deployment_manifest`, `deployment_release`, `deployment_stack`, `deployment_stack_release` 다. `deployment_version` 은 없다.
+- `artifact` 는 `deployment` 가 참조하는 동안 삭제되지 않는다. load 에 성공하면 그 참조가 영구히 남아 지울 수 없다 → [bug/2026-08-06](./bug/2026-08-06-loaded-artifacts-cannot-be-deleted.md)
 - 현재 `operation_job`: id, kind, status, payload, result, resourceKey, failureCode, attempt, maxAttempts, progressStep, createdBy, scheduledAt, startedAt, heartbeatAt, cancelRequestedAt, finishedAt, createdAt, updatedAt
 - 현재 `operation_job_event`: id, jobId, event, detail, createdAt
 - `detail` 은 자유 JSON 객체다. `event: 'progress'` 중 `detail.step === 'failure-diagnostics'` 인 항목은 배포 실패 진단이며 `deploymentFailureDiagnosticsSchema`(contracts `deployment`)로 파싱된다 — exit code, container error, 리댁션한 로그 20줄. 저장 정책은 `SECURITY.md` §19.
@@ -182,8 +181,9 @@ snapshot은 짧게 보존하고 현재 판단에 사용하지 않는다.
 
 ### 5.5 운영
 
-- `audit_log`: append-only operation record
-- `saved_view`: owner, domain, name, queryJson
+- `audit_log`: append-only operation record. 실제 컬럼은 id, actorId, authMethod, operation, targetType, targetId, requestId, result, sourceIp, detail, createdAt 이다. user agent·jobId·before/after·duration 전용 컬럼은 없고 필요한 값은 `detail` JSON 에 넣는다
+- `panel_setting`(단일 행), `trusted_proxy`, `maintenance_state` 도 control DB 에 있다
+- `saved_view` 는 미구현이다
 - `system_setting`: typed non-secret setting과 version
 - `secret_reference`: provider와 key reference만 저장
 - 현재 backup manifest file: schema version, control·traffic byte 수·digest, label, 생성 시각

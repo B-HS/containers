@@ -46,7 +46,7 @@ API 키에는 root-equivalent scope를 기본 발급하지 않는다. owner가 �
 - resource: `container`, `image`, `network`, `volume`, `nginx`, `traffic`, `deployment`, `user`, `api-key`, `audit`, `system`
 - action: `read`, `create`, `update`, `execute`, `delete`, `prune`, `break-glass`
 
-Route는 `withAuth` 다음 `withCapability`를 적용하고 Service에서도 actor context를 받아 정책을 재확인한다. Agent는 API의 판정을 맹신하지 않고 operation별 허용 DTO와 internal service credential을 검증한다.
+Route 는 `withErrorHandling` 안에서 `authService.requireRole`·`requireRecentRole`(또는 API key `authenticate`)을 직접 호출한다(`withCapability` HOF 는 존재하지 않는다). Service 도 보호 hostname·보호 컨테이너처럼 도메인 정책을 다시 확인한다. Agent는 API의 판정을 맹신하지 않고 operation별 허용 DTO와 internal service credential을 검증한다.
 
 ### 5.2 감사 로그 보존과 정렬 (2026-08-05)
 
@@ -130,7 +130,7 @@ blue-green 릴리스가 실패하면 원인이 컨테이너 안에만 남고 패
 - Agent root filesystem은 read-only, writable tmpfs 최소화, no-new-privileges를 사용한다.
 - Docker socket 외 host path를 mount하지 않는다.
 - Agent port는 `internal: true` Docker network에서만 듣는다.
-- API와 Agent 사이 credential은 Docker secret으로 전달하고 정기 rotation한다.
+- API와 Agent 사이 credential 은 공유 named volume 의 파일(`/credentials/agent-secret`, mode 0600)로 전달한다. Docker `secrets:` 는 쓰지 않고 정기 rotation 도 자동화돼 있지 않다.
 - private registry 비밀번호·access token은 Agent 전용 named volume에서 AES-256-GCM으로 암호화한다. API 응답·control DB·job payload·audit에는 원문을 기록하지 않는다.
 - deployment secret 과 notification webhook 의 마스터 키는 **keyring** 이다. v1 은 `/data/deployment-secret-key`·`/data/notification-secret-key`, 이후 버전은 같은 경로에 `.v2`, `.v3` 로 쌓인다(모두 `0600`). 쓰기는 항상 활성(최신) 버전으로, 읽기는 행의 `key_version` 으로 한다.
 - 키 교체는 owner 최근 인증이 필요한 `POST /api/deployment-secrets/rotate` 가 `secret.rotate` durable job 을 만들어 수행한다. 새 버전을 keyring 에 추가한 뒤 기존 행을 전부 복호화·재암호화한다. 옛 키를 지우지 않으므로 교체가 중간에 실패해도 어느 버전으로 암호화된 행이든 계속 복호화된다. 현재 버전은 `GET /api/deployment-secrets/key-versions`(owner·admin) 로 확인한다.
@@ -143,7 +143,7 @@ blue-green 릴리스가 실패하면 원인이 컨테이너 안에만 남고 패
 ## 11. 감사 무결성
 
 - audit row는 append-only이며 애플리케이션에서 update·delete endpoint를 만들지 않는다.
-- actor, authMethod, source IP 정책값, user agent 요약, operation, target, request ID, job ID, before·after 요약, result, error code, duration을 기록한다.
+- actor, authMethod, operation, targetType·targetId, requestId, result, source IP, `detail` JSON, createdAt 을 기록한다. user agent·jobId·before/after·duration 전용 컬럼은 없고 필요한 값만 `detail` 에 넣는다.
 - secret, cookie, API key, full env, exec stdin, raw terminal output은 기록하지 않는다.
 - 각 row에 이전 row hash를 포함하는 tamper-evident chain을 선택적으로 적용하고 주기적으로 외부 저장소에 checkpoint를 내보낸다.
 - root 권한 공격자가 로컬 기록을 모두 바꿀 수 있다는 한계를 문서와 UI에 명시한다.
@@ -152,7 +152,7 @@ blue-green 릴리스가 실패하면 원인이 컨테이너 안에만 남고 패
 
 - 원본 IP는 traffic raw row와 보안상 필요한 audit event에만 저장하고 rollup에는 원문을 복제하지 않는다.
 - traffic live SSE와 일반 CSV/NDJSON export는 Worker 경계에서 IP를 mask하고 user agent를 제외한다. export 생성·download는 owner/admin session과 audit를 요구한다.
-- 일반 목록은 mask하며 `auditor` 이상만 재인증과 조회 사유 입력 후 원문을 열람한다.
+- 일반 목록은 mask한다. **재인증 후 원문을 열람하는 경로는 아직 없다** — API 는 `sourceIpMasked` 만 내보낸다.
 - 원본 IP 조회와 export 시도 자체를 감사하고 bulk export는 owner 승인과 만료형 job으로 제한한다.
 - Discord 알림과 선택적 R2 외부 backup의 알림 metadata에는 원본 IP를 넣지 않는다. R2 backup 자체는 암호화와 retention을 적용한다.
 - raw row 14일, audit 1년 만료를 자동 purge하고 삭제 건수·완료 시각을 증거로 남긴다.

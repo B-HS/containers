@@ -91,5 +91,6 @@ build:
 #         - |
 #           healthy=$(docker compose ps --format '{{.Status}}' | grep -c healthy)
 #           test "$healthy" -eq 5
+#           bun run audit:runtime
 #     rules:
 #         - if: $CI_COMMIT_BRANCH == "dev"

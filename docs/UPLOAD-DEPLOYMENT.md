@@ -4,13 +4,15 @@
 
 "tar 등 여러 타입"을 같은 처리로 뭉치지 않고 의미에 따라 구분한다.
 
-| 유형                 | 예시                                                                            | 처리                                                                        |
-| -------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Docker image archive | `docker save` 결과 `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tar.xz`, `.tar.zst` | Docker image load                                                           |
-| OCI image archive    | OCI layout tar                                                                  | manifest·blob digest 검증 후 Engine이 받는 형식으로 안전하게 변환 또는 load |
-| rootfs archive       | filesystem tar                                                                  | Docker image import, 전문가 권한과 metadata 필수                            |
-| Compose bundle       | manifest + compose + image archives                                             | 제품 전용 schema 검증 후 복수 리소스 배포                                   |
-| build context        | Dockerfile이 포함된 tar                                                         | 격리 BuildKit build, network·secret·cache 정책 제한                         |
+| 유형                 | 예시                                       | 처리                                                | 현재                                          |
+| -------------------- | ------------------------------------------ | --------------------------------------------------- | --------------------------------------------- |
+| Docker image archive | `docker save` 결과 `.tar`, `.tar.gz`(gzip) | Docker image load                                   | **구현**                                      |
+| OCI image archive    | OCI layout tar                             | manifest·blob digest 검증 후 load                   | **구현**                                      |
+| rootfs archive       | filesystem tar                             | Docker image import, 전문가 권한과 metadata 필수    | 미구현                                        |
+| Compose bundle       | manifest + compose + image archives        | 제품 전용 schema 검증 후 복수 리소스 배포           | compose 는 API 본문으로 받는다(아카이브 아님) |
+| build context        | Dockerfile이 포함된 tar                    | 격리 BuildKit build, network·secret·cache 정책 제한 | 미구현                                        |
+
+허용 mediaType 은 Docker·OCI image archive 2종뿐이다. 압축은 **gzip 만** 판별하며 bzip2·xz·zstd 는 tar 파싱에 실패해 `ARCHIVE_INVALID` 로 거부된다.
 
 단순 `.zip`을 image archive로 받지 않는다. 압축 형식과 archive semantic을 별도 필드와 server-side sniffing으로 일치시킨다.
 
@@ -20,10 +22,10 @@
 - API 클라이언트는 upload 생성, chunk 전송, 완료 순서로 진행한다.
 - 모든 업로드는 `Idempotency-Key`와 예상 byte, 예상 SHA-256, artifact type을 받는다.
 - server는 chunk별 digest와 최종 digest를 검증한다.
-- 기본 upload session 한도는 10GiB, chunk는 64MiB, 동시 upload는 2개다. 관리자는 전체·사용자 quota를 변경할 수 있다.
+- chunk 상한은 64MiB, 사용자당 동시 upload 는 2개다. 총 quota 는 환경변수 `UPLOAD_TOTAL_QUOTA_BYTES`(기본 32GiB) 하나뿐이고 **사용자별 quota 와 관리 UI 는 미구현이다.**
 - Cloudflare Free의 단일 request body 제한보다 chunk를 충분히 작게 유지한다. 단일 10GiB HTTP request는 지원하지 않는다.
 - proxy buffering 때문에 disk를 이중 사용하는지 측정하고 대용량 upload route는 명시적으로 tuning한다.
-- 진행률은 SSE job event로 제공하고 재접속 시 마지막 event 이후를 재생한다.
+- 진행률은 durable job event 로 남기고 화면이 폴링해 읽는다. SSE 재생(`Last-Event-ID`)은 미구현이다.
 
 ## 3. 상태 기계
 
@@ -45,7 +47,12 @@ stateDiagram-v2
     RollingBack --> RolledBack
 ```
 
-각 전이는 job event와 audit log를 남긴다. 취소는 Uploading, Uploaded, Inspecting, Scanning, Ready에서 안전하게 가능하다. Loading 이후에는 Engine 결과 reconciliation 후 정리한다.
+**위 다이어그램은 초기 구상이다.** 실제로 저장되는 상태는 둘로 나뉜다.
+
+- `upload_session.status`: `uploading` → `completed` 또는 `rejected`. digest 불일치와 아카이브 검사 실패가 `rejected` 다(활성 슬롯을 놓는다). `Uploaded`·`Inspecting`·`Scanning`·`Ready` 라는 상태는 없다.
+- `deployment.status`(이미지 load 이력): `loading` → `loaded` 또는 `failed`. `artifact.status` 는 `ready` 고정이다.
+
+취소는 상태가 아니라 클라이언트의 요청 중단이다. 서버 세션은 남고 같은 파일을 다시 올리면 이어진다(§업로드 재개와 취소).
 
 ## 4. quarantine 검사
 
@@ -56,13 +63,13 @@ stateDiagram-v2
 5. 파일 수, 총 uncompressed byte, compression ratio, depth를 제한한다.
 6. absolute path, `..`, NUL, device node, FIFO, escaping symlink·hardlink를 거부한다.
 7. Docker 또는 OCI manifest와 referenced layer 존재·digest를 검증한다.
-8. scanner container로 악성 파일과 image 취약점·secret을 검사한다.
-9. policy 결과와 예외 승인자를 저장한다.
-10. 성공 artifact만 immutable ready 영역으로 이동한다.
+8. 성공 artifact만 immutable ready 영역으로 이동한다.
 
-검사 실패 artifact는 제한 시간 후 삭제하고 이유를 사용자에게 보여준다. 원본 파일명을 filesystem 경로에 사용하지 않는다.
+**8~10 의 scanner 단계(악성 파일·취약점·secret 검사, 예외 승인자 저장)와 platform 검증은 미구현이다.** 아래 취약점 정책 문단도 아직 코드가 없다.
 
-critical vulnerability는 기본 차단한다. owner 예외에는 finding, 사유, 승인자, 만료, 적용 deployment를 기록하고 예외 만료 후 재배포를 막는다. `linux/arm64`를 기본 platform으로 검증하고 `linux/amd64`는 Docker Desktop emulation 가용성 검사 후 허용한다.
+검사에 실패하면 세션을 `rejected` 로 전이해 활성 슬롯을 놓고, 임시 파일은 TTL 정리가 지운다. 원본 파일명을 filesystem 경로에 사용하지 않는다.
+
+(구상) critical vulnerability는 기본 차단한다. owner 예외에는 finding, 사유, 승인자, 만료, 적용 deployment를 기록하고 예외 만료 후 재배포를 막는다. `linux/arm64`를 기본 platform으로 검증하고 `linux/amd64`는 Docker Desktop emulation 가용성 검사 후 허용한다.
 
 ## 5. 배포 manifest
 
@@ -120,22 +127,23 @@ critical vulnerability는 기본 차단한다. owner 예외에는 finding, 사�
 
 ## 8. API 흐름
 
-- `POST /api/uploads` — upload session 생성
-- `PUT /api/uploads/:id/chunks/:index` — bounded chunk
-- `POST /api/uploads/:id/complete` — digest 확인과 검사 job 시작
-- `GET /api/uploads/:id` — 상태·검사 결과
+- `POST /api/uploads/sessions` — upload session 생성(`Idempotency-Key` 헤더 필수)
+- `PUT /api/uploads/sessions/:sessionId/chunks?offset=` — 순차 chunk, `x-chunk-sha256` 헤더
+- `POST /api/uploads/sessions/:sessionId/finalize` — digest 확인과 검사 job 시작(202 + job)
 - `GET|POST /api/deployment-manifests` — 불변 manifest 목록·생성
 - `POST /api/deployment-manifests/:id/releases` — blue-green release 시작
 - `GET /api/deployment-releases/:id` — release 상태 조회
-- `GET /api/jobs/:id/events` — SSE progress
+- `GET /api/jobs/:id/events` — durable job event **목록 조회(JSON 폴링)**. SSE 재생은 미구현이다
 - `POST /api/deployment-releases/:id/rollback` — 이전 정상 version으로 전환
-- `DELETE /api/uploads/:id` — 안전 상태 artifact 폐기
+- `DELETE /api/artifacts/:artifactId` — artifact 폐기(배포가 참조 중이면 409)
+
+세션 조회(`GET /api/uploads/:id`)와 세션 폐기 엔드포인트는 없다.
 
 Hono RPC는 JSON control endpoint 타입을 제공한다. 대용량 binary chunk와 SSE·WebSocket은 별도 typed wrapper를 사용하되 같은 Zod DTO와 인증 정책을 공유한다.
 
 ## 9. 정리와 quota
 
-- 사용자·전체 upload byte quota
+- 전체 upload byte quota(사용자별은 미구현)
 - ready artifact 보존 기간
 - 실패 artifact 짧은 보존
 - deployment에서 참조 중인 artifact·image 삭제 금지
@@ -143,7 +151,7 @@ Hono RPC는 JSON control endpoint 타입을 제공한다. 대용량 binary chunk
 - hard watermark에서 새 upload·build 차단
 - orphan chunk와 interrupted upload 주기 정리
 - cleanup도 audit와 metrics 대상
-- 384GB 설정값, volume available bytes, Engine reclaimable bytes와 예약 job bytes를 함께 표시
+- volume available bytes, Engine reclaimable bytes와 예약 job bytes를 함께 표시(운영자가 입력한 디스크 구성값을 저장하는 기능은 미구현)
 
 ## 10. 현재 구현 기준선
 
@@ -151,8 +159,9 @@ Hono RPC는 JSON control endpoint 타입을 제공한다. 대용량 binary chunk
 - secret 값과 일반 환경변수 값은 manifest와 audit에 저장하지 않는다. secret은 `/data`의 별도 master key로 AES-256-GCM 암호화하며 metadata·reference·version만 API와 SSR에 노출한다.
 - 같은 reference를 다시 저장하면 rotation version이 증가한다. release 시작과 실행 직전에 최신 reference를 확인하며, 참조 중인 secret 삭제를 거부한다.
 - 일반 `environmentKeys`는 값 저장 정책이 없으므로 release를 계속 거부하고, secret binding만 Docker environment로 전달한다. container inspect는 값 없이 key만 반환한다.
-- release는 `creating → probing → switching → observing → healthy` 상태를 저장하며 실패 시 `failed` 또는 `rolled-back`으로 종료한다.
-- 신규 container는 `containers_control`에서 먼저 health probe를 통과하고 목표 network에 연결한 뒤 control network에서 분리한다.
+- release는 `creating → probing → switching → observing → healthy` 상태를 저장하며 실패 시 `failed` 또는 `rolled-back`으로 종료한다. 수동 롤백은 `rolling-back` 을 경유한다.
+- 신규 container는 **`containers_probe`**(환경변수 `PROBE_NETWORK_NAME`)에서 먼저 health probe를 통과하고 목표 network에 연결한다. 공개 라우트가 있으면 그때 probe network 에서 분리하고, **라우트가 없는 내부 서비스(`route: null`)는 관찰 probe 까지 마친 뒤 분리한다** — engine-agent 가 관찰 probe 를 보내려면 probe network 가 필요하기 때문이다([bug](./bug/2026-08-06-internal-service-observation-unreachable.md)).
+- 내부 서비스는 nginx upsert·라우트 probe·라우트 관찰을 모두 건너뛰고 컨테이너 probe 로 관찰한다.
 - 구조화 Nginx route는 apply 성공 뒤에만 DB target을 갱신한다. reload 직후 이전 worker 응답은 health retry 정책으로 흡수한다.
 - route observation 실패는 이전 healthy release로 route를 복원한다. 이전 release가 없으면 새 route를 제거하고 신규 container를 중지한다.
 - API는 release 생성과 수동 rollback 시작에 `202 { release, job }`을 반환하고 상태 조회를 제공한다. 진행 상태는 SQLite에 기록하며 API 재시작 시 중단된 create·probe·route switch·observation·rollback을 안전한 종료 상태로 수렴시킨다.

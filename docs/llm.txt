@@ -106,16 +106,19 @@ Uploads:         artifact(id, fileName, mediaType, sha256, sizeBytes, status,
                  upload_session(id, idempotencyKey, fileName, mediaType,
                           expectedSha256, expectedSizeBytes, receivedBytes,
                           status, temporaryPath, createdBy, expiresAt)
+                          status ∈ uploading, completed, rejected
+                          (검사·digest 실패는 rejected 로 전이해 활성 슬롯을 놓는다)
                  upload_chunk(id, sessionId, offsetBytes, sizeBytes, sha256)
 Deployment:      deployment(id, artifactId, containerId, status, createdBy)
                  deployment_manifest(id, name, version, imageDigest,
                           commandJson, entrypointJson, environmentKeysJson,
-                          secretsJson, volumesJson, internalPort, protocol,
-                          nanoCpus, memoryBytes, pidsLimit, restartPolicy,
-                          network, healthcheck*, route*, rollout*, createdBy)
+                          secretsJson, volumesJson, runtimeJson, internalPort,
+                          protocol, nanoCpus, memoryBytes, pidsLimit,
+                          restartPolicy, network, healthcheck*, route*,
+                          rollout*, createdBy)
                  deployment_secret(id, reference, ciphertext,
                           initializationVector, authenticationTag, keyVersion,
-                          version)
+                          version, createdBy)
                  deployment_release(id, manifestId, previousReleaseId,
                           containerId, containerName, nginxRouteId,
                           nginxConfigSha256, status, failureCode, createdBy,
@@ -162,7 +165,13 @@ Notifications:   notification_destination(id, name, type, ciphertext, iv, tag,
                           enabled, eventTypes, keyVersion, createdBy)
                  notification_delivery(id, destinationId, jobId, sourceJobId,
                           eventType, failureCode, status)
-Traffic (traffic.sqlite, separate DB): access_event(s) + checkpoints
+Panel:           panel_setting(id, publicOrigin, extraTrustedOrigins,
+                          nginxHostname, updatedBy, updatedAt) — 단일 행
+                 trusted_proxy(address PK, hostname, note, approvedBy, approvedAt)
+                 maintenance_state(id, enabled, reason, actorId, jobId,
+                          startedAt, updatedAt)
+Traffic (traffic.sqlite, separate DB): access_event 한 개. ingest 체크포인트는
+                 테이블이 아니라 /data/ingest-checkpoint.json 파일이다
 
 
 ================================================================================
@@ -269,35 +278,46 @@ Images:          /api/images GET (engine:read or all roles),
                  /api/images/pull POST (admin recent, durable job),
                  /api/images/:imageId/tag POST (admin recent),
                  /api/images/:imageId DELETE (admin recent, confirmation)
-Networks/Volumes:/api/networks GET | POST (admin recent)
-                 /api/volumes GET | POST (admin recent)
+Networks/Volumes:/api/networks GET | POST | /:networkId DELETE (admin recent)
+                 /api/volumes GET | POST | /:volumeName DELETE (admin recent)
 Prune:           /api/system/prune-preview GET (admin),
                  /api/system/prune POST (owner recent, preview-sha required)
 Registry creds:  /api/registry-credentials GET (admin) |
-                 POST/:credentialId/DELETE (owner recent)
-Deployment:      /api/artifacts/:artifactId/load POST (deployment:write or admin)
-                 /api/deployment-manifests GET/POST/DELETE (admin recent write)
-                 /api/deployment-releases GET | POST (owner recent) |
-                 .../:id/rollback POST (owner recent)
-                 /api/deployment-manifests/:manifestId/releases POST
+                 POST | /:credentialId POST(수정) | /:credentialId DELETE
+                 (전부 recent owner 전용 — admin 불가)
+Deployment:      /api/artifacts/:artifactId/load POST (image:load or recent admin)
+                 /api/deployment-manifests GET | /:id GET | POST (admin recent write)
+                 (manifest DELETE 는 없다 — 삭제 경로 자체가 없다)
+                 /api/deployment-releases GET | /:id GET |
+                 /api/deployment-releases/:id/rollback POST (deployment:write or
+                 recent owner·admin). 릴리스 생성은 아래 manifest 경로뿐이다
+                 /api/deployment-manifests/:manifestId/releases POST → 202 {job,release}
                  /api/deployment-stacks GET/:id GET (deployment:read) |
                  /api/deployment-stacks/preview POST | /api/deployment-stacks POST
                  (deployment:write or recent owner·admin)
                  /api/deployment-stacks/{stackId}/releases POST → 202 {job,stackRelease}
                  /api/deployment-stack-releases GET | /:id GET (deployment:read)
-                 /api/deployment-secrets GET/POST/DELETE (admin recent write)
+                 /api/deployment-secrets GET/POST/DELETE (admin recent write),
+                 /api/deployment-secrets/key-versions GET (owner·admin),
+                 /api/deployment-secrets/rotate POST (recent owner)
 Jobs:            /api/jobs GET, /api/jobs/backup-schedule GET,
-                 /api/jobs/:id GET, .../events GET, .../cancel POST (owner)
+                 /api/jobs/:id GET, .../events GET (job:read or owner·admin),
+                 .../cancel POST (job:write or recent owner·admin)
 Nginx:           /api/nginx/status GET, /api/nginx/config GET,
                  /api/nginx/config/apply POST (admin recent),
-                 /api/nginx/routes GET | POST/DELETE (admin recent)
+                 /api/nginx/routes GET | POST/PUT/DELETE (admin recent)
 Notification:    /api/notification-destinations GET/POST (admin recent) |
                  /api/notification-destinations/:id PATCH/DELETE |
                  /api/notification-destinations/:id/test POST (admin recent)
-Traffic:         /api/traffic/analytics GET, /api/traffic/live GET (SSE),
+Traffic:         /api/traffic/health GET (owner·admin),
+                 /api/traffic/analytics GET, /api/traffic/live GET (SSE),
                  /api/traffic/summary GET, /api/traffic/exports POST (owner),
                  /api/traffic/exports/:jobId/download GET (owner/admin)
-Upload:          /api/artifacts GET (all), /api/uploads/sessions POST,
+Health:          /api/health GET (무인증), /api/readyz GET (요약 무인증,
+                 상세는 control-plane:read 또는 owner·admin)
+Upload:          /api/artifacts GET (all), /api/artifacts/:artifactId DELETE
+                 (recent owner·admin, 배포가 참조 중이면 409),
+                 /api/uploads/sessions POST,
                  /api/uploads/sessions/:sessionId/chunks PUT,
                  .../finalize POST (artifact:upload or operator+, 64MiB chunks,
                  sequential offset, per-chunk sha256, final full-file hash)
@@ -541,6 +561,6 @@ Docker:
   docker compose up -d --wait
   docker compose ps               # expect 5 healthy services
 
-Tests (160) cover: auth/api-key, backup/restore, deployment release state
+Tests cover: auth/api-key, backup/restore, deployment release state
 machine, nginx config apply + protected contract, upload chunk integrity,
 engine control guards, stream parsers, traffic analytics.

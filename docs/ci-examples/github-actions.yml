@@ -66,3 +66,4 @@ jobs:
               run: |
                   docker compose ps --format '{{.Name}} {{.Status}}'
                   test "$(docker compose ps --format '{{.Status}}' | grep -c healthy)" -eq 5
+                  bun run audit:runtime

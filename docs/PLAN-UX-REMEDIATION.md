@@ -51,7 +51,7 @@
 ### P1 — 마찰 해소
 
 - [x] **4.1 에러 파싱 통일** — `fix(web): 서버가 준 실패 사유를 화면에 그대로 전달한다`. 검증 issue 배열·compose 거부 상세를 읽고, 에러 코드를 Error 에 실어 보존한다. 아티팩트 검사 실패도 안정적인 코드로 정규화했다. 실측: compose 거부 토스트가 `app: LOG_LEVEL 에 값이 없다…` 처럼 서비스·키를 그대로 보여준다
-- [x] **4.2 단계 간 CTA 링크** — `feat(web): 배포 흐름 단계 사이를 잇는 이동 경로를 만든다`. 개요 온보딩 카드, 이미지 행 → `/containers/new?image=`, 컨테이너 생성 후 포트가 있으면 `/nginx/routes?container=&port=`. 실측: 프리필 3곳 확인. **아티팩트 load 후 태그·CTA 는 아티팩트가 없어 미실측 — 6.1 에서 확인한다**
+- [x] **4.2 단계 간 CTA 링크** — `feat(web): 배포 흐름 단계 사이를 잇는 이동 경로를 만든다`. 개요 온보딩 카드, 이미지 행 → `/containers/new?image=`, 컨테이너 생성 후 포트가 있으면 `/nginx/routes?container=&port=`. 실측: 프리필 3곳 확인. 아티팩트 load 후 태그·CTA 도 6.1 에서 확인했다 — `alpine/socat:latest` 표시와 `?image=alpine%2Fsocat%3Alatest` 링크
 - [x] **4.3 라우트 수정·토글** — `feat(nginx): 라우트 수정과 사용 여부 전환을 지원한다`. `PUT /api/nginx/routes/:id` 신설(id 기준 수정, 충돌 검사, 실패 시 이전 값 복원), 폼에 `pathMode`·`enabled` 노출, 표에 사용 스위치와 수정 버튼. 실측: PUT 으로 hostname·path·pathMode·protocol·timeout 을 바꿔도 id·createdAt 유지, `enabled=false` 면 렌더된 nginx 설정에서 빠지고 다시 켜면 돌아온다
 - [x] **4.4 라우트 소유권 표시** — `feat(nginx): 배포가 관리하는 라우트를 구분한다`. `nginx_route.managedBy`(migration 0021), 릴리스가 manifest id 를 남기고 수정·토글에도 유지, 표에 배지 + 삭제 경고
 - [x] **4.5 job 진행 가시화** — `feat(web): 실행 중 작업의 진행과 이력을 보여준다`. 활성 2초·유휴 15초 폴링, job 행별 이벤트 타임라인(`/jobs/:id/events` 첫 호출부), 사이드바 활성·실패 배지. 실측: 이벤트 4건 렌더, 실패 job 1건에서 사이드바 배지 표시
@@ -68,7 +68,7 @@
 
 - [x] **6.1 전 구간 재검증** — 표준 `nginx:alpine` 아카이브 26MB 업로드 → `Loaded image: nginx:alpine` → manifest → blue-green 배포 healthy → `https://a.hyuns.uk` 200(nginx 기본 페이지). 도중에 업로드 슬롯 결함 1건을 찾아 고쳤다 → [bug](./bug/2026-08-06-rejected-upload-session-blocks-slot.md)
 - [x] **6.2 compose 스택 실측** — 2서비스 compose 미리보기→등록(manifest 2건)→스택 배포. `depends_on` 순서(cache → web)대로 배포되고 내부 서비스는 라우트 없이 healthy, 공개 서비스는 `https://b.hyuns.uk` 200. **내부 서비스가 항상 실패하던 결함을 찾아 고쳤다** → [bug](./bug/2026-08-06-internal-service-observation-unreachable.md)
-- [ ] **6.3 문서 정합** — `llm.txt`·`UPLOAD-DEPLOYMENT.md`·`API-DATA-AUTH.md`·`SECURITY.md`·CI 예시
+- [x] **6.3 문서 정합** — 코드 대조로 드리프트 30여 건을 고쳤다. 없는 엔드포인트 서술(manifest DELETE, `POST /deployment-releases`, 세션 조회·폐기), 누락 엔드포인트(스택 6개·라우트 PUT·health/readyz·artifact DELETE·secret rotate·network/volume DELETE), 권한 오기(exec=owner recent, prune·registry=owner 전용, backup DELETE=API key 가능, notification 변경=recent), 존재하지 않는 테이블 서술(`docker_target`·`nginx_revision*`·`artifact_scan`·`saved_view`·traffic checkpoints), 실제와 다른 합성 규칙(`withCapability` 는 없다), 업로드 상태 기계·quota 기본값(300GiB→32GiB)·probe 네트워크 이름, CI 예시 포트(8080→18080)·스택 경로·`audit:runtime` 누락
 - [ ] **6.4 정리** — 테스트 컨테이너·이미지·아티팩트·라우트·API key·임시 계정 제거
 
 ---

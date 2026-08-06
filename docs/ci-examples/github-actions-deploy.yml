@@ -4,9 +4,9 @@
 # 사람이 패널에 로그인하지 않아도 되고, 실패는 job 상태로 확정 판정한다.
 #
 # 전제 (반드시 먼저 읽는다)
-#  1. 패널·API 는 기본적으로 ${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-8080} 로만 publish 된다
+#  1. 패널·API 는 기본적으로 ${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-18080} 로만 publish 된다
 #     (compose.yaml). GitHub 호스티드 러너는 이 주소에 도달할 수 없다. 다음 중 하나가 필요하다.
-#       - 같은 호스트(또는 같은 사설망)에 셀프호스티드 러너를 두고 http://127.0.0.1:8080 사용
+#       - 같은 호스트(또는 같은 사설망)에 셀프호스티드 러너를 두고 http://127.0.0.1:18080 사용
 #       - cloudflared 등 터널을 통해 api.<도메인> 을 노출하고 https://api.<도메인> 사용
 #     평문 HTTP 로 외부 구간을 지나면 ctk_ 키가 그대로 노출된다. 터널 경유는 반드시 HTTPS 다.
 #  2. nginx 는 Host 기반으로 server 블록을 고른다. 기본 default_server 는 444 를 돌려준다.
@@ -29,6 +29,7 @@
 #
 # 사용하는 엔드포인트와 성공 판정
 #   POST /api/uploads/sessions                          201 세션(재실행 시 같은 idempotency-key 면 기존 세션)
+#                                                       세션 status 가 rejected 면 재개하지 말고 새 키로 다시 만든다
 #   PUT  /api/uploads/sessions/{id}/chunks?offset=N     200 receivedBytes
 #   POST /api/uploads/sessions/{id}/finalize            202 job -> job.result.artifactId
 #   POST /api/artifacts/{artifactId}/load               200 이미 load / 202 job -> job.result.deploymentId
@@ -37,6 +38,13 @@
 #   POST /api/deployment-releases/{id}/rollback         202 job + release -> job succeeded 면 rolled-back
 #   GET  /api/jobs/{id}, /api/jobs/{id}/events          job 상태·타임라인 (job:read)
 #   GET  /api/images                                    load 된 이미지 digest 확인 (engine:read)
+#
+# compose 스택으로 배포하려면(단일 manifest 대신 여러 서비스를 한 번에):
+#   POST /api/deployment-stacks/preview                 200 변환 결과(저장 없음) — 거부 사유 확인용
+#   POST /api/deployment-stacks                         201 스택 1건 + manifest N건(한 트랜잭션)
+#   POST /api/deployment-stacks/{stackId}/releases      202 job + stackRelease (kind: deploy.stack-release)
+#   GET  /api/deployment-stack-releases                 스택 배포 상태(healthy|failed|rolled-back)
+#   이미지는 먼저 업로드·load 해 두어야 하고 compose 의 image 태그로 digest 를 해석한다.
 # job status 는 queued|running|cancelling|succeeded|failed|cancelled 이며 succeeded 만 성공이다.
 # release job 은 자동 재시도가 없다(maxAttempts 1). release 도중 실패하면 서버가 이전 라우트로 자동 복구한다.
 
@@ -183,8 +191,14 @@ jobs:
                       '{expectedSha256: $sha, expectedSizeBytes: $size, fileName: $name, mediaType: "application/vnd.docker.image.rootfs.diff.tar"}')" \
                       -H "idempotency-key: upload-${GITHUB_SHA}")"
                   session_id="$(jq -r '.data.id' <<<"$session")"
+                  session_status="$(jq -r '.data.status' <<<"$session")"
                   received="$(jq -r '.data.receivedBytes' <<<"$session")"
-                  echo "session ${session_id} resumes at ${received} bytes"
+                  echo "session ${session_id} (${session_status}) resumes at ${received} bytes"
+
+                  if [ "$session_status" != "uploading" ]; then
+                      echo "세션이 ${session_status} 라 이어 올릴 수 없다. 새 idempotency-key 로 다시 올려야 한다." >&2
+                      exit 1
+                  fi
 
                   if [ $(( received % CHUNK_BYTES )) -ne 0 ]; then
                       echo "resume offset ${received} is not chunk aligned. 새 idempotency-key 로 다시 올려야 한다." >&2

@@ -78,7 +78,7 @@ Compose 서비스와 권한 경계:
 - 단회·만료·회수 초대 링크와 owner/admin/operator/viewer/auditor role
 - 사용자 disable·role 변경
 - API key 원문 단회 노출, SHA-256 hash 저장, expiry·revoke·last-used
-- artifact, image, deployment, secret, backup read/write scope
+- API key scope 13종(`packages/contracts/src/api-key.ts` 가 정본): artifact read/upload, image:load, deployment read/write, secret read/write, backup read/write, control-plane:read, engine:read, job read/write
 - API key별 minute rate limit
 - 중요 mutation의 최근 15분 인증
 
@@ -107,6 +107,8 @@ Compose 서비스와 권한 경계:
 - 관리 API·panel·status·access log·rate/header 보호 계약
 - 구조화 hostname/path/container route와 deterministic renderer
 - 관리 hostname 충돌 거부, prefix strip, HTTP/WebSocket, timeout/body limit
+- 라우트 수정(`PUT /api/nginx/routes/:id`), `enabled` 토글, `pathMode`(exact·prefix) 선택
+- 대상 컨테이너 존재·네트워크 도달 검증(0038), 배포 소유권 표시 `managedBy`(migration 0021)
 - JSONL traffic ingestion, raw SQLite 14일 retention
 - device·inode·offset durable checkpoint, rename rotation old-inode drain, DB 실패 replay
 - request/status/bytes/latency p50·p95·p99, top path, recent event, masked IP SSR UI
@@ -132,7 +134,9 @@ Compose 서비스와 권한 경계:
 - API 재시작 interrupted release reconciliation과 retention cleanup
 - deployment secret AES-256-GCM 저장, version rotation, metadata-only API, 실행 시점 resolve
 
-아직 OCI importer 변형, rootfs, Compose bundle, Dockerfile build context, malware·secret·SBOM·vulnerability scanner는 없다.
+compose 스택은 구현됐다 — 계약·변환기(`packages/contracts/src/deployment-stack.ts`, `apps/api/src/lib/compose-stack.ts`), 저장(migration 0020), 순차 릴리스와 역순 되돌리기(job kind `deploy.stack-release`), `/deployments/stacks` 화면. compose 원문은 아카이브가 아니라 API 본문으로 받는다.
+
+아직 OCI importer 변형, rootfs, Dockerfile build context, malware·secret·SBOM·vulnerability scanner는 없다.
 
 ### 로컬 backup·restore
 
@@ -162,11 +166,11 @@ Compose 서비스와 권한 경계:
 - 상태: queued→running→succeeded / failed / cancelled, 협조 취소는 running→cancelling→cancelled
 - 60초×attempt backoff 재시도(기본 3회), boot `reconcileInterrupted()` 재큐/실패 확정, 14일 종결 job GC
 - API in-process worker 1초 poll, 실행 중 30초 heartbeat
-- `GET /api/jobs`·`GET /api/jobs/:id`·`GET /api/jobs/:id/events`·`POST /api/jobs/:id/cancel` (owner·admin session, 취소는 최근 15분 인증 + audit)
+- `GET /api/jobs`·`GET /api/jobs/:id`·`GET /api/jobs/:id/events`·`POST /api/jobs/:id/cancel` (owner·admin session 또는 `job:read`/`job:write` API key, 취소는 최근 15분 인증 + audit)
 - 자동 backup 이 첫 소비자: 1분 due-check(최신 backup 시각 + interval 로 next-run 유도, 재시작 안전), unique enqueue 로 중복 방지
 - `GET /api/jobs/backup-schedule` 와 패널 작업 큐 위젯(owner·admin)이 job 목록·취소·interval·last success/failure·next run 을 노출한다
 - 외부 enqueue endpoint 없음. api·engine-agent·traffic-worker 세 앱 모두 `lib/error.ts` 의 `createAppError` 로 오류를 던진다.
-- 추가 소비자: `backup.restore`, `image.pull`, `system.prune`, `traffic.export`, `deploy.load`, `deploy.release`, `deploy.rollback`, `upload.finalize`. 잔여는 live 24시간 주기 실행 증거(g-2)다.
+- 추가 소비자: `backup.restore`, `image.pull`, `system.prune`, `traffic.export`, `deploy.load`, `deploy.release`, `deploy.rollback`, `deploy.stack-release`, `secret.rotate`, `upload.finalize`. 잔여는 live 24시간 주기 실행 증거(g-2)다.
 
 ## 5. 최근 checkpoint의 주요 파일
 
@@ -267,7 +271,8 @@ Docker Compose 명령은 desktop sandbox에서 권한 승인이 필요할 수 �
 
 - 남은 volume 은 자격증명 3종뿐이다: `containers_agent-credentials`, `containers_traffic-credentials`, `containers_registry-credentials`. 내부 HMAC 비밀과 secret 키가 여기 있다.
 - 지운 volume: `control-data`(계정·API 키·감사·배포·라우트·패널 설정), `traffic-data`, `artifacts`, `backups`, `nginx-config`, `nginx-logs`.
-- **owner 계정이 없다.** 로컬 주소 bootstrap 이 선행돼야 한다.
+- 초기화 직후에는 owner 계정이 없었다. **6.1·6.2 실측을 위해 `bun scripts/seed-e2e.ts` 로 owner(`stack-check@containers.local`)를 만들었다.** 실운영 계정은 로컬 주소 bootstrap 으로 따로 만든다.
+- 6.1·6.2 실측이 남긴 자산: artifact 2건, manifest 4건, 스택 1건, 스택 배포 2건, job 여러 건. 배포 컨테이너와 라우트는 정리했다. artifact·manifest·스택은 삭제 경로가 없어 남아 있다 → [bug](./bug/2026-08-06-loaded-artifacts-cannot-be-deleted.md)
 - 배포 테스트 컨테이너·이미지(`demo-*`·`fail-demo-*`)는 정확한 이름으로 삭제했다. 사용자 소유 리소스(`poc1c`·`poc1d`·`poc1-debug2`·`api-proxy2`)와 `containers-dr-*` 이미지는 건드리지 않았다.
 
 앞으로도 volume 삭제와 `down -v` 는 사용자 명시 지시가 있을 때만 한다.
