@@ -764,6 +764,8 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 **다음 세션 전제: owner 계정이 없다.** `http://127.0.0.1:18080` 에서 bootstrap 으로 만들어야 한다.
 
+> (2026-08-06 후속으로 해소) 사용자가 계정을 초기화하고 bootstrap 으로 실운영 owner 를 만들었으며, 패널 설정에서 공개 주소도 `https://hyuns.uk` 로 복구했다. 이 절은 그 시점의 기록이다.
+
 ### 오탐 기록
 
 - "관리 plane 컨테이너가 라우트 대상 목록에 노출" — 반증 검증을 통과했으나 실제로는 engine-agent 가 이미 필터한다. 실 API 응답으로 확인.
@@ -874,3 +876,11 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - 테스트 4건(정상·끊김·지표·빈 상태)
 
 **보류 결정**: 백업 오프박스 사본은 둘 곳이 없어 구현하지 않는다(사용자 판단). `CF-Connecting-IP` 위조도 로컬 권한자 한정·로그 오염뿐이라 손대지 않는다.
+
+## 작업: 저장소·문서 정리 (2026-08-06 마감)
+
+- [x] **브랜치 정리** — `dev` 하나만 남겼다. 지운 3개의 마지막 SHA 와 대체 근거는 [history/2026-08-06-branch-cleanup.md](./history/2026-08-06-branch-cleanup.md)
+- [x] **README 스크린샷 교체** — 이전 이미지는 사이드바가 "네트워크·볼륨"에서 잘려 운영·관리 메뉴가 통째로 빠져 있었다. 뷰포트를 키워 전 메뉴가 보이게 다시 찍었다(개요·트래픽·nginx raw·nginx GUI·Manifest 배포·컨테이너 6장). 공개 저장소라 도메인·이메일이 보이지 않는 화면으로 골랐다
+- [x] **README AI 절 갱신** — `containers-deploy.sh` 와 CI 3종 래퍼 구조를 반영
+- [x] **AI 참조 정합성 강화** — `llm-reference.test.ts` 에 검사 2건 추가: 모든 API 자원·동작이 `llm.txt` 에 있는지, 모든 DB 테이블이 있는지. `/api/deployment-stacks` 를 일부러 깨뜨려 실제로 실패하는 것을 확인했다
+- [x] **문서 정합** — `docs/README.md` 진입점을 HANDOFF 로 정정하고 `bug/`·`llm.txt` 항목 추가, acknowledge 최신 번호 갱신. HANDOFF §6(미해결)·§7(환경)·§8(다음 TODO)·§9(문서 지도)를 현재 상태로 다시 썼다. HANDOFF-STATUS 의 P0·P1 한계를 해소분 반영해 갱신했다. 고아 참조 bug 문서에 해소 절을 붙였다

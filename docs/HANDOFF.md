@@ -137,48 +137,57 @@
 
 ## 6. 미해결 질문 / 사용자 확인 필요
 
-1. **로드한 아티팩트를 지울 수 없다.** load 이력(`deployment` 행)이 아티팩트를 영구 참조해 수동 삭제도 보존 정책도 통과하지 못한다. manifest·스택도 삭제 라우트가 없다. A(이력 유지 + 파일만 회수) / B(이력째 삭제) / C(현행 유지) 중 결정이 필요하다 → [bug](./bug/2026-08-06-loaded-artifacts-cannot-be-deleted.md)
-2. **실운영 owner 를 만들어야 한다.** 지금 있는 계정은 실측용 seed(`stack-check@containers.local`) 하나다. `http://127.0.0.1:18080` 에서 bootstrap 으로 실운영 owner 를 만든 뒤 seed 계정을 지우는 것이 순서다(먼저 지우면 패널에 못 들어간다). 공개 주소에서는 bootstrap 이 403 이다.
-3. **공개 주소 설정은 여전히 비어 있다.** `hyuns.uk` 를 패널 신뢰 출처로 쓰려면 owner 로 로그인해 패널 설정에서 지정한다. 라우트 자체는 설정 없이도 동작한다(6.1·6.2 에서 확인).
-4. **control DB 고아 행의 근본 원인은 미해결이다.** 데이터는 사라졌지만 같은 경로로 다시 쌓일 수 있다. `DELETE /api/users/:id` 가 참조를 어떻게 정리할지(무효화/거부/익명화) 결정이 필요하다 → [bug/2026-08-06-control-db-orphan-user-references.md](./bug/2026-08-06-control-db-orphan-user-references.md)
-5. **`containers-dr-*` 이미지 5개**를 남겨 뒀다. 재해복구 드릴 산출물이라 "테스트 것만 삭제" 범위에서 제외했는데, 지울지 확인이 필요하다.
-6. Cloudflare Access 미적용. 패널이 공개 인터넷에 열려 있다.
-7. HSTS `preload` 미적용 — 등재 취소가 어려워 운영자 판단이 필요하다.
+앞선 5건(아티팩트·manifest·스택 삭제, 실운영 owner, 공개 주소, control DB 고아 행, 백업 불가)은 2026-08-06 에 전부 닫혔다. 남은 것은 아래 4건이다.
+
+1. **오프박스 백업이 없다 — 잔여 위험 1위.** 백업이 원본과 같은 호스트 볼륨에만 있다. 사용자 판단으로 보류(둘 곳이 없음). 외장 디스크·NAS·버킷 중 하나가 생기면 백업 job 성공 뒤 사본을 하나 더 만드는 작은 작업이다.
+2. **Cloudflare Access 미적용.** 패널이 공개 인터넷에서 로그인 화면까지 도달한다. 사용자가 "상관없다"고 판단했다. 계정 잠금·rate limit·CSP·짧은 세션이 그 전제 위의 방어다.
+3. **`containers-dr-*` 이미지 5개**를 남겨 뒀다. 재해복구 드릴 산출물이라 정리 범위에서 뺐다. 지울지 확인이 필요하다.
+4. HSTS `preload` 미적용 — 등재 취소가 어려워 운영자 판단이 필요하다.
 
 ## 7. 환경 & 전제
 
 - **런타임**: Bun 1.3.14 workspace(`apps/*` 4 + `packages/*` 4 = 8), TypeScript strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`.
 - **스택**: Hono 4.13.0, Next.js 16.3.0 App Router + React 19 + React Compiler + Tailwind v4 + next-intl(ko/en/ja) + TanStack Query v5, Drizzle + SQLite, Better Auth 1.6.25.
 - **접속**: `http://127.0.0.1:18080`. **8080 이 아니다** — macOS Docker Desktop 이 그 포트에서 저속 스트림을 버퍼링한다.
-- **계정**: 실측용 seed owner `stack-check@containers.local` 하나. 실운영 owner 는 로컬 주소 bootstrap 으로 따로 만든다(§6-2). 개발 스택에서만 `bun scripts/seed-e2e.ts`.
-- **외부**: `hyuns.uk` 가 Cloudflare 터널로 연결돼 있고 `*` 와일드카드 public hostname 이 설정돼 있다. 패널 쪽 공개 주소 설정은 초기화로 비었다.
+- **계정**: 실운영 owner 하나(사용자 본인). seed 계정은 남아 있지 않다. **공개 주소가 설정된 스택에서 `bun scripts/seed-e2e.ts` 는 스스로 거부한다** — 개발 스택에서만 쓴다. 계정을 초기 상태로 되돌리는 것은 `bun scripts/reset-accounts.ts --confirm` 이며 파괴적이라 사용자가 직접 실행한다.
+- **재인증 창**: 위험한 쓰기(API key 발급, nginx 설정 적용, 백업 복원, 아티팩트 삭제 등)는 **세션 생성 15분 이내**를 요구한다(`RECENT_AUTH_REQUIRED`). 페이지 새로고침으로는 갱신되지 않고 로그아웃 → 로그인이어야 새 세션이 생긴다. 쿠키는 호스트별이라 `127.0.0.1` 과 `hyuns.uk` 세션은 별개다.
+- **외부**: `hyuns.uk` 가 Cloudflare 터널로 연결돼 있고 패널 공개 주소도 `https://hyuns.uk` 로 설정돼 있다(패널 설정 화면). nginx 패널 server 블록의 `server_name` 에 자동으로 추가된다. 터널은 스택 밖 호스트 프로세스라 초기화·재배포와 무관하다.
 - **`Bun.YAML.parse` 가 존재한다** — compose 파싱에 새 의존성이 필요 없다. multi-document 는 첫 문서만 쓴다.
-- **SQLite 주의 2가지**: `PRAGMA foreign_keys` 는 트랜잭션 안에서 무시된다(테이블 재생성 마이그레이션이 실패한다). Drizzle `text({ enum: [...] })` 는 TypeScript 전용이고 CHECK 제약을 만들지 않는다.
+- **SQLite 주의 3가지**: ① `PRAGMA foreign_keys` 는 트랜잭션 안에서 무시된다(테이블 재생성 마이그레이션이 실패한다). ② Drizzle `text({ enum: [...] })` 는 TypeScript 전용이고 CHECK 제약을 만들지 않는다. ③ **`bun:sqlite` 는 연결마다 외래 키가 기본 OFF 다.** 앱은 `database.ts` 에서 켜지만 스크립트는 스스로 켜야 하며, 끄고 지우면 `set null`·`cascade` 가 조용히 실행되지 않는다 → [bug](./bug/2026-08-06-reset-accounts-broke-referential-integrity.md)
+- **시각 컬럼은 초 단위다**: Drizzle `integer({ mode: 'timestamp' })` 는 밀리초를 버린다. 해시·비교에 시각을 넣을 때 밀리초까지 쓰면 저장·재계산이 어긋난다 → [bug](./bug/2026-08-06-audit-chain-hashed-milliseconds.md)
 - **nginx 설정 정본은 관리 볼륨의 `current.conf`** 다. `infra/nginx/nginx.conf` 는 볼륨이 비었을 때 이미지에서 복사되는 기본값이다. **볼륨만 비우고 이미지를 재빌드하지 않으면 옛 기본값이 복사된다**(이번 세션에 CSP 수정이 한 번 유실됐다). 실행 중 반영은 `POST /api/nginx/config/apply`.
 - **새 workspace 패키지**: `apps/*/Dockerfile` 4개에 `COPY` 2줄씩 추가한다.
-- **드리즐 마이그레이션**: 손으로 SQL 을 쓰지 말고 `bun run --cwd packages/db-schema generate` 를 쓴다. 최신은 `0019_smart_beyonder.sql`.
+- **드리즐 마이그레이션**: 손으로 SQL 을 쓰지 말고 `bun run --cwd packages/db-schema generate` 를 쓴다. 최신은 `0026_brave_zarek.sql`.
 - **웹 테스트는 preload 가 달라** raw `bun test` 가 아니라 `bun run test` 를 써야 한다.
 - **브라우저 실측 팁**: MCP `file_upload` 로 `<input type=file>` 에 파일을 넣으면 React state 가 갱신되지 않는다. 페이지 컨텍스트에서 `DataTransfer` 로 `input.files` 를 채우고 `change` 이벤트를 직접 dispatch 해야 폼이 인식한다. 업로드 digest 는 클라이언트가 계산하므로 sha256 불일치는 UI 로 만들 수 없다 — 실패 경로는 잘못된 tar 로 만든다.
 - **명령**: `bun run typecheck` / `lint` / `test` / `build` / `format:check`, `bun audit`, `bun run audit:runtime`, `docker compose build && docker compose up -d --wait`, `./scripts/setup.sh`, `./scripts/setup-macos.sh`, `./scripts/setup-cloudflare-tunnel.sh`, `./scripts/migration-dry-run.sh`, `bun scripts/seed-e2e.ts`, `bun scripts/reset-accounts.ts`.
 
 ## 8. 다음 세션 TODO
 
-**[PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 의 미체크 항목이 정본이다.** 아래는 우선순위 요약이다.
+계획서(PLAN-UX-REMEDIATION)는 전부 닫혔다. 다음 마일스톤은 아래에서 고른다. **위에서부터 값이 크다.**
 
-1. **3.3 스택 릴리스 오케스트레이션** — 3.2 가 만든 `deployment_stack_release` 위에서 `depends_on` 위상 순서로 서비스별 릴리스, 실패 시 이미 전환된 서비스를 역순 롤백. job kind 추가 시 고쳐야 하는 곳: `packages/contracts/src/operation-job.ts`(상수 + z.enum 이중 나열), `packages/db-schema/src/schema.ts` kind enum, `create-job-handlers.ts` 핸들러 맵, `create-notification-delivery-service.ts` 의 exhaustive Record, `docs/llm.txt`(드리프트 테스트가 강제).
-2. **3.4 스택 웹 화면** — compose 업로드·미리보기·스택 배포. `artifact-file-drop` 재사용 시 `ACCEPTED_EXTENSIONS` prop 화 필요(호출부도 함께 수정).
-3. **4.1 에러 파싱 통일** — `apps/web/src/shared/lib/parse-api-error.ts` 가 `{error: issue[]}` 를 못 읽는다. finalize 실패가 raw 영어 예외 메시지로 배너에 뜨는 것(1.3 실측에서 확인)도 여기서 정리한다.
-4. **4.2~4.7 마찰 6건** → **5.1~5.3 접근성** → **6.1~6.4 최종 재검증·문서 정합·정리**
+1. **알림 실전송 확인 (5분, 사용자 1단계 필요)** — 알림 대상에 Discord webhook 을 등록하고 `system.report` 를 구독한 뒤 테스트 버튼으로 전송을 확인한다. 이걸 하기 전에는 **감사 체인 꼬리 자르기 탐지가 실제로 동작하지 않는다**(외부 checkpoint 가 이 알림이다). 첫 정기 보고는 마지막 보고가 24시간 지난 뒤 1시간 단위 tick 에서 나간다.
+2. **오프박스 백업** — 저장 위치가 정해지면 백업 job 성공 뒤 사본을 하나 더 만든다. 목적지만 다르고 모양은 같다(다른 디스크 / NAS·ssh / R2·S3). 보류 사유는 §6-1.
+3. **새 머신 설치 E2E** — 2번과 짝이다. 백업을 다른 머신에 올려 처음부터 세우는 절차를 한 번 해본다. 지금은 해본 적이 없어 복구 가능 여부가 미지수다.
+4. **부하·장애 주입** — 목표 규모 부하 테스트, 디스크 가득 참·docker 데몬 재시작·컨테이너 OOM 시 동작 확인. SQLite 단일 파일의 한계를 실측으로 잡는다.
+5. **감사 로그 export** — server-side filter 는 있고 export 가 없다(HANDOFF-STATUS P1-7).
+6. **UI 품질** — 모바일·다크·키보드·스크린리더 전수 검증(P2-2), 대시보드 정보 구조 재설계(P2-1).
+
+### 새 세션이 먼저 할 일
+
+1. 이 문서 §2.1(실운영 판정)·§6(미해결)·§7(환경) 을 읽는다.
+2. [RESUME-CHECKLIST.md](./RESUME-CHECKLIST.md) §3 읽기 전용 점검으로 현재 값을 직접 확인한다(문서 수치를 믿지 않는다).
+3. 코드를 건드리면 종료 전 `bun run typecheck` → `lint` → `test` → `build`, 스택이 떠 있으면 `bun run audit:runtime` 까지 통과시킨다.
 
 ## 9. 문서 지도
 
 | 문서                                                                                                  | 다루는 것                                                                              |
 | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `HANDOFF.md`                                                                                          | (이 문서) 세션 인수인계 단일 진입점. **현재 상태·검증 수치·다음 작업의 단독 소유자**   |
-| `PLAN-UX-REMEDIATION.md`                                                                              | **진행 중 작업의 실행 계획 정본.** 항목별 문제·근거·할 일·주의·완료 판정·실측 결과     |
+| `PLAN-UX-REMEDIATION.md`                                                                              | **완료된** 실행 계획(2026-08-06 전 항목 종료). 항목별 문제·근거·주의·완료 판정·실측    |
 | `quality-assurance/2026-08-05-panel-ux-audit.md`                                                      | UX 감사 원본(64건 → 44건 → 12원인) + 배포 런타임 실측                                  |
 | `../CLAUDE.md`                                                                                        | 저장소 에이전트 실행 규칙(호스트 격리 우회·서비스 노출 금지)                           |
-| `RESUME-CHECKLIST.md`                                                                                 | 재개 절차와 안전 불변식. 초기화 이후 전제(owner 없음) 포함                             |
+| `RESUME-CHECKLIST.md`                                                                                 | 재개 절차와 안전 불변식, 읽기 전용 점검 명령                                           |
 | `HANDOFF-STATUS.md`                                                                                   | 구현 범위·한계·시점 검증 증거                                                          |
 | `PROCESS.md`                                                                                          | 작업 체크리스트(시간순 전체 이력) + 초기화 기록                                        |
 | `ARCHITECTURE.md`                                                                                     | 서비스 구성, 네트워크·권한 경계, 데이터 흐름                                           |
@@ -197,9 +206,11 @@
 | `TESTING.md`                                                                                          | 검증 사다리와 checkpoint                                                               |
 | `llm.txt`                                                                                             | AI용 자족 레퍼런스. `packages/db-schema/src/llm-reference.test.ts` 가 드리프트를 강제  |
 | `README.md`                                                                                           | docs 디렉터리 안내                                                                     |
-| `acknowledge/`                                                                                        | 결정 기록(ADR). **최신 0040**                                                          |
-| `bug/`                                                                                                | 결함 기록. 최신 2건은 2026-08-06 CSP·고아 행                                           |
+| `acknowledge/`                                                                                        | 결정 기록(ADR). **최신 0042**                                                          |
+| `bug/`                                                                                                | 결함 기록 9건. 2026-08-06 만 6건이고 전부 라이브 실측이 잡았다(정적 검사는 통과했다)   |
 | `quality-assurance/`                                                                                  | 감사·드릴 실행 기록                                                                    |
+| `history/`                                                                                            | 세션별 이력. 2026-08-06 브랜치 정리 기록 포함(지운 브랜치 SHA)                         |
+| `ci-examples/`                                                                                        | 빌드 CI 3종 + 배포 스크립트 `containers-deploy.sh` + 이를 부르는 CI 3종                |
 | `ci-examples/`                                                                                        | 빌드 CI 3종 + API key 배포 스크립트 1개와 이를 부르는 GitHub·Gitea·GitLab 워크플로 3종 |
 | `history/`                                                                                            | 세션별 시점 기록(현재 상태 아님)                                                       |
 | `PRODUCT-REQUIREMENTS.md`·`REQUIREMENTS-TRACEABILITY.md`·`IMPLEMENTATION-PLAN.md`·`OPEN-DECISIONS.md` | 요구사항·추적·초기 계획(시점 기록)                                                     |

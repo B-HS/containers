@@ -284,8 +284,8 @@ Docker Compose 명령은 desktop sandbox에서 권한 승인이 필요할 수 �
 1. Docker 명령의 owner durable prune과 registry 인증 pull은 0019·0020으로 완료됐다. 일부 catalog/UI 완전성이 남았다.
 2. durable job queue·jobs 패널·backup(자동/restore)·image pull 소비자는 완료됐다. deploy·upload 의 job 전환과 resource lock, idempotency key 도 0024 로 완료됐다.
 3. maintenance mode(수동 toggle·restore 자동 적용)는 구현됐다. control plane upgrade 준비 상태 검증(`/api/control-plane/status`)과 runbook([CONTROL-PLANE-UPGRADE.md](./CONTROL-PLANE-UPGRADE.md))은 0023으로 완료됐다. 실제 재배포는 host 명령으로 수행하며 API 가 컨테이너를 조작하지 않는다(SECURITY.md §11).
-4. Cloudflare Tunnel·Access의 실제 설치·도메인 mapping·token rotation runbook이 없다.
-5. fresh machine 설치 E2E가 없다.
+4. Cloudflare Tunnel·Access의 실제 설치·도메인 mapping·token rotation runbook이 없다. 터널 자체는 2026-08-06 에 `https://hyuns.uk` 로 동작 중이며 패널 공개 주소도 복구했다. **패널 앞단 인증 게이트(Access)는 없다** — 지금은 누구나 로그인 화면까지 도달한다.
+5. fresh machine 설치 E2E가 없다. 재해복구 드릴 기록([quality-assurance/2026-08-05-disaster-recovery-drill.md](./quality-assurance/2026-08-05-disaster-recovery-drill.md))은 있으나 **다른 머신에서 처음부터 세우는 절차는 해본 적이 없다.**
 
 ### P1 — 데이터·복구·보안
 
@@ -293,12 +293,12 @@ Docker Compose 명령은 desktop sandbox에서 권한 승인이 필요할 수 �
 2. restore는 두 DB에 대한 보상 복구이며 분산 원자 transaction이 아니다. (2026-08-01부터 maintenance drain 하에 durable job 으로 실행되어 mutation interleave 는 차단된다)
 3. (해소 2026-08-01) backup scheduler 성공·실패·다음 실행 시각이 `GET /api/jobs/backup-schedule` 와 패널 작업 큐 위젯에 노출된다. backup 실패 alert는 0022의 durable notification job 으로 연동 완료다.
 4. schema migration 간 restore가 지원되지 않는다.
-5. R2 client-side 암호화 backup이 없다. (Discord webhook 알림은 2026-08-01 Phase 17로 구현 완료 — 0022)
-6. API key·internal credential 무중단 rotation이 없다.
-7. audit hash chain·external checkpoint·server-side filter/export가 없다.
-8. scanner, SBOM, vulnerability policy와 owner exception이 없다.
+5. **오프박스 백업이 없다(잔여 위험 1위).** 백업은 원본과 같은 호스트의 `containers_backups` 볼륨에만 있어 디스크 고장·볼륨 삭제면 데이터와 함께 사라진다. R2 client-side 암호화 backup 도 미구현이다. 2026-08-06 사용자 판단으로 보류(둘 곳이 없음) — 저장 위치가 생기면 백업 job 성공 뒤 사본을 하나 더 만드는 작은 작업이다.
+6. internal credential 무중단 rotation이 없다. **API key 는 2026-08-06 부터 만료가 필수(1~365일)** 라 영구 자격증명은 만들 수 없지만, 교체는 여전히 수동이다.
+7. (해소 2026-08-06) audit hash chain 이 `audit_log.sequence`·`previous_hash`·`entry_hash` 로 구현됐고 `GET /api/audit/integrity` 와 감사 화면이 검증 결과를 보여 준다. 외부 checkpoint 는 하루 1회 `system.report` 알림이 head 해시를 호스트 밖으로 내보내 대신한다 — **알림 대상을 등록하고 구독해야 실제로 동작한다.** server-side filter 는 있고 export 는 여전히 없다.
+8. scanner, SBOM, vulnerability policy와 owner exception이 없다. 배포하는 이미지의 CVE 는 제품 밖 습관(베이스 이미지 재pull·재빌드)에 달려 있다.
 9. direct localhost process의 `CF-Connecting-IP` spoofing은 origin-local trust 한계다.
-10. CSP가 Next.js 때문에 inline script/style을 허용한다. nonce CSP는 후속 강화다.
+10. (부분 해소 2026-08-06) 패널 `script-src` 는 nginx 가 요청마다 발급하는 `$request_id` nonce 를 쓰고 `'unsafe-inline'` 을 뺐다. `style-src` 는 Next.js 인라인 스타일 때문에 여전히 `'unsafe-inline'` 이다.
 
 ### P2 — UI/관측·품질
 

@@ -9,11 +9,11 @@ It lets you control Docker containers, create and deploy them, inspect live traf
 <details>
 <summary>More screens</summary>
 
-|                                                                                        |                                                                         |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| ![Dashboard](screenshots/ko-dashboard.png) Operations overview                         | ![Traffic](screenshots/ko-traffic.png) Traffic analytics with live tail |
-| ![Nginx GUI editor](screenshots/ko-nginx-gui.png) Nginx GUI config editor              | ![Nginx raw editor](screenshots/ko-nginx.png) Raw config with revisions |
-| ![Deployments](screenshots/ko-deployments.png) Immutable manifest / blue-green release |                                                                         |
+|                                                                                        |                                                                                   |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| ![Dashboard](screenshots/ko-dashboard.png) Operations overview                         | ![Traffic](screenshots/ko-traffic.png) Traffic analytics with live tail           |
+| ![Nginx GUI editor](screenshots/ko-nginx-gui.png) Nginx GUI config editor              | ![Nginx raw editor](screenshots/ko-nginx.png) Raw config with revisions           |
+| ![Deployments](screenshots/ko-deployments.png) Immutable manifest / blue-green release | ![Containers](screenshots/ko-containers.png) Container control with logs and exec |
 
 </details>
 
@@ -111,14 +111,18 @@ reference of the architecture, every API endpoint, the SQLite schema, the auth
 and security model, and the deployment pipeline, tuned for LLM consumption.
 
 - `docs/llm.txt` — full AI-ready project reference (endpoints, DB, security, flows)
-- `docs/ci-examples/` — ready-to-drop CI workflows:
-    - `github-actions.yml` — `.github/workflows/ci.yml` (typecheck · lint · test · build)
-    - `gitea-actions.yml` — `.gitea/workflows/ci.yml`
-    - `gitlab-ci.yml` — `.gitlab-ci.yml`
-    - `github-actions-deploy.yml` — unattended deploy driven only by an API key
-      (upload → image load → manifest → blue-green release → verdict from the job status).
+- `docs/ci-examples/` — ready-to-drop CI files:
+    - Build CI: `github-actions.yml` (`.github/workflows/ci.yml`, typecheck · lint · test · build),
+      `gitea-actions.yml`, `gitlab-ci.yml`
+    - `containers-deploy.sh` — the deploy driver. One script holds the call order and the
+      success verdict: `deploy` (upload → image load → manifest → blue-green release),
+      `stack` (compose preview → register → stack release) and `rollback`. Copy it into your
+      repository (e.g. `ci/containers-deploy.sh`); its call sequence is covered by
+      `containers-deploy.test.ts` against a stub server.
+    - `github-actions-deploy.yml`, `gitea-actions-deploy.yml`, `gitlab-ci-deploy.yml` — thin
+      wrappers that call that script, so the three CI systems cannot drift apart.
       The runner must be able to reach the panel, so use a self-hosted runner on the same
-      host or expose the API over HTTPS through a tunnel.
+      host or expose the API over HTTPS through a tunnel. API keys expire in at most 365 days.
 - `docs/README.md` — human-facing documentation index
 
 Human-facing documentation lives in [`docs/`](docs/README.md).

@@ -45,3 +45,9 @@
 - `audit_log` 는 append-only 가 원칙이라(`SECURITY.md` §11) 삭제도 수정도 함부로 할 수 없다. 62건이 여기 있었다.
 - ~~`api_key` 9건 확인~~ — 초기화로 전부 사라졌다. 소유자 없는 유효 키가 남을 위험은 지금은 없다.
 - 근본 원인 1번(사용자 삭제 경로)이 맞다면 `DELETE /api/users/:id` 가 참조를 어떻게 정리할지(참조 무효화 / 삭제 거부 / 익명화)를 결정해야 한다.
+
+## 해소 (2026-08-06)
+
+근본 원인이 밝혀져 고쳤다. `scripts/reset-accounts.ts` 가 `bun:sqlite` 기본값(`PRAGMA foreign_keys` OFF) 때문에 외래 키를 끈 채 사용자를 지워 `set null`·`cascade` 가 하나도 실행되지 않은 것이었다. 상세와 수정 범위는 [2026-08-06-reset-accounts-broke-referential-integrity.md](./2026-08-06-reset-accounts-broke-referential-integrity.md) 를 본다.
+
+`DELETE /api/users/:id` 가 이력을 어떻게 다룰지에 대한 질문도 함께 닫혔다 — 이력 8개 테이블의 `created_by` 를 nullable + `on delete set null` 로 바꿔(migration `0026`) **계정을 지워도 이력은 남고 귀속만 비는** 쪽으로 정했다.
