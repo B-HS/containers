@@ -56,7 +56,7 @@
 - [x] **4.4 라우트 소유권 표시** — `feat(nginx): 배포가 관리하는 라우트를 구분한다`. `nginx_route.managedBy`(migration 0021), 릴리스가 manifest id 를 남기고 수정·토글에도 유지, 표에 배지 + 삭제 경고
 - [x] **4.5 job 진행 가시화** — `feat(web): 실행 중 작업의 진행과 이력을 보여준다`. 활성 2초·유휴 15초 폴링, job 행별 이벤트 타임라인(`/jobs/:id/events` 첫 호출부), 사이드바 활성·실패 배지. 실측: 이벤트 4건 렌더, 실패 job 1건에서 사이드바 배지 표시
 - [x] **4.6 업로드 재개·취소** — `feat(web): 대용량 업로드를 재개하고 취소할 수 있게 한다`. idempotency-key 를 파일 sha256 으로 고정하고 `receivedBytes` 부터 이어 올린다. AbortController 로 취소. 실측: 같은 키로 세션을 다시 만들면 같은 세션 id 와 `receivedBytes=4194304` 를 돌려준다. **취소 버튼 클릭은 로컬 업로드가 한 청크로 끝나 창이 짧아 미실측**
-- [ ] **4.7 manifest 폼 하드코딩 해소** — `feat(web): 배포 manifest 의 남은 계약 필드를 화면에 연다`
+- [x] **4.7 manifest 폼 하드코딩 해소** — `feat(web): 배포 manifest 의 남은 계약 필드를 화면에 연다`. 명명 볼륨·protocol·restartPolicy·entrypoint·stripPrefix·healthcheck 타이밍 4개·pidsLimit·런타임 프로필을 열고, 공개 노출 스위치로 내부 서비스(route=null) manifest 를 만들 수 있다. 실측: 스위치를 끄면 라우팅 입력이 사라지고, 볼륨과 route=null 을 담은 manifest 가 201 로 생성된다
 
 ### P2 — 품질·접근성
 

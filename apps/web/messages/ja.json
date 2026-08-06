@@ -803,7 +803,20 @@
         "jobEventsEmpty": "記録されたイベントはありません。",
         "uploadCancel": "アップロードを中止",
         "uploadCancelled": "アップロードを中止しました。同じファイルを再度アップロードすると中断地点から再開します。",
-        "uploadResumed": "中断したアップロードを再開します。"
+        "uploadResumed": "中断したアップロードを再開します。",
+        "deploymentSectionHealthcheck": "ヘルスチェック",
+        "deploymentHealthInterval": "点検間隔（秒）",
+        "deploymentHealthTimeout": "点検タイムアウト（秒）",
+        "deploymentHealthRetries": "点検リトライ",
+        "deploymentHealthStartPeriod": "開始待機（秒）",
+        "deploymentPidsLimit": "PID 上限",
+        "deploymentRestartPolicy": "再起動ポリシー",
+        "deploymentEntrypoint": "Entrypoint — 1 行に 1 つ",
+        "deploymentEntrypointHelp": "空欄にするとイメージの entrypoint をそのまま使います。",
+        "deploymentVolumes": "名前付きボリューム — ボリューム名:マウントパス[:ro]",
+        "deploymentVolumesHelp": "1 行に 1 つ書きます。ホストパスはマウントできず、名前付きボリュームのみ受け付けます。",
+        "deploymentPublished": "公開ドメインで公開する",
+        "deploymentPublishedHelp": "オフにすると内部サービスとしてデプロイします。nginx ルートを作らず、コンテナ probe のみで観察します。"
     },
     "Nav": {
         "brand": "Containers",

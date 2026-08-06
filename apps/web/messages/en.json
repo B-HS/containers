@@ -803,7 +803,20 @@
         "jobEventsEmpty": "No events were recorded.",
         "uploadCancel": "Cancel upload",
         "uploadCancelled": "The upload was cancelled. Uploading the same file again resumes where it stopped.",
-        "uploadResumed": "Resuming the interrupted upload."
+        "uploadResumed": "Resuming the interrupted upload.",
+        "deploymentSectionHealthcheck": "Health check",
+        "deploymentHealthInterval": "Interval (s)",
+        "deploymentHealthTimeout": "Timeout (s)",
+        "deploymentHealthRetries": "Retries",
+        "deploymentHealthStartPeriod": "Start period (s)",
+        "deploymentPidsLimit": "PID limit",
+        "deploymentRestartPolicy": "Restart policy",
+        "deploymentEntrypoint": "Entrypoint — one per line",
+        "deploymentEntrypointHelp": "Leave empty to keep the image entrypoint.",
+        "deploymentVolumes": "Named volumes — volume:mountPath[:ro]",
+        "deploymentVolumesHelp": "One per line. Host paths cannot be mounted; only named volumes are accepted.",
+        "deploymentPublished": "Expose on a public domain",
+        "deploymentPublishedHelp": "Turn off to deploy an internal service. No nginx route is created and health is observed through the container probe."
     },
     "Nav": {
         "brand": "Containers",
