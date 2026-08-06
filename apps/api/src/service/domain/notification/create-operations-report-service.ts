@@ -12,6 +12,7 @@ type JobOutcomeSummary = {
 }
 
 type OperationsReportServiceDb = {
+    findLastReportAt: () => Promise<Date | undefined>
     countActiveApiKeys: (now: Date) => Promise<number>
     countExpiringApiKeys: (now: Date, until: Date) => Promise<number>
     countLockedAccounts: (now: Date) => Promise<number>
@@ -54,7 +55,9 @@ const describeChain = (integrity: AuditIntegrity) => {
 }
 
 /**
- * Builds the periodic operations report. The audit chain head is the point of the report: recording
+ * Builds the periodic operations report. Sending is gated on the last delivered report rather than
+ * on a timer, because a plain interval restarts with the process and a control plane that restarts
+ * daily would never reach the first tick. The audit chain head is the point of the report: recording
  * it outside this host is what makes truncating recent audit entries detectable, since a chain that
  * lost its tail stays internally consistent and cannot be caught by verification alone.
  */
@@ -65,8 +68,8 @@ export const createOperationsReportService = ({
     listContainers,
     now,
     verifyAuditIntegrity,
-}: OperationsReportServiceDependencies) => ({
-    build: async () => {
+}: OperationsReportServiceDependencies) => {
+    const build = async () => {
         const timestamp = now()
         const since = new Date(timestamp.getTime() - DAY_MS)
         const expiryLimit = new Date(timestamp.getTime() + EXPIRY_WARNING_DAYS * DAY_MS)
@@ -104,7 +107,18 @@ export const createOperationsReportService = ({
                 value: latestBackup === undefined ? '없음' : `${latestBackup.createdAt} · ${toMebibytes(latestBackup.controlBytes)} MiB`,
             },
         ]
-    },
-})
+    }
+
+    return {
+        build,
+        buildIfDue: async (minimumIntervalMs: number) => {
+            const lastReportAt = await db.findLastReportAt()
+            if (lastReportAt !== undefined && now().getTime() - lastReportAt.getTime() < minimumIntervalMs) {
+                return null
+            }
+            return build()
+        },
+    }
+}
 
 export type OperationsReportService = ReturnType<typeof createOperationsReportService>

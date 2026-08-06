@@ -1,7 +1,7 @@
-import { and, count, eq, gt, gte, inArray, isNotNull, lte } from 'drizzle-orm'
+import { and, count, desc, eq, gt, gte, inArray, isNotNull, lte } from 'drizzle-orm'
 import type { AuditIntegrity } from '@containers/contracts/audit'
 import type { ControlDatabase } from '@containers/db-schema/database'
-import { apiKey, loginLockout, operationJob } from '@containers/db-schema/schema'
+import { apiKey, loginLockout, notificationDelivery, operationJob } from '@containers/db-schema/schema'
 import { createOperationsReportService, type OperationsReportServiceDb } from '../service/domain/notification/create-operations-report-service'
 
 type ComposeOperationsReportDependencies = {
@@ -15,7 +15,18 @@ type ComposeOperationsReportDependencies = {
 const FAILED_JOB_STATUSES = ['failed', 'cancelled'] as const
 const SUCCEEDED_JOB_STATUS = 'succeeded'
 
+const REPORT_EVENT_TYPE = 'system.report'
+
 export const buildOperationsReportServiceDb = (db: ControlDatabase): OperationsReportServiceDb => ({
+    findLastReportAt: async () => {
+        const [row] = await db
+            .select({ createdAt: notificationDelivery.createdAt })
+            .from(notificationDelivery)
+            .where(eq(notificationDelivery.eventType, REPORT_EVENT_TYPE))
+            .orderBy(desc(notificationDelivery.createdAt))
+            .limit(1)
+        return row?.createdAt
+    },
     countActiveApiKeys: async (now) => {
         const [row] = await db
             .select({ value: count() })

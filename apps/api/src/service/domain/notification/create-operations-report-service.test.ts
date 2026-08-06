@@ -15,6 +15,7 @@ const INTACT_INTEGRITY: AuditIntegrity = {
 }
 
 const createDbStub = (overrides: Partial<OperationsReportServiceDb> = {}): OperationsReportServiceDb => ({
+    findLastReportAt: async () => undefined,
     countActiveApiKeys: async () => 1,
     countExpiringApiKeys: async () => 0,
     countLockedAccounts: async () => 0,
@@ -94,5 +95,15 @@ describe('운영 정기 보고', () => {
 
         expect(valueOf(report, '체인 head')).toBe('없음')
         expect(valueOf(report, '마지막 백업')).toBe('없음')
+    })
+
+    test('마지막 보고가 간격 안이면 만들지 않는다', async () => {
+        const recent = createTestService({ db: { findLastReportAt: async () => new Date(NOW.getTime() - 60_000) } })
+        const stale = createTestService({ db: { findLastReportAt: async () => new Date(NOW.getTime() - 25 * 60 * 60 * 1_000) } })
+        const never = createTestService()
+
+        expect(await recent.buildIfDue(24 * 60 * 60 * 1_000)).toBeNull()
+        expect(await stale.buildIfDue(24 * 60 * 60 * 1_000)).not.toBeNull()
+        expect(await never.buildIfDue(24 * 60 * 60 * 1_000)).not.toBeNull()
     })
 })
