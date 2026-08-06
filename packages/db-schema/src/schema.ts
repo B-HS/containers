@@ -209,9 +209,7 @@ export const deployment = sqliteTable(
     'deployment',
     {
         id: text('id').primaryKey(),
-        artifactId: text('artifact_id')
-            .notNull()
-            .references(() => artifact.id, { onDelete: 'restrict' }),
+        artifactId: text('artifact_id').references(() => artifact.id, { onDelete: 'set null' }),
         containerId: text('container_id'),
         status: text('status').notNull(),
         createdBy: text('created_by')

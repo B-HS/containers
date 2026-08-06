@@ -135,7 +135,9 @@ stateDiagram-v2
 - `GET /api/deployment-releases/:id` — release 상태 조회
 - `GET /api/jobs/:id/events` — durable job event **목록 조회(JSON 폴링)**. SSE 재생은 미구현이다
 - `POST /api/deployment-releases/:id/rollback` — 이전 정상 version으로 전환
-- `DELETE /api/artifacts/:artifactId` — artifact 폐기(배포가 참조 중이면 409)
+- `DELETE /api/artifacts/:artifactId` — artifact 폐기(confirmation 은 artifact id). load 가 진행 중이면(`deployment.status='loading'`) 409 `ARTIFACT_IN_USE`, 끝난 뒤라면 load 이력 행은 남기고 `deployment.artifact_id` 를 null 로 만든 뒤 파일을 회수한다
+- `DELETE /api/deployment-manifests/:id` — manifest 폐기(릴리스나 스택이 참조 중이면 409 `DEPLOYMENT_MANIFEST_IN_USE`)
+- `DELETE /api/deployment-stacks/:id` — 스택 폐기(진행 중인 릴리스가 있으면 409 `DEPLOYMENT_STACK_IN_USE`, 없으면 스택 릴리스 이력까지 함께 지운다. manifest 는 남는다)
 
 세션 조회(`GET /api/uploads/:id`)와 세션 폐기 엔드포인트는 없다.
 
@@ -146,7 +148,7 @@ Hono RPC는 JSON control endpoint 타입을 제공한다. 대용량 binary chunk
 - 전체 upload byte quota(사용자별은 미구현)
 - ready artifact 보존 기간
 - 실패 artifact 짧은 보존
-- deployment에서 참조 중인 artifact·image 삭제 금지
+- load 가 진행 중인 artifact·참조 중인 image 삭제 금지. load 가 끝난 artifact 는 이력을 남긴 채 회수 대상이다
 - disk soft watermark에서 새 upload 경고
 - hard watermark에서 새 upload·build 차단
 - orphan chunk와 interrupted upload 주기 정리

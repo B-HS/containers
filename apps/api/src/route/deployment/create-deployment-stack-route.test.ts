@@ -97,6 +97,7 @@ const createTestApp = (createBehavior: 'created' | 'rejected') =>
                     },
                     get: async () => STACK,
                     list: async () => [STACK],
+                    remove: async () => STACK,
                     preview: async () => PREVIEW,
                 },
             }),
@@ -159,5 +160,15 @@ describe('compose 스택 라우트', () => {
         expect(response.status).toBe(400)
         expect(body.error.code).toBe('DEPLOYMENT_STACK_REJECTED')
         expect(body.error.details.rejections).toEqual([{ detail: 'TOKEN 값을 그대로 담을 수 없다.', rule: 'plaintext-environment', service: 'app' }])
+    })
+
+    test('스택 삭제는 세션 없이 거부하고 세션이 있으면 스택을 돌려준다', async () => {
+        const app = createTestApp('created')
+        const unauthorized = await app.request(`/api/deployment-stacks/${STACK.id}`, { method: 'DELETE' })
+        const response = await app.request(`/api/deployment-stacks/${STACK.id}`, { headers: { cookie: 'session=1' }, method: 'DELETE' })
+
+        expect(unauthorized.status).toBe(401)
+        expect(response.status).toBe(200)
+        expect((await response.json()).data.id).toBe(STACK.id)
     })
 })

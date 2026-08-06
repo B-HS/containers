@@ -19,7 +19,17 @@ DELETE /api/deployment-stacks/{id}     → 라우트 자체가 없다 (404)
 
 `deployment.artifactId` 는 `restrict` FK 라 아티팩트만 지우는 것도 DB 수준에서 막힌다.
 
-## 판단이 필요한 지점 (미결)
+## 결정과 수정 (2026-08-06)
+
+**A 안을 택했다** — load 이력은 남기고 아티팩트 파일만 회수한다. 이력을 지우면(B) 어떤 아티팩트가 어떤 이미지를 넣었는지 추적할 수단이 사라지고, 그대로 두면(C) 저장소를 비울 방법이 영영 없다.
+
+- `deployment.artifact_id` 를 nullable + `on delete set null` 로 바꿨다(migration `0022`, generate).
+- 아티팩트 삭제·보존 정리는 이제 `status = 'loading'` 인 배포만 참조로 본다. load 가 끝났으면 이력 행의 `artifact_id` 를 null 로 만들고 파일을 지운다. 이력 자체는 남는다.
+- `DELETE /api/deployment-manifests/:id` 를 추가했다. 릴리스나 스택이 참조하면 409 `DEPLOYMENT_MANIFEST_IN_USE`.
+- `DELETE /api/deployment-stacks/:id` 를 추가했다. `releasing` 상태 릴리스가 있으면 409 `DEPLOYMENT_STACK_IN_USE`, 없으면 스택과 스택 릴리스 이력을 한 트랜잭션으로 지운다. manifest 는 남긴다(릴리스가 참조하므로 manifest 삭제는 별도 요청이다).
+- 세 경로 모두 audit attempt/success/failure 를 남기고, 권한은 기존 쓰기 경로와 같다(recent owner·admin 또는 `deployment:write`).
+
+## 판단이 필요했던 지점 (해소)
 
 load 가 끝난 tar 는 **기능적으로는 필요 없다** — 이미지는 이미 Docker 에 있고, 릴리스는 manifest 의 image digest 를 참조한다. 남길 이유는 감사 추적뿐이다. 그래서 선택지는:
 
@@ -31,11 +41,9 @@ load 가 끝난 tar 는 **기능적으로는 필요 없다** — 이미지는 �
 
 manifest·스택 삭제는 별개 결정이다(참조 중인 릴리스가 있으면 거부, 없으면 삭제).
 
-## 지금 상태
+## 실측 (2026-08-06, api 재빌드 후)
 
-이번 실측이 남긴 자산은 지우지 못하고 그대로 있다.
-
-- artifact 2건: `nginx-alpine.tar`(25.6 MiB), `socat.tar`(4.5 MiB)
-- manifest 4건: `verify-web`, `verify-internal`, `verifystack-cache`, `verifystack-web`
-- 스택 1건: `verifystack`, 스택 배포 2건
-- 배포 컨테이너·라우트는 정리했다(컨테이너 remove, 라우트 delete 200)
+- artifact 2건 DELETE → 200. `GET /api/artifacts` 가 빈 배열이 됐고 load 이력 행은 그대로 남았다.
+- 스택 `verifystack` DELETE → 200.
+- manifest 4건 중 `verify-internal` 은 참조가 없어 200, 릴리스가 있는 나머지 3건은 409 `DEPLOYMENT_MANIFEST_IN_USE`. 감사 로그에 attempt/success/failure 가 남았다.
+- **릴리스 이력이 있는 manifest 는 남는다(의도).** 릴리스가 manifest 를 참조하는 한 그 manifest 는 배포 이력의 일부다. manifest 행은 메타데이터라 저장소를 잠식하지 않는다. 릴리스 이력 자체의 보존 정책은 아직 없다 — 필요해지면 별도로 정한다.

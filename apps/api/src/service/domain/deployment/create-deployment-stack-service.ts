@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { composeStackInputSchema, deploymentStackListSchema, deploymentStackSchema } from '@containers/contracts/deployment-stack'
+import {
+    composeStackInputSchema,
+    DEPLOYMENT_STACK_RELEASE_STATUS,
+    deploymentStackListSchema,
+    deploymentStackReleaseStatusSchema,
+    deploymentStackSchema,
+} from '@containers/contracts/deployment-stack'
+import { z } from 'zod'
 import { buildImageDigestByReference, convertComposeStack } from '../../../lib/compose-stack'
 import { createAppError } from '../../../lib/error'
 import type { EngineAgentClient } from '../../../service/shared/engine-agent-client/create-engine-agent-client'
@@ -27,6 +34,8 @@ type StackIdRecord = {
 }
 
 type DeploymentStackServiceDb = {
+    countActiveReleases: (stackId: string, statuses: z.infer<typeof deploymentStackReleaseStatusSchema>[]) => Promise<number>
+    deleteWithReleases: (stackId: string) => Promise<void>
     list: () => Promise<StackRow[]>
     findById: (id: string) => Promise<StackRow | undefined>
     findVersionCollision: (name: string, version: string) => Promise<StackIdRecord | undefined>
@@ -119,6 +128,17 @@ export const createDeploymentStackService = ({
             if (!record) {
                 throw createAppError('DEPLOYMENT_STACK_NOT_FOUND')
             }
+            return toStack(record)
+        },
+        remove: async (id: string) => {
+            const record = await db.findById(id)
+            if (!record) {
+                throw createAppError('DEPLOYMENT_STACK_NOT_FOUND')
+            }
+            if ((await db.countActiveReleases(id, [DEPLOYMENT_STACK_RELEASE_STATUS.RELEASING])) > 0) {
+                throw createAppError('DEPLOYMENT_STACK_IN_USE')
+            }
+            await db.deleteWithReleases(id)
             return toStack(record)
         },
         list: async () => deploymentStackListSchema.parse((await db.list()).map(toStack)),

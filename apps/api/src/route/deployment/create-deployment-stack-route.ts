@@ -126,3 +126,33 @@ export const createDeploymentStackRoute = ({ apiKeyService, auditService, authSe
                 }
             }),
         )
+        .delete(
+            '/deployment-stacks/:id',
+            describeRoute({
+                responses: { 200: { description: 'compose 스택 삭제' } },
+                summary: 'compose 스택 삭제',
+                tags: ['Deployment'],
+            }),
+            validator('param', stackIdParamSchema),
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof stackIdParamSchema> }>) => {
+                const { id } = context.req.valid('param')
+                const audit = {
+                    operation: 'deployment.stack.delete',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId: id,
+                    targetType: 'deployment-stack' as const,
+                }
+                const { actorId, authMethod } = await authenticateWrite(context.req.raw.headers, apiKeyService, authService)
+                await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
+                try {
+                    const stack = await deploymentStackService.remove(id)
+                    await auditService.record({ ...audit, actorId, authMethod, detail: { name: stack.name, version: stack.version }, result: 'success' })
+                    return context.json(successResponse(stack), 200)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'DEPLOYMENT_STACK_DELETE_FAILED'
+                    await auditService.record({ ...audit, actorId, authMethod, detail: { code }, result: 'failure' })
+                    throw error
+                }
+            }),
+        )

@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, count, eq, inArray } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
-import { deploymentManifest, deploymentStack } from '@containers/db-schema/schema'
+import { deploymentManifest, deploymentStack, deploymentStackRelease } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
 import { createDeploymentStackService, type DeploymentStackServiceDb } from '../service/domain/deployment/create-deployment-stack-service'
 
@@ -12,6 +12,19 @@ type ComposeDeploymentStackDependencies = {
 }
 
 export const buildDeploymentStackServiceDb = (db: ControlDatabase): DeploymentStackServiceDb => ({
+    countActiveReleases: async (stackId, statuses) => {
+        const [row] = await db
+            .select({ value: count() })
+            .from(deploymentStackRelease)
+            .where(and(eq(deploymentStackRelease.stackId, stackId), inArray(deploymentStackRelease.status, statuses)))
+        return row?.value ?? 0
+    },
+    deleteWithReleases: async (stackId) => {
+        await db.transaction(async (transaction) => {
+            await transaction.delete(deploymentStackRelease).where(eq(deploymentStackRelease.stackId, stackId))
+            await transaction.delete(deploymentStack).where(eq(deploymentStack.id, stackId))
+        })
+    },
     list: async () => db.select().from(deploymentStack).orderBy(asc(deploymentStack.createdAt)),
     findById: async (id) => {
         const [record] = await db.select().from(deploymentStack).where(eq(deploymentStack.id, id)).limit(1)

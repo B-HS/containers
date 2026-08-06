@@ -9,6 +9,18 @@ type ComposeDeploymentDependencies = {
     engineAgentClient: Pick<EngineAgentClient, 'loadImage'>
 }
 
+type DeploymentRow = {
+    artifactId: string | null
+    createdAt: Date
+    createdBy: string
+    id: string
+    status: string
+    updatedAt: Date
+}
+
+const withArtifact = (record: DeploymentRow | undefined) =>
+    record === undefined || record.artifactId === null ? undefined : { ...record, artifactId: record.artifactId }
+
 export const buildDeploymentServiceDb = (db: ControlDatabase): DeploymentServiceDb => ({
     findArtifact: async (artifactId) => {
         const [record] = await db.select().from(artifact).where(eq(artifact.id, artifactId)).limit(1)
@@ -21,10 +33,12 @@ export const buildDeploymentServiceDb = (db: ControlDatabase): DeploymentService
             .where(and(eq(deployment.artifactId, artifactId), eq(deployment.status, 'loaded')))
             .orderBy(desc(deployment.createdAt))
             .limit(1)
-        return record
+        return withArtifact(record)
     },
     listDeploymentsByArtifact: async (artifactId) =>
-        db.select().from(deployment).where(eq(deployment.artifactId, artifactId)).orderBy(desc(deployment.createdAt)),
+        (await db.select().from(deployment).where(eq(deployment.artifactId, artifactId)).orderBy(desc(deployment.createdAt))).flatMap(
+            (record) => withArtifact(record) ?? [],
+        ),
     insert: async (record) => {
         await db.insert(deployment).values(record)
     },

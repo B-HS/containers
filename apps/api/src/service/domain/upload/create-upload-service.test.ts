@@ -325,7 +325,7 @@ describe('업로드 서비스', () => {
         await expect(service.appendChunk(actorId, session.id, 0, digest(bytes), bytes)).rejects.toThrow('DISK_HARD_WATERMARK')
         sqlite.close()
     })
-    test('배포가 참조하지 않는 artifact 만 삭제하고 참조 중이면 거부합니다', async () => {
+    test('load 중인 artifact 는 거부하고 load 가 끝난 artifact 는 이력을 남긴 채 삭제합니다', async () => {
         const { actorId, db, directory, service, sqlite } = await createTestService()
         const bytes = new TextEncoder().encode('docker-image-archive')
         const session = await service.createSession(actorId, 'artifact-remove-0001', {
@@ -343,16 +343,18 @@ describe('업로드 서비스', () => {
             createdAt: new Date('2026-07-31T00:00:00.000Z'),
             createdBy: actorId,
             id: 'deployment-holding-artifact',
-            status: 'loaded',
+            status: 'loading',
             updatedAt: new Date('2026-07-31T00:00:00.000Z'),
         })
         await expect(service.removeArtifact(created.id, { confirmation: created.id })).rejects.toThrow('ARTIFACT_IN_USE')
 
-        await db.delete(deployment).where(eq(deployment.id, 'deployment-holding-artifact'))
+        await db.update(deployment).set({ status: 'loaded' }).where(eq(deployment.id, 'deployment-holding-artifact'))
         await expect(service.removeArtifact(created.id, { confirmation: session.id })).rejects.toThrow('CONFIRMATION_MISMATCH')
         expect((await service.removeArtifact(created.id, { confirmation: created.id })).id).toBe(created.id)
         expect(await Bun.file(record?.storagePath ?? join(directory, 'missing')).exists()).toBe(false)
         expect(await service.listArtifacts()).toEqual([])
+        const [history] = await db.select().from(deployment).where(eq(deployment.id, 'deployment-holding-artifact'))
+        expect(history?.artifactId).toBeNull()
         sqlite.close()
     })
     test('보존 기간이 지나고 참조되지 않는 artifact 만 정리하되 최소 보관 수는 남깁니다', async () => {

@@ -16,6 +16,8 @@ type ManifestIdRecord = {
 }
 
 type DeploymentManifestServiceDb = {
+    countReferences: (id: string) => Promise<number>
+    delete: (id: string) => Promise<void>
     list: () => Promise<ManifestRow[]>
     findByIdentity: (name: string) => Promise<ManifestIdentity | undefined>
     findVersionCollision: (name: string, version: string) => Promise<ManifestIdRecord | undefined>
@@ -112,6 +114,17 @@ export const createDeploymentManifestService = ({
             if (!record) {
                 throw createAppError('DEPLOYMENT_MANIFEST_NOT_FOUND')
             }
+            return toDeploymentManifest(record)
+        },
+        remove: async (id: string) => {
+            const record = await db.findById(id)
+            if (!record) {
+                throw createAppError('DEPLOYMENT_MANIFEST_NOT_FOUND')
+            }
+            if ((await db.countReferences(id)) > 0) {
+                throw createAppError('DEPLOYMENT_MANIFEST_IN_USE')
+            }
+            await db.delete(id)
             return toDeploymentManifest(record)
         },
         list,

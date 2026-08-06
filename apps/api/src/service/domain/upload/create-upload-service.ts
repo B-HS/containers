@@ -19,6 +19,7 @@ const DAY_MS = 24 * 60 * 60 * 1_000
 const MAX_CHUNK_BYTES = 67_108_864
 const SESSION_TTL_MS = 24 * 60 * 60 * 1_000
 const REJECTED_SESSION_STATUS = 'rejected'
+const ACTIVE_DEPLOYMENT_STATUSES = ['loading'] as const
 
 type UploadSessionRow = {
     createdAt: Date
@@ -77,7 +78,8 @@ type UploadServiceDb = {
     findSessionByTemporaryPath: (temporaryPath: string) => Promise<UploadSessionRow | undefined>
     listArtifacts: () => Promise<ArtifactRow[]>
     findArtifactById: (id: string) => Promise<ArtifactRow | undefined>
-    countDeploymentsByArtifact: (artifactId: string) => Promise<number>
+    countActiveDeploymentsByArtifact: (artifactId: string, statuses: string[]) => Promise<number>
+    clearArtifactReferences: (artifactId: string) => Promise<void>
     deleteArtifact: (id: string) => Promise<void>
 }
 
@@ -422,9 +424,10 @@ export const createUploadService = ({
             if (request.confirmation !== record.id) {
                 throw createAppError('CONFIRMATION_MISMATCH')
             }
-            if ((await db.countDeploymentsByArtifact(id)) > 0) {
+            if ((await db.countActiveDeploymentsByArtifact(id, [...ACTIVE_DEPLOYMENT_STATUSES])) > 0) {
                 throw createAppError('ARTIFACT_IN_USE')
             }
+            await db.clearArtifactReferences(id)
             await db.deleteArtifact(id)
             await rm(record.storagePath, { force: true }).catch(() => undefined)
             return toArtifact(record)
@@ -438,9 +441,10 @@ export const createUploadService = ({
                 if (record.createdAt.getTime() >= expiresBefore) {
                     continue
                 }
-                if ((await db.countDeploymentsByArtifact(record.id)) > 0) {
+                if ((await db.countActiveDeploymentsByArtifact(record.id, [...ACTIVE_DEPLOYMENT_STATUSES])) > 0) {
                     continue
                 }
+                await db.clearArtifactReferences(record.id)
                 await db.deleteArtifact(record.id)
                 await rm(record.storagePath, { force: true }).catch(() => undefined)
                 removedArtifactCount += 1

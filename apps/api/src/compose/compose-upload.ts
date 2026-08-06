@@ -120,9 +120,15 @@ export const buildUploadServiceDb = (db: ControlDatabase): UploadServiceDb => ({
         const [record] = await db.select().from(artifact).where(eq(artifact.id, id)).limit(1)
         return record
     },
-    countDeploymentsByArtifact: async (artifactId) => {
-        const [row] = await db.select({ value: count() }).from(deployment).where(eq(deployment.artifactId, artifactId))
+    countActiveDeploymentsByArtifact: async (artifactId, statuses) => {
+        const [row] = await db
+            .select({ value: count() })
+            .from(deployment)
+            .where(and(eq(deployment.artifactId, artifactId), inArray(deployment.status, statuses)))
         return row?.value ?? 0
+    },
+    clearArtifactReferences: async (artifactId) => {
+        await db.update(deployment).set({ artifactId: null, updatedAt: new Date() }).where(eq(deployment.artifactId, artifactId))
     },
     deleteArtifact: async (id) => {
         await db.delete(artifact).where(eq(artifact.id, id))

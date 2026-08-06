@@ -118,6 +118,7 @@ const createTestApp = (createBehavior: 'conflict' | 'created' | 'reused') =>
                         return { manifest: MANIFEST, reused: createBehavior === 'reused' }
                     },
                     get: async () => MANIFEST,
+                    remove: async () => MANIFEST,
                     list: async (filter = {}) => {
                         listCalls.push(filter)
                         return [MANIFEST]
@@ -173,5 +174,15 @@ describe('배포 manifest 라우트', () => {
         const [readOnly, anonymous] = await Promise.all([postManifest({ authorization: 'Bearer read-key' }), postManifest({})])
 
         expect([readOnly.status, anonymous.status]).toEqual([403, 401])
+    })
+
+    test('manifest 삭제는 세션 없이 거부하고 세션이 있으면 manifest 를 돌려준다', async () => {
+        const app = createTestApp('created')
+        const unauthorized = await app.request(`/api/deployment-manifests/${MANIFEST.id}`, { method: 'DELETE' })
+        const response = await app.request(`/api/deployment-manifests/${MANIFEST.id}`, { headers: { cookie: 'session=1' }, method: 'DELETE' })
+
+        expect(unauthorized.status).toBe(401)
+        expect(response.status).toBe(200)
+        expect((await response.json()).data.id).toBe(MANIFEST.id)
     })
 })

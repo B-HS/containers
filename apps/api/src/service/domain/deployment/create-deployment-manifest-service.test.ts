@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createControlDatabase } from '@containers/db-schema/database'
-import { deploymentManifest, user } from '@containers/db-schema/schema'
+import { deploymentManifest, deploymentRelease, user } from '@containers/db-schema/schema'
 import { buildDeploymentManifestServiceDb } from '../../../compose/compose-deployment-manifest'
 import { createDeploymentManifestService } from './create-deployment-manifest-service'
 
@@ -116,6 +116,35 @@ describe('배포 manifest 서비스', () => {
         await expect(service.create(actorId, createInput({ route: { hostname: 'other.example.com' }, version: '1.0.3' }))).rejects.toThrow(
             'DEPLOYMENT_IDENTITY_MISMATCH',
         )
+        sqlite.close()
+    })
+
+    test('참조가 없는 manifest 는 삭제한다', async () => {
+        const { actorId, db, service, sqlite } = await createTestContext()
+        const { manifest } = await service.create(actorId, createInput())
+
+        await service.remove(manifest.id)
+
+        expect(await db.select().from(deploymentManifest)).toHaveLength(0)
+        sqlite.close()
+    })
+
+    test('릴리스가 참조하는 manifest 는 삭제하지 않는다', async () => {
+        const { actorId, db, service, sqlite } = await createTestContext()
+        const { manifest } = await service.create(actorId, createInput())
+        const timestamp = new Date('2026-08-01T00:00:00.000Z')
+        await db.insert(deploymentRelease).values({
+            containerName: 'sample-app-1',
+            createdAt: timestamp,
+            createdBy: actorId,
+            id: '33333333-3333-4333-8333-333333333333',
+            manifestId: manifest.id,
+            status: 'healthy',
+            updatedAt: timestamp,
+        })
+
+        await expect(service.remove(manifest.id)).rejects.toThrow('DEPLOYMENT_MANIFEST_IN_USE')
+        expect(await db.select().from(deploymentManifest)).toHaveLength(1)
         sqlite.close()
     })
 })

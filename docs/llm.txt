@@ -286,15 +286,18 @@ Registry creds:  /api/registry-credentials GET (admin) |
                  POST | /:credentialId POST(수정) | /:credentialId DELETE
                  (전부 recent owner 전용 — admin 불가)
 Deployment:      /api/artifacts/:artifactId/load POST (image:load or recent admin)
-                 /api/deployment-manifests GET | /:id GET | POST (admin recent write)
-                 (manifest DELETE 는 없다 — 삭제 경로 자체가 없다)
+                 /api/deployment-manifests GET | /:id GET | POST | /:id DELETE
+                 (admin recent write). DELETE 는 릴리스나 스택이 참조 중이면
+                 409 DEPLOYMENT_MANIFEST_IN_USE
                  /api/deployment-releases GET | /:id GET |
                  /api/deployment-releases/:id/rollback POST (deployment:write or
                  recent owner·admin). 릴리스 생성은 아래 manifest 경로뿐이다
                  /api/deployment-manifests/:manifestId/releases POST → 202 {job,release}
                  /api/deployment-stacks GET/:id GET (deployment:read) |
-                 /api/deployment-stacks/preview POST | /api/deployment-stacks POST
-                 (deployment:write or recent owner·admin)
+                 /api/deployment-stacks/preview POST | /api/deployment-stacks POST |
+                 /api/deployment-stacks/:id DELETE (deployment:write or recent
+                 owner·admin). DELETE 는 releasing 릴리스가 있으면 409
+                 DEPLOYMENT_STACK_IN_USE, 없으면 릴리스 이력까지 지운다
                  /api/deployment-stacks/{stackId}/releases POST → 202 {job,stackRelease}
                  /api/deployment-stack-releases GET | /:id GET (deployment:read)
                  /api/deployment-secrets GET/POST/DELETE (admin recent write),
@@ -316,7 +319,9 @@ Traffic:         /api/traffic/health GET (owner·admin),
 Health:          /api/health GET (무인증), /api/readyz GET (요약 무인증,
                  상세는 control-plane:read 또는 owner·admin)
 Upload:          /api/artifacts GET (all), /api/artifacts/:artifactId DELETE
-                 (recent owner·admin, 배포가 참조 중이면 409),
+                 (recent owner·admin, confirmation 은 artifact id. load 진행 중
+                 (deployment.status='loading')이면 409 ARTIFACT_IN_USE, 끝났으면
+                 load 이력의 artifactId 를 null 로 만들고 파일을 회수한다),
                  /api/uploads/sessions POST,
                  /api/uploads/sessions/:sessionId/chunks PUT,
                  .../finalize POST (artifact:upload or operator+, 64MiB chunks,

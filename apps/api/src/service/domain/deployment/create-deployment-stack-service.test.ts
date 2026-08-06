@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createControlDatabase } from '@containers/db-schema/database'
-import { deploymentManifest, deploymentStack, user } from '@containers/db-schema/schema'
+import { deploymentManifest, deploymentStack, deploymentStackRelease, user } from '@containers/db-schema/schema'
 import { buildDeploymentStackServiceDb } from '../../../compose/compose-deployment-stack'
 import { createDeploymentStackService } from './create-deployment-stack-service'
 
@@ -140,6 +140,46 @@ describe('compose 스택 서비스', () => {
         await expect(service.create('missing-user', createInput())).rejects.toThrow('DEPLOYMENT_STACK_CREATE_FAILED')
         expect(await db.select().from(deploymentManifest)).toHaveLength(0)
         expect(await db.select().from(deploymentStack)).toHaveLength(0)
+        sqlite.close()
+    })
+
+    test('스택을 삭제하면 릴리스 이력까지 지운다', async () => {
+        const { actorId, db, service, sqlite } = await createTestContext()
+        const stack = await service.create(actorId, createInput())
+        const timestamp = new Date('2026-08-06T00:00:00.000Z')
+        await db.insert(deploymentStackRelease).values({
+            createdAt: timestamp,
+            createdBy: actorId,
+            id: '11111111-1111-4111-8111-111111111111',
+            releaseIdsJson: '[]',
+            stackId: stack.id,
+            status: 'healthy',
+            updatedAt: timestamp,
+        })
+
+        await service.remove(stack.id)
+
+        expect(await db.select().from(deploymentStack)).toHaveLength(0)
+        expect(await db.select().from(deploymentStackRelease)).toHaveLength(0)
+        sqlite.close()
+    })
+
+    test('진행 중인 릴리스가 있으면 스택을 삭제하지 않는다', async () => {
+        const { actorId, db, service, sqlite } = await createTestContext()
+        const stack = await service.create(actorId, createInput())
+        const timestamp = new Date('2026-08-06T00:00:00.000Z')
+        await db.insert(deploymentStackRelease).values({
+            createdAt: timestamp,
+            createdBy: actorId,
+            id: '22222222-2222-4222-8222-222222222222',
+            releaseIdsJson: '[]',
+            stackId: stack.id,
+            status: 'releasing',
+            updatedAt: timestamp,
+        })
+
+        await expect(service.remove(stack.id)).rejects.toThrow('DEPLOYMENT_STACK_IN_USE')
+        expect(await db.select().from(deploymentStack)).toHaveLength(1)
         sqlite.close()
     })
 })

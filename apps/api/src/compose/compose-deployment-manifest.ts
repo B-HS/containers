@@ -1,6 +1,6 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, count, eq } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
-import { deploymentManifest } from '@containers/db-schema/schema'
+import { deploymentManifest, deploymentRelease, deploymentStack } from '@containers/db-schema/schema'
 import type { EngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
 import { createDeploymentManifestService, type DeploymentManifestServiceDb } from '../service/domain/deployment/create-deployment-manifest-service'
 
@@ -12,6 +12,15 @@ type ComposeDeploymentManifestDependencies = {
 }
 
 export const buildDeploymentManifestServiceDb = (db: ControlDatabase): DeploymentManifestServiceDb => ({
+    countReferences: async (id) => {
+        const [releases] = await db.select({ value: count() }).from(deploymentRelease).where(eq(deploymentRelease.manifestId, id))
+        const stacks = await db.select({ manifestIdsJson: deploymentStack.manifestIdsJson }).from(deploymentStack)
+        const stackReferences = stacks.filter((stack) => (JSON.parse(stack.manifestIdsJson) as string[]).includes(id)).length
+        return (releases?.value ?? 0) + stackReferences
+    },
+    delete: async (id) => {
+        await db.delete(deploymentManifest).where(eq(deploymentManifest.id, id))
+    },
     list: async () => db.select().from(deploymentManifest).orderBy(asc(deploymentManifest.createdAt)),
     findByIdentity: async (name) => {
         const [record] = await db

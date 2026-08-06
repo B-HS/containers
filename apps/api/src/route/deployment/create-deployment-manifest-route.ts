@@ -119,3 +119,47 @@ export const createDeploymentManifestRoute = ({
                 }
             }),
         )
+        .delete(
+            '/deployment-manifests/:id',
+            describeRoute({
+                responses: { 200: { description: '배포 manifest 삭제' } },
+                summary: '배포 manifest 삭제',
+                tags: ['Deployment'],
+            }),
+            validator('param', manifestIdParamSchema),
+            withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof manifestIdParamSchema> }>) => {
+                const { id } = context.req.valid('param')
+                const audit = {
+                    operation: 'deployment.manifest.delete',
+                    requestId: context.get('requestId'),
+                    sourceIp: getSourceIp(context.req.raw.headers),
+                    targetId: id,
+                    targetType: 'deployment-manifest' as const,
+                }
+                let actorId: string
+                let authMethod: 'api-key' | 'session' = 'session'
+                if (context.req.raw.headers.has('authorization')) {
+                    const principal = await apiKeyService.authenticate(context.req.raw.headers, API_KEY_SCOPE.DEPLOYMENT_WRITE)
+                    actorId = principal.actorId
+                    authMethod = principal.authMethod
+                } else {
+                    actorId = (await authService.requireRecentRole(context.req.raw.headers, MANIFEST_WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
+                }
+                await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
+                try {
+                    const manifest = await deploymentManifestService.remove(id)
+                    await auditService.record({
+                        ...audit,
+                        actorId,
+                        authMethod,
+                        detail: { name: manifest.name, version: manifest.version },
+                        result: 'success',
+                    })
+                    return context.json(successResponse(manifest), 200)
+                } catch (error) {
+                    const code = error instanceof Error ? error.message : 'DEPLOYMENT_MANIFEST_DELETE_FAILED'
+                    await auditService.record({ ...audit, actorId, authMethod, detail: { code }, result: 'failure' })
+                    throw error
+                }
+            }),
+        )
