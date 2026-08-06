@@ -161,7 +161,7 @@ snapshot은 짧게 보존하고 현재 판단에 사용하지 않는다.
 
 ### 5.3 Nginx
 
-- `nginx_route`: stable route identity와 desired fields
+- `nginx_route`: stable route identity와 desired fields. `managedBy` 는 이 라우트를 만든 `deployment_manifest` id 이고 패널이 만들면 `null` 이다(수정해도 유지된다). 수정은 `PUT /api/nginx/routes/:id`
 - `nginx_revision`: revision, parent, status, renderedChecksum, author, createdAt
 - `nginx_revision_file`: revisionId, relativePath, content, contentChecksum
 - `nginx_apply`: revisionId, previousRevisionId, status, validationOutput, probeOutput, startedAt, finishedAt

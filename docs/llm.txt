@@ -153,7 +153,11 @@ compose stack:   manifest route 는 nullable 이다. route=null 이면 내부 �
                  이미지 태그→digest 맵은 스택당 getImages() 1회로 만든다.
 Nginx routes:    nginx_route(id, hostname, path, pathMode, targetContainer,
                           targetPort, protocol, stripPrefix, timeoutSeconds,
-                          bodySizeMegabytes, enabled)
+                          bodySizeMegabytes, enabled, managedBy)
+                          managedBy = 이 라우트를 만든 deployment_manifest id
+                          (패널이 만들면 null). 수정해도 유지된다
+                          PUT /api/nginx/routes/:id 는 id 로 찾아 고친다.
+                          enabled=false 면 렌더된 설정에서 빠진다
 Notifications:   notification_destination(id, name, type, ciphertext, iv, tag,
                           enabled, eventTypes, keyVersion, createdBy)
                  notification_delivery(id, destinationId, jobId, sourceJobId,

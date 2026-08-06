@@ -439,6 +439,7 @@ export const nginxRoute = sqliteTable(
         timeoutSeconds: integer('timeout_seconds').notNull(),
         bodySizeMegabytes: integer('body_size_megabytes').notNull(),
         enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+        managedBy: text('managed_by').references(() => deploymentManifest.id, { onDelete: 'set null' }),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
         updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
     },

@@ -25,6 +25,7 @@ const route = (values: Partial<NginxProxyRoute> = {}): NginxProxyRoute => ({
     enabled: true,
     hostname: 'app.example.com',
     id: '01958c26-65b5-7c22-9254-03b914e61cc5',
+    managedBy: null,
     path: '/',
     pathMode: 'prefix',
     protocol: 'http',
@@ -264,6 +265,27 @@ describe('Nginx proxy route service 수정', () => {
 
         await expect(service.update(created.route.id, input({ targetPort: 9000 }))).rejects.toThrow('apply failed')
         expect(rows[0]?.targetPort).toBe(3000)
+    })
+})
+
+describe('Nginx proxy route service 소유권', () => {
+    test('패널이 만든 라우트는 소유자가 없다', async () => {
+        const { service } = createHarness()
+
+        const created = await service.create(input())
+
+        expect(created.route.managedBy).toBeNull()
+    })
+
+    test('배포가 만든 라우트는 manifest id 를 남기고 수정해도 유지된다', async () => {
+        const { service } = createHarness()
+        const manifestId = '01958c26-65b5-7c22-9254-03b914e61cc9'
+
+        const created = await service.upsert(input(), { managedBy: manifestId })
+        const updated = await service.update(created.route.id, input({ targetPort: 9000 }))
+
+        expect(created.route.managedBy).toBe(manifestId)
+        expect(updated.route.managedBy).toBe(manifestId)
     })
 })
 

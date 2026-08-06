@@ -14,6 +14,8 @@ export type NginxRouteLabels = {
     failed: string
     hostname: string
     invalidValue: string
+    managed: string
+    managedRemoveWarning: string
     path: string
     pathMode: string
     pathModeExact: string

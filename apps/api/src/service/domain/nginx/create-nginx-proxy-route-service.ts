@@ -14,6 +14,7 @@ type NginxRouteRow = {
     enabled: boolean
     hostname: string
     id: string
+    managedBy: string | null
     path: string
     pathMode: NginxProxyRoute['pathMode']
     protocol: NginxProxyRoute['protocol']
@@ -34,6 +35,10 @@ type NginxProxyRouteServiceDb = {
     insert: (record: NginxRouteRow) => Promise<void>
     update: (id: string, record: Omit<NginxRouteRow, 'createdAt' | 'id' | 'updatedAt'> & { updatedAt: Date }) => Promise<void>
     delete: (id: string) => Promise<void>
+}
+
+type RouteOwnershipOptions = {
+    managedBy?: string | null
 }
 
 type NginxProxyRouteServiceDependencies = {
@@ -100,6 +105,7 @@ const toUpdateRecord = (route: NginxProxyRoute) => ({
     bodySizeMegabytes: route.bodySizeMegabytes,
     enabled: route.enabled,
     hostname: route.hostname,
+    managedBy: route.managedBy,
     path: route.path,
     pathMode: route.pathMode,
     protocol: route.protocol,
@@ -194,7 +200,7 @@ export const createNginxProxyRouteService = ({
     }
 
     return {
-        create: async (input: unknown) =>
+        create: async (input: unknown, options: RouteOwnershipOptions = {}) =>
             serialize(async () => {
                 const payload = nginxProxyRouteInputSchema.parse(input)
                 if (protectedHostnames().includes(payload.hostname)) {
@@ -212,6 +218,7 @@ export const createNginxProxyRouteService = ({
                     ...payload,
                     createdAt: timestamp.toISOString(),
                     id: randomUUID(),
+                    managedBy: options.managedBy ?? null,
                     updatedAt: timestamp.toISOString(),
                 })
                 const routes = [...(await list()), route]
@@ -248,7 +255,7 @@ export const createNginxProxyRouteService = ({
                 )
                 return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
             }),
-        update: async (id: string, input: unknown) =>
+        update: async (id: string, input: unknown, options: RouteOwnershipOptions = {}) =>
             serialize(async () => {
                 const payload = nginxProxyRouteInputSchema.parse(input)
                 if (protectedHostnames().includes(payload.hostname)) {
@@ -276,15 +283,16 @@ export const createNginxProxyRouteService = ({
                     ...payload,
                     createdAt: existing.createdAt,
                     id: existing.id,
+                    managedBy: options.managedBy === undefined ? existing.managedBy : options.managedBy,
                     updatedAt: timestamp.toISOString(),
                 })
-                await db.update(id, { ...payload, updatedAt: timestamp })
+                await db.update(id, toUpdateRecord(route))
                 const result = await applyWithCompensation([...current.filter((candidate) => candidate.id !== id), route], () =>
                     db.update(id, toUpdateRecord(existing)),
                 )
                 return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
             }),
-        upsert: async (input: unknown) =>
+        upsert: async (input: unknown, options: RouteOwnershipOptions = {}) =>
             serialize(async () => {
                 const payload = nginxProxyRouteInputSchema.parse(input)
                 if (protectedHostnames().includes(payload.hostname)) {
@@ -301,11 +309,12 @@ export const createNginxProxyRouteService = ({
                     ...payload,
                     createdAt: existing?.createdAt ?? timestamp.toISOString(),
                     id: existing?.id ?? randomUUID(),
+                    managedBy: options.managedBy === undefined ? (existing?.managedBy ?? null) : options.managedBy,
                     updatedAt: timestamp.toISOString(),
                 })
                 const routes = [...current.filter((candidate) => candidate.id !== existing?.id), route]
                 if (existing) {
-                    await db.update(existing.id, { ...payload, updatedAt: timestamp })
+                    await db.update(existing.id, toUpdateRecord(route))
                 } else {
                     await db.insert(toInsertRecord(route))
                 }

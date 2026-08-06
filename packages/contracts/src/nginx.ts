@@ -59,6 +59,7 @@ export const nginxProxyRouteInputSchema = z.object({
 export const nginxProxyRouteSchema = nginxProxyRouteInputSchema.extend({
     createdAt: z.iso.datetime(),
     id: z.uuid(),
+    managedBy: z.string().nullable(),
     updatedAt: z.iso.datetime(),
 })
 

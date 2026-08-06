@@ -52,6 +52,8 @@ const NginxRoutesPage = async () => {
                         failed: translations('nginxRouteFailed'),
                         hostname: translations('nginxRouteHostname'),
                         invalidValue: translations('invalidValue'),
+                        managed: translations('nginxRouteManaged'),
+                        managedRemoveWarning: translations('nginxRouteManagedRemoveWarning'),
                         path: translations('nginxRoutePath'),
                         pathMode: translations('nginxRoutePathMode'),
                         pathModeExact: translations('nginxRoutePathModeExact'),

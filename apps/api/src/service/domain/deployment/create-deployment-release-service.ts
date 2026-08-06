@@ -247,7 +247,7 @@ export const createDeploymentReleaseService = ({
                 throw createAppError('DEPLOYMENT_ROLLBACK_HEALTHCHECK_FAILED')
             }
             if (isPublished(targetManifest)) {
-                await nginxProxyRouteService.upsert(routeInput(targetManifest, target.containerName))
+                await nginxProxyRouteService.upsert(routeInput(targetManifest, target.containerName), { managedBy: targetManifest.id })
                 routeSwitched = true
                 let routeReady = false
                 for (let attempt = 0; attempt < targetManifest.healthcheck.retries; attempt += 1) {
@@ -276,7 +276,7 @@ export const createDeploymentReleaseService = ({
         } catch (error) {
             const failureCode = error instanceof Error ? error.message.slice(0, 480) : 'UNKNOWN'
             if (routeSwitched && isPublished(manifest)) {
-                await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName)).catch(() => undefined)
+                await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName), { managedBy: manifest.id }).catch(() => undefined)
             }
             if (targetStarted) {
                 await engineAgentClient.performContainerAction(target.containerId, { action: 'stop', timeoutSeconds: 10 }).catch(() => undefined)
@@ -293,7 +293,7 @@ export const createDeploymentReleaseService = ({
             if (release.status === 'rolling-back') {
                 try {
                     if (isPublished(manifest)) {
-                        await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName))
+                        await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName), { managedBy: manifest.id })
                     }
                     if (release.previousReleaseId) {
                         const target = await get(release.previousReleaseId)
@@ -327,7 +327,7 @@ export const createDeploymentReleaseService = ({
                     const previous = release.previousReleaseId ? await get(release.previousReleaseId) : undefined
                     const previousManifest = previous ? await deploymentManifestService.get(previous.manifestId) : undefined
                     if (previous && previousManifest && isPublished(previousManifest)) {
-                        await nginxProxyRouteService.upsert(routeInput(previousManifest, previous.containerName))
+                        await nginxProxyRouteService.upsert(routeInput(previousManifest, previous.containerName), { managedBy: previousManifest.id })
                     } else if (!previous && isPublished(manifest)) {
                         const route = (await nginxProxyRouteService.list()).find(
                             (candidate) => candidate.hostname === manifest.route.hostname && candidate.path === manifest.route.path,
@@ -495,7 +495,7 @@ export const createDeploymentReleaseService = ({
                 await engineAgentClient.disconnectContainerNetwork(containerId, { network: probeNetwork })
                 await update(id, { status: 'switching' })
                 if (isPublished(manifest)) {
-                    const switched = await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName))
+                    const switched = await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName), { managedBy: manifest.id })
                     switchedRoute = { id: switched.route.id }
                     await update(id, { nginxConfigSha256: switched.configSha256, nginxRouteId: switched.route.id, status: 'observing' })
                     failureStage = 'route'
@@ -564,7 +564,9 @@ export const createDeploymentReleaseService = ({
                 if (switchedRoute) {
                     try {
                         if (previous && previousManifest && isPublished(previousManifest)) {
-                            await nginxProxyRouteService.upsert(routeInput(previousManifest, previous.containerName))
+                            await nginxProxyRouteService.upsert(routeInput(previousManifest, previous.containerName), {
+                                managedBy: previousManifest.id,
+                            })
                         } else if (isPublished(manifest)) {
                             await nginxProxyRouteService.remove(switchedRoute.id, `${manifest.route.hostname}${manifest.route.path}`)
                         }

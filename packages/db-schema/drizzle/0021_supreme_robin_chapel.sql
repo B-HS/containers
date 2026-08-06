@@ -1,0 +1,1 @@
+ALTER TABLE `nginx_route` ADD `managed_by` text REFERENCES deployment_manifest(id);

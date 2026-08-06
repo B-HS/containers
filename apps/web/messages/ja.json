@@ -796,7 +796,9 @@
         "nginxRouteUpdated": "ルートを更新しました。",
         "nginxRoutePathMode": "パスの一致方法",
         "nginxRoutePathModePrefix": "prefix（下位パスを含む）",
-        "nginxRoutePathModeExact": "exact（完全一致のみ）"
+        "nginxRoutePathModeExact": "exact（完全一致のみ）",
+        "nginxRouteManaged": "デプロイ管理",
+        "nginxRouteManagedRemoveWarning": "このルートはデプロイが作成したものです。削除するとサービスが停止し、自動では復旧しません。"
     },
     "Nav": {
         "brand": "Containers",

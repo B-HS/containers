@@ -729,7 +729,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] 5. `parse-api-error.ts` 배열 지원 + `onError` 인자 사용 통일 — 검증 issue 배열·`details.rejections` 를 읽고 `parseApiErrorCode` 로 코드를 보존한다. 아티팩트 검사의 raw tar/zod 예외를 `ARCHIVE_INVALID`·`ARCHIVE_METADATA_INVALID` 로 정규화하고 재시도 대상에서 뺐다
 - [x] 6. 단계 간 CTA 링크 4곳 — 개요 온보딩 카드(4단계 진행), artifact load 성공 시 태그+컨테이너 만들기, 이미지 행 링크, 컨테이너 생성 후 라우트 화면 프리필
 - [x] 7. 라우트 수정(`PUT /nginx/routes/:id`) + `pathMode`·`enabled` UI 노출 — 서비스 `update(id, input)` 신설(upsert 는 hostname+path 기준이라 hostname 변경을 못 한다), 표의 사용 스위치와 수정 버튼이 같은 폼을 편집 모드로 연다
-- [ ] 8. 배포 관리 라우트 소유권 표시(`managedBy`)
+- [x] 8. 배포 관리 라우트 소유권 표시(`managedBy`) — 컬럼 추가(migration 0021, manifest FK set null), 서비스가 `{ managedBy }` 옵션으로 받고 릴리스 6개 호출부가 manifest id 를 남긴다. 패널 생성은 null
 - [ ] 9. job 진행 폴링·이벤트 타임라인·전역 배지
 - [ ] 10. 업로드 재개·취소
 

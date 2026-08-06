@@ -19,6 +19,8 @@ type NginxRouteTableProps = {
         container: string
         enabled: string
         hostname: string
+        managed: string
+        managedRemoveWarning: string
         protocol: string
         remove: string
         removeImpact: string
@@ -45,8 +47,13 @@ export const NginxRouteTable: FC<NginxRouteTableProps> = ({ busyRouteId, canMana
             {routes.map((route) => (
                 <TableRow key={route.id} className="odd:bg-overlay-subtle">
                     <TableCell className="max-w-0 truncate font-medium text-text-strong">
-                        {route.hostname}
-                        {route.path}
+                        <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate">
+                                {route.hostname}
+                                {route.path}
+                            </span>
+                            {route.managedBy === null ? null : <Badge variant="attention">{labels.managed}</Badge>}
+                        </span>
                     </TableCell>
                     <TableCell className="max-w-0 truncate font-mono text-text-muted">
                         {route.targetContainer}:{route.targetPort}
@@ -71,7 +78,7 @@ export const NginxRouteTable: FC<NginxRouteTableProps> = ({ busyRouteId, canMana
                             <ConfirmRemoveDialog
                                 cancelLabel={labels.cancel}
                                 confirmationLabel={labels.confirmation}
-                                description={labels.removeImpact}
+                                description={route.managedBy === null ? labels.removeImpact : `${labels.removeImpact} ${labels.managedRemoveWarning}`}
                                 disabled={busyRouteId === route.id}
                                 expectedValue={`${route.hostname}${route.path}`}
                                 inputId={`route-confirm-${route.id}`}

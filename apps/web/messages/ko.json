@@ -796,7 +796,9 @@
         "nginxRouteUpdated": "라우트를 수정했습니다.",
         "nginxRoutePathMode": "경로 매칭",
         "nginxRoutePathModePrefix": "prefix (하위 경로 포함)",
-        "nginxRoutePathModeExact": "exact (정확히 일치)"
+        "nginxRoutePathModeExact": "exact (정확히 일치)",
+        "nginxRouteManaged": "배포 관리",
+        "nginxRouteManagedRemoveWarning": "이 라우트는 배포가 만든 것입니다. 지우면 서비스가 끊기고 자동으로 복구되지 않습니다."
     },
     "Nav": {
         "brand": "Containers",
