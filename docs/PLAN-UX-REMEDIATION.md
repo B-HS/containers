@@ -69,7 +69,9 @@
 - [x] **6.1 전 구간 재검증** — 표준 `nginx:alpine` 아카이브 26MB 업로드 → `Loaded image: nginx:alpine` → manifest → blue-green 배포 healthy → `https://a.hyuns.uk` 200(nginx 기본 페이지). 도중에 업로드 슬롯 결함 1건을 찾아 고쳤다 → [bug](./bug/2026-08-06-rejected-upload-session-blocks-slot.md)
 - [x] **6.2 compose 스택 실측** — 2서비스 compose 미리보기→등록(manifest 2건)→스택 배포. `depends_on` 순서(cache → web)대로 배포되고 내부 서비스는 라우트 없이 healthy, 공개 서비스는 `https://b.hyuns.uk` 200. **내부 서비스가 항상 실패하던 결함을 찾아 고쳤다** → [bug](./bug/2026-08-06-internal-service-observation-unreachable.md)
 - [x] **6.3 문서 정합** — 코드 대조로 드리프트 30여 건을 고쳤다. 없는 엔드포인트 서술(manifest DELETE, `POST /deployment-releases`, 세션 조회·폐기), 누락 엔드포인트(스택 6개·라우트 PUT·health/readyz·artifact DELETE·secret rotate·network/volume DELETE), 권한 오기(exec=owner recent, prune·registry=owner 전용, backup DELETE=API key 가능, notification 변경=recent), 존재하지 않는 테이블 서술(`docker_target`·`nginx_revision*`·`artifact_scan`·`saved_view`·traffic checkpoints), 실제와 다른 합성 규칙(`withCapability` 는 없다), 업로드 상태 기계·quota 기본값(300GiB→32GiB)·probe 네트워크 이름, CI 예시 포트(8080→18080)·스택 경로·`audit:runtime` 누락
-- [ ] **6.4 정리** — 테스트 컨테이너·이미지·아티팩트·라우트·API key·임시 계정 제거
+- [x] **6.4 정리** — 지울 수 있는 것은 전부 지웠다: 배포 컨테이너 3개, 임시 컨테이너 2개, 테스트 라우트 4개, 받아온 테스트 이미지 1개. API key 는 만든 적이 없다(0건).
+    - **지우지 못한 것**: artifact 2건·manifest 4건·스택 1건·스택 배포 2건·job 8건. 삭제 경로가 아예 없다 → [bug](./bug/2026-08-06-loaded-artifacts-cannot-be-deleted.md). 처리 방향은 사용자 판단이 필요하다
+    - seed 계정 `stack-check@containers.local`(owner)은 남겨 뒀다. 지우면 패널에 다시 못 들어간다(실운영 owner 를 bootstrap 으로 만든 뒤 정리한다)
 
 ---
 

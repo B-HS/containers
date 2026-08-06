@@ -1,8 +1,8 @@
 # HANDOFF — 2026-08-06 세션 스냅샷
 
-- 대응 커밋: 3.2 커밋 (`dev`)
+- 대응 커밋: `5e79f54` 이후 (`dev`, origin/dev 와 동기)
 - 최종 갱신일: 2026-08-06
-- 검증 상태: typecheck 8/8 · lint 0 · **test 467**(+ web 24) · format:check · build 8/8 · 스택 5개 healthy
+- 검증 상태: typecheck 8/8 · lint 0 · **test 489**(+ web 28) · format:check · build 8/8 · `audit:runtime` 5/5 · 스택 5개 healthy
 - **이 문서가 세션 인수인계 단일 진입점이다.** 다른 문서보다 먼저 읽는다.
 - **현재 상태와 검증 수치는 이 문서가 단독으로 소유한다.** `RESUME-CHECKLIST.md` 는 절차·불변식, `HANDOFF-STATUS.md` 는 구현 범위·한계(시점 기록)를 소유한다. 같은 수치를 두 곳에 적지 않는다.
 - **진행 중 작업의 실행 계획 정본은 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 다.**
@@ -15,8 +15,8 @@
 
 - **최종 목표**: 실운영 가능 + GitHub Actions 가 API key 만으로 배포를 완주.
 - **현재 마일스톤**: 패널 UX 감사 후속 처리(원본 64건 → 검증 44건 → 원인 12개) + 라이브 실측 결함 + compose 스택 본격 지원.
-- **직전 작업(2026-08-06)**: 2.2 → 1.3 → 3.1 → **3.2** 완료. 그 과정에서 결함 3건을 새로 발견해 2건 수정·1건 기록했고, 중간에 사용자 지시로 **실운영 전 전체 초기화**를 했다.
-- **다음 한 줄**: **3.3 스택 릴리스 오케스트레이션** — `depends_on` 위상 순서로 서비스별 릴리스, 실패 시 역순 롤백. 저장 계층(`deployment_stack`·`deployment_stack_release`, migration 0020)과 preview·create 라우트는 3.2 에서 만들어 뒀다.
+- **직전 작업(2026-08-06)**: 2.2 → 1.3 → 3.1 → **3.2 → 3.3 → 3.4 → 4.1~~4.7 → 5.1~~5.3 → 6.1~6.4 완료.** [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 체크리스트를 전부 닫았다. 중간에 사용자 지시로 실운영 전 전체 초기화를 했고, 그 뒤 실측으로 결함 4건을 더 찾아 3건 수정·1건 기록했다.
+- **다음 한 줄**: **계획서가 비었다.** 남은 결정 2건(로드한 아티팩트 삭제 정책, 실운영 owner bootstrap 후 seed 계정 정리)을 사용자와 정하고, 그 뒤 새 마일스톤을 잡는다.
 
 ## 3. 완료 / 진행 중 / 미착수
 
@@ -36,7 +36,19 @@
 | `efc93c0` | 세션 상태 인수인계 문서 갱신                                                                              |
 | `28becf0` | 실운영 전 전체 초기화 결과 기록                                                                           |
 | `66d48aa` | 인수인계 문서의 소유 범위와 구현 서술 정정                                                                |
-| (3.2)     | **3.2** compose 스택 등록과 미리보기 API                                                                  |
+| `3b587b2` | **3.2** compose 스택 등록과 미리보기 API (migration 0020)                                                 |
+| `a72e76a` | **3.3** 스택 단위 순차 배포와 롤백 (job kind `deploy.stack-release`)                                      |
+| `a4f8abd` | **3.4** compose 업로드와 스택 배포 화면 (`/deployments/stacks`)                                           |
+| `cb81d5f` | **4.1** 서버가 준 실패 사유를 화면에 그대로 전달                                                          |
+| `b77c80b` | **4.2** 배포 흐름 단계 사이를 잇는 이동 경로                                                              |
+| `4c56ec5` | **4.3** 라우트 수정과 사용 여부 전환 (`PUT /api/nginx/routes/:id`)                                        |
+| `07d44c9` | **4.4** 배포가 관리하는 라우트 구분 (`managedBy`, migration 0021)                                         |
+| `63e570c` | **4.5** 실행 중 작업의 진행과 이력                                                                        |
+| `475429b` | **4.6** 대용량 업로드 재개·취소                                                                           |
+| `6240620` | **4.7** manifest 의 남은 계약 필드를 화면에 개방                                                          |
+| `f493502` | **5.1~5.3** 화면 역할 안내와 접근성                                                                       |
+| `8085811` | **6.1·6.2 실측에서 드러난 배포 결함 2건 수정**                                                            |
+| `5e79f54` | **6.3** 문서와 코드의 어긋난 서술 전수 정정                                                               |
 
 **2.2 배포 실패 진단** — 실패 시 컨테이너 중지 **전에** exit code·container error·로그 꼬리를 모아 durable job event `detail` 에 남기고 배포 화면에서 펼쳐 본다.
 
@@ -59,22 +71,23 @@
 
 지운 것: volume 6종(`control-data`·`traffic-data`·`artifacts`·`backups`·`nginx-config`·`nginx-logs`), 테스트 컨테이너 6개(`demo-*`·`fail-demo-*`), 테스트 이미지 6개. 유지: 자격증명 volume 3종, 사용자 소유 리소스(`poc1c`·`poc1d`·`poc1-debug2`·`api-proxy2`), `containers-dr-*` 이미지. 전 이미지를 HEAD 로 재빌드했다.
 
+**6.1 전 구간 재검증** — `nginx:alpine` 아카이브 26MB 업로드 → `Loaded image: nginx:alpine` → manifest → blue-green 배포 healthy → `https://a.hyuns.uk` 200.
+
+**6.2 compose 스택 실측** — 2서비스 compose 미리보기 → 등록(manifest 2건) → 스택 배포. `cache → web` 순서로 배포되고 내부 서비스는 라우트 없이 healthy, `https://b.hyuns.uk` 200.
+
+**실측이 찾은 결함 4건** — 내부 서비스 관찰 불가([bug](./bug/2026-08-06-internal-service-observation-unreachable.md), 수정), 검사 실패 업로드 세션이 슬롯 점유([bug](./bug/2026-08-06-rejected-upload-session-blocks-slot.md), 수정), job 목록이 유휴에 폴링을 멈춰 새 job 을 못 봄(수정), 로드한 아티팩트를 지울 수 없음([bug](./bug/2026-08-06-loaded-artifacts-cannot-be-deleted.md), **미해결**).
+
 ### 진행 중
 
-없음. 다만 **3.2 의 저장 경로는 실 스택에서 실행해 본 적이 없다.** preview·거부·인증은 라이브로 확인했고, 저장은 실 SQLite + migration 0020 위의 서비스 테스트로만 확인했다. 초기화 직후 control DB 에 지울 API 가 없는 행을 남기지 않으려고 사용자 판단으로 **6.2 로 미뤘다**.
+없음. 워킹트리 clean, 계획서 체크리스트 전부 닫힘.
 
-라이브 확인용 seed 계정 `stack-check@containers.local`(owner)이 control DB 에 있다. **6.4 정리 대상이다.**
+### 미착수
 
-### 미착수 — [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 체크리스트
-
-- **3.3** 스택 릴리스 오케스트레이션 / **3.4** 스택 웹 화면
-- **4.1~4.7** 마찰 — 에러 파싱 통일, CTA 링크, 라우트 수정·토글, 라우트 소유권, job 진행 가시화, 업로드 재개·취소, manifest 폼 하드코딩
-- **5.1~5.3** 품질·접근성
-- **6.1~6.4** 최종 재검증·문서 정합·정리
+계획서에 남은 항목이 없다. 다음 마일스톤은 §6 의 미해결 질문을 정한 뒤 잡는다.
 
 ## 4. 의사결정 요약
 
-상세는 [acknowledge/](./acknowledge/) (최신 **0041**).
+상세는 [acknowledge/](./acknowledge/) (최신 **0042**).
 
 | 결정                                                                                                      | 이유                                                                                                                       | 기각한 대안                                                                                                                    |
 | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -109,11 +122,11 @@
 
 ## 6. 미해결 질문 / 사용자 확인 필요
 
-1. **owner 계정이 없다.** 초기화로 control DB 가 비었고 `GET /api/bootstrap/status` 가 `required: true` 다. `http://127.0.0.1:18080` 에서 최초 owner 를 만들어야 패널을 쓸 수 있다. 공개 주소에서는 bootstrap 이 403 이다.
-2. **공개 주소 설정도 초기화됐다.** `hyuns.uk` 를 다시 쓰려면 owner 로 로그인해 패널 설정에서 다시 지정해야 한다. Cloudflare 터널 자체는 스택 밖이라 그대로다.
-3. **control DB 고아 행의 근본 원인은 미해결이다.** 데이터는 사라졌지만 같은 경로로 다시 쌓일 수 있다. `DELETE /api/users/:id` 가 참조를 어떻게 정리할지(무효화/거부/익명화) 결정이 필요하다 → [bug/2026-08-06-control-db-orphan-user-references.md](./bug/2026-08-06-control-db-orphan-user-references.md)
-4. **`containers-dr-*` 이미지 5개**를 남겨 뒀다. 재해복구 드릴 산출물이라 "테스트 것만 삭제" 범위에서 제외했는데, 지울지 확인이 필요하다.
-5. ~~compose `environment` 의 값 없는 키가 조용히 사라진다.~~ **해소됐다.** 3.2 에서 유효성 검사 실패로 바꿨다 → [acknowledge/0041](./acknowledge/0041-deployment-stack-persistence.md)
+1. **로드한 아티팩트를 지울 수 없다.** load 이력(`deployment` 행)이 아티팩트를 영구 참조해 수동 삭제도 보존 정책도 통과하지 못한다. manifest·스택도 삭제 라우트가 없다. A(이력 유지 + 파일만 회수) / B(이력째 삭제) / C(현행 유지) 중 결정이 필요하다 → [bug](./bug/2026-08-06-loaded-artifacts-cannot-be-deleted.md)
+2. **실운영 owner 를 만들어야 한다.** 지금 있는 계정은 실측용 seed(`stack-check@containers.local`) 하나다. `http://127.0.0.1:18080` 에서 bootstrap 으로 실운영 owner 를 만든 뒤 seed 계정을 지우는 것이 순서다(먼저 지우면 패널에 못 들어간다). 공개 주소에서는 bootstrap 이 403 이다.
+3. **공개 주소 설정은 여전히 비어 있다.** `hyuns.uk` 를 패널 신뢰 출처로 쓰려면 owner 로 로그인해 패널 설정에서 지정한다. 라우트 자체는 설정 없이도 동작한다(6.1·6.2 에서 확인).
+4. **control DB 고아 행의 근본 원인은 미해결이다.** 데이터는 사라졌지만 같은 경로로 다시 쌓일 수 있다. `DELETE /api/users/:id` 가 참조를 어떻게 정리할지(무효화/거부/익명화) 결정이 필요하다 → [bug/2026-08-06-control-db-orphan-user-references.md](./bug/2026-08-06-control-db-orphan-user-references.md)
+5. **`containers-dr-*` 이미지 5개**를 남겨 뒀다. 재해복구 드릴 산출물이라 "테스트 것만 삭제" 범위에서 제외했는데, 지울지 확인이 필요하다.
 6. Cloudflare Access 미적용. 패널이 공개 인터넷에 열려 있다.
 7. HSTS `preload` 미적용 — 등재 취소가 어려워 운영자 판단이 필요하다.
 
@@ -122,7 +135,7 @@
 - **런타임**: Bun 1.3.14 workspace(`apps/*` 4 + `packages/*` 4 = 8), TypeScript strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`.
 - **스택**: Hono 4.13.0, Next.js 16.3.0 App Router + React 19 + React Compiler + Tailwind v4 + next-intl(ko/en/ja) + TanStack Query v5, Drizzle + SQLite, Better Auth 1.6.25.
 - **접속**: `http://127.0.0.1:18080`. **8080 이 아니다** — macOS Docker Desktop 이 그 포트에서 저속 스트림을 버퍼링한다.
-- **계정**: 현재 owner 없음. 최초 1회 로컬 주소 bootstrap 필요(§6-1). 개발 스택에서만 `bun scripts/seed-e2e.ts`.
+- **계정**: 실측용 seed owner `stack-check@containers.local` 하나. 실운영 owner 는 로컬 주소 bootstrap 으로 따로 만든다(§6-2). 개발 스택에서만 `bun scripts/seed-e2e.ts`.
 - **외부**: `hyuns.uk` 가 Cloudflare 터널로 연결돼 있고 `*` 와일드카드 public hostname 이 설정돼 있다. 패널 쪽 공개 주소 설정은 초기화로 비었다.
 - **`Bun.YAML.parse` 가 존재한다** — compose 파싱에 새 의존성이 필요 없다. multi-document 는 첫 문서만 쓴다.
 - **SQLite 주의 2가지**: `PRAGMA foreign_keys` 는 트랜잭션 안에서 무시된다(테이블 재생성 마이그레이션이 실패한다). Drizzle `text({ enum: [...] })` 는 TypeScript 전용이고 CHECK 제약을 만들지 않는다.
