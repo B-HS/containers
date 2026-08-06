@@ -744,7 +744,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] 3.1 파싱·변환 계약 — `packages/contracts/src/deployment-stack.ts` + `apps/api/src/lib/compose-stack.ts`(테스트 13건). manifest `route` nullable 전환 + migration 0019. [acknowledge/0040](./acknowledge/0040-compose-stack-contract.md)
 - [ ] 3.2 스택 저장·조회 API (`deployment_stack` 테이블, preview/create 라우트)
 - [x] 3.3 스택 릴리스 오케스트레이션 — job kind `deploy.stack-release`, `deployment_stack_release` 실행, 실패 시 역순 되돌리기(이전 버전 있으면 `runRollback`·없으면 신설 `revert`), 잠금은 부분 unique index + 사전 검사. [acknowledge/0042](./acknowledge/0042-stack-release-orchestration.md)
-- [ ] 3.4 compose 업로드·스택 배포 화면
+- [x] 3.4 compose 업로드·스택 배포 화면 — `/deployments/stacks`, 미리보기(저장 없음)·스택 등록·스택 배포. 로케일 3종 동시 추가
 
 ### 결정 완료 (사용자 확정)
 

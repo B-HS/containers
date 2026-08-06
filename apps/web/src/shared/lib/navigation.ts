@@ -40,6 +40,7 @@ export const NAV_SECTIONS: NavSection[] = [
         key: 'deployments',
         items: [
             { href: '/deployments', icon: 'Rocket', key: 'deployments' },
+            { href: '/deployments/stacks', icon: 'Layers', key: 'deploymentStacks' },
             { href: '/deployments/secrets', icon: 'KeyRound', key: 'deploymentSecrets', requiredPermission: 'canManageSecrets' },
             { href: '/registry', icon: 'Database', key: 'registry', requiredPermission: 'canManageApiKeys' },
         ],

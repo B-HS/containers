@@ -37,6 +37,14 @@ export const QUERY_KEY = {
             ALL: ['deployment', 'secret'] as const,
             LIST: ['deployment', 'secret', 'list'] as const,
         },
+        STACK: {
+            ALL: ['deployment', 'stack'] as const,
+            LIST: ['deployment', 'stack', 'list'] as const,
+            RELEASE: {
+                ALL: ['deployment', 'stack', 'release'] as const,
+                LIST: ['deployment', 'stack', 'release', 'list'] as const,
+            },
+        },
     },
     ENGINE: {
         ALL: ['engine'] as const,
