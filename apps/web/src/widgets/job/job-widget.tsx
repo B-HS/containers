@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { OPERATION_JOB_STATUS } from '@containers/contracts/operation-job'
 import { ACTIVE_JOB_STATUSES } from '@entities/job/job.api'
-import { backupScheduleQueryOptions, jobListQueryOptions, useCancelJob } from '@entities/job/job.query'
+import { backupScheduleQueryOptions, useCancelJob, useGetJobEvents, useGetJobsPolling } from '@entities/job/job.query'
 import { maintenanceQueryOptions } from '@entities/maintenance/maintenance.query'
 import { JobCancelDialog } from '@features/job-cancel-dialog/job-cancel-dialog'
 import { JobStatusBadge } from '@features/job-status-badge/job-status-badge'
@@ -29,14 +29,17 @@ type JobWidgetProps = {
 
 export const JobWidget: FC<JobWidgetProps> = ({ canManage }) => {
     const [cancelJobId, setCancelJobId] = useState<string>()
+    const [eventsJobId, setEventsJobId] = useState<string>()
     const translations = useTranslations('Dashboard')
-    const jobs = useQuery({ ...jobListQueryOptions(), enabled: canManage })
+    const jobs = useGetJobsPolling(canManage)
     const schedule = useQuery({ ...backupScheduleQueryOptions(), enabled: canManage })
     const maintenance = useQuery({ ...maintenanceQueryOptions(), enabled: canManage })
     const cancelJob = useCancelJob()
 
     const items = jobs.data ?? []
+    const events = useGetJobEvents(eventsJobId ?? '', canManage && eventsJobId !== undefined).data ?? []
     const target = items.find((job) => job.id === cancelJobId)
+    const eventsJob = items.find((job) => job.id === eventsJobId)
     const scheduleData = schedule.data
 
     const cancel = () => {
@@ -137,7 +140,15 @@ export const JobWidget: FC<JobWidgetProps> = ({ canManage }) => {
                                 </TableCell>
                                 <TableCell className="text-text-muted">{formatDateTime(job.scheduledAt)}</TableCell>
                                 <TableCell className="text-text-muted">{formatDateTime(job.finishedAt) ?? translations('jobNone')}</TableCell>
-                                <TableCell className="text-right">
+                                <TableCell className="flex flex-wrap justify-end gap-2 text-right">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="xs"
+                                        onClick={() => setEventsJobId(eventsJobId === job.id ? undefined : job.id)}
+                                    >
+                                        {translations('jobEvents')}
+                                    </Button>
                                     {ACTIVE_JOB_STATUSES.includes(job.status) ? (
                                         <Button
                                             type="button"
@@ -154,6 +165,28 @@ export const JobWidget: FC<JobWidgetProps> = ({ canManage }) => {
                         ))}
                     </TableBody>
                 </Table>
+            ) : null}
+            {eventsJob ? (
+                <section aria-labelledby="job-events-title" className="grid gap-2 bg-surface-1 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold text-text-strong" id="job-events-title">
+                            {translations('jobEvents')} · <span className="font-mono text-xs text-text-muted">{eventsJob.kind}</span>
+                        </h3>
+                        <Badge variant="neutral">{events.length}</Badge>
+                    </div>
+                    {events.length === 0 ? <p className="text-xs text-text-subtle">{translations('jobEventsEmpty')}</p> : null}
+                    <ol className="grid gap-1">
+                        {events.map((event) => (
+                            <li className="flex flex-wrap items-baseline gap-2 bg-surface-2 px-3 py-2" key={event.id}>
+                                <span className="font-mono text-xs text-text-subtle">{formatDateTime(event.createdAt)}</span>
+                                <span className="text-xs font-medium text-text-strong">{event.event}</span>
+                                {event.detail === null ? null : (
+                                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-muted">{JSON.stringify(event.detail)}</span>
+                                )}
+                            </li>
+                        ))}
+                    </ol>
+                </section>
             ) : null}
             {target ? (
                 <JobCancelDialog

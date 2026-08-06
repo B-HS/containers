@@ -798,28 +798,18 @@
         "nginxRoutePathModePrefix": "prefix (하위 경로 포함)",
         "nginxRoutePathModeExact": "exact (정확히 일치)",
         "nginxRouteManaged": "배포 관리",
-        "nginxRouteManagedRemoveWarning": "이 라우트는 배포가 만든 것입니다. 지우면 서비스가 끊기고 자동으로 복구되지 않습니다."
+        "nginxRouteManagedRemoveWarning": "이 라우트는 배포가 만든 것입니다. 지우면 서비스가 끊기고 자동으로 복구되지 않습니다.",
+        "jobEvents": "이벤트",
+        "jobEventsEmpty": "기록된 이벤트가 없습니다."
     },
     "Nav": {
         "brand": "Containers",
         "close": "메뉴 닫기",
-        "logout": "로그아웃",
-        "menu": "메뉴 열기",
         "engine": "Docker Engine",
         "engineCpu": "CPU",
         "engineMemory": "메모리",
-        "engineStorage": "저장소",
         "engineRefresh": "새로고침",
-        "sections": {
-            "administration": "관리",
-            "containers": "컨테이너",
-            "dashboard": "대시보드",
-            "deployments": "배포",
-            "images": "이미지·아티팩트",
-            "infrastructure": "인프라",
-            "nginx": "Nginx",
-            "operations": "운영"
-        },
+        "engineStorage": "저장소",
         "items": {
             "apiKeys": "API 키",
             "artifacts": "Artifact 업로드",
@@ -845,6 +835,20 @@
             "traffic": "트래픽 분석",
             "trustedProxies": "신뢰 프록시",
             "users": "운영자·역할"
+        },
+        "jobActiveCount": "진행 중 작업 수",
+        "jobFailedCount": "실패한 작업 수",
+        "logout": "로그아웃",
+        "menu": "메뉴 열기",
+        "sections": {
+            "administration": "관리",
+            "containers": "컨테이너",
+            "dashboard": "대시보드",
+            "deployments": "배포",
+            "images": "이미지·아티팩트",
+            "infrastructure": "인프라",
+            "nginx": "Nginx",
+            "operations": "운영"
         },
         "subtitles": {
             "apiKeys": "외부 자동화 API 키를 발급하고 폐기합니다.",

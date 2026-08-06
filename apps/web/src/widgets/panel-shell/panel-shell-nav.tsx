@@ -26,6 +26,7 @@ import {
     Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { JobActivityBadge } from '@features/job-activity-badge/job-activity-badge'
 import type { NavSection } from '@shared/lib/navigation'
 import { SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@shared/ui/sidebar'
 import { Link, usePathname } from '../../i18n/navigation'
@@ -55,8 +56,12 @@ const NAV_ICONS: Record<string, LucideIcon> = {
     Users,
 }
 
+const JOB_NAV_KEY = 'jobs'
+
 type PanelShellNavProps = {
     labels: {
+        jobActive: string
+        jobFailed: string
         items: Record<string, string>
         sections: Record<string, string>
     }
@@ -104,6 +109,9 @@ export const PanelShellNav: FC<PanelShellNavProps> = ({ labels, navigation }) =>
                                             <Link aria-current={active ? 'page' : undefined} href={item.href} onClick={() => setOpenMobile(false)}>
                                                 <NavIcon name={item.icon} />
                                                 <span>{label}</span>
+                                                {item.key === JOB_NAV_KEY ? (
+                                                    <JobActivityBadge activeLabel={labels.jobActive} failedLabel={labels.jobFailed} />
+                                                ) : null}
                                             </Link>
                                         </SidebarMenuButton>
                                     </SidebarMenuItem>

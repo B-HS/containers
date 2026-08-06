@@ -798,27 +798,18 @@
         "nginxRoutePathModePrefix": "prefix（下位パスを含む）",
         "nginxRoutePathModeExact": "exact（完全一致のみ）",
         "nginxRouteManaged": "デプロイ管理",
-        "nginxRouteManagedRemoveWarning": "このルートはデプロイが作成したものです。削除するとサービスが停止し、自動では復旧しません。"
+        "nginxRouteManagedRemoveWarning": "このルートはデプロイが作成したものです。削除するとサービスが停止し、自動では復旧しません。",
+        "jobEvents": "イベント",
+        "jobEventsEmpty": "記録されたイベントはありません。"
     },
     "Nav": {
         "brand": "Containers",
         "close": "メニューを閉じる",
-        "logout": "ログアウト",
-        "menu": "メニューを開く",
         "engine": "Docker Engine",
         "engineCpu": "CPU",
         "engineMemory": "メモリ",
+        "engineRefresh": "更新",
         "engineStorage": "ストレージ",
-        "sections": {
-            "administration": "管理",
-            "containers": "コンテナ",
-            "dashboard": "ダッシュボード",
-            "deployments": "デプロイ",
-            "images": "イメージ・アーティファクト",
-            "infrastructure": "インフラ",
-            "nginx": "Nginx",
-            "operations": "運用"
-        },
         "items": {
             "apiKeys": "API キー",
             "artifacts": "アーティファクトアップロード",
@@ -845,6 +836,20 @@
             "trustedProxies": "信頼プロキシ",
             "users": "運用者・ロール"
         },
+        "jobActiveCount": "進行中のジョブ数",
+        "jobFailedCount": "失敗したジョブ数",
+        "logout": "ログアウト",
+        "menu": "メニューを開く",
+        "sections": {
+            "administration": "管理",
+            "containers": "コンテナ",
+            "dashboard": "ダッシュボード",
+            "deployments": "デプロイ",
+            "images": "イメージ・アーティファクト",
+            "infrastructure": "インフラ",
+            "nginx": "Nginx",
+            "operations": "運用"
+        },
         "subtitles": {
             "apiKeys": "外部自動化用の API キーを発行・失効します。",
             "artifacts": "アーカイブをアップロードして Docker にロードします。",
@@ -870,7 +875,6 @@
             "traffic": "直近 60 分のトラフィックとリアルタイムリクエストを確認します。",
             "trustedProxies": "前段プロキシの実クライアント IP を認める住所を承認します。",
             "users": "運用者アカウントとロールを管理します。"
-        },
-        "engineRefresh": "更新"
+        }
     }
 }

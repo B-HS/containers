@@ -19,6 +19,8 @@ type PanelShellProps = {
     }
     labels: {
         brand: string
+        jobActive: string
+        jobFailed: string
         logout: string
         menu: string
         items: Record<string, string>
@@ -43,7 +45,10 @@ export const PanelShell: FC<PanelShellProps> = ({ children, engineInfoLabels, la
                     <p className="px-2 py-1 text-sm font-semibold tracking-tight text-text-strong">{labels.brand}</p>
                 </SidebarHeader>
                 <SidebarContent>
-                    <PanelShellNav labels={{ items: labels.items, sections: labels.sections }} navigation={navigation} />
+                    <PanelShellNav
+                        labels={{ items: labels.items, jobActive: labels.jobActive, jobFailed: labels.jobFailed, sections: labels.sections }}
+                        navigation={navigation}
+                    />
                 </SidebarContent>
                 <SidebarFooter className="gap-3 bg-overlay-subtle">
                     <EngineInfo labels={engineInfoLabels} />

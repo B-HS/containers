@@ -54,7 +54,7 @@
 - [x] **4.2 단계 간 CTA 링크** — `feat(web): 배포 흐름 단계 사이를 잇는 이동 경로를 만든다`. 개요 온보딩 카드, 이미지 행 → `/containers/new?image=`, 컨테이너 생성 후 포트가 있으면 `/nginx/routes?container=&port=`. 실측: 프리필 3곳 확인. **아티팩트 load 후 태그·CTA 는 아티팩트가 없어 미실측 — 6.1 에서 확인한다**
 - [x] **4.3 라우트 수정·토글** — `feat(nginx): 라우트 수정과 사용 여부 전환을 지원한다`. `PUT /api/nginx/routes/:id` 신설(id 기준 수정, 충돌 검사, 실패 시 이전 값 복원), 폼에 `pathMode`·`enabled` 노출, 표에 사용 스위치와 수정 버튼. 실측: PUT 으로 hostname·path·pathMode·protocol·timeout 을 바꿔도 id·createdAt 유지, `enabled=false` 면 렌더된 nginx 설정에서 빠지고 다시 켜면 돌아온다
 - [x] **4.4 라우트 소유권 표시** — `feat(nginx): 배포가 관리하는 라우트를 구분한다`. `nginx_route.managedBy`(migration 0021), 릴리스가 manifest id 를 남기고 수정·토글에도 유지, 표에 배지 + 삭제 경고
-- [ ] **4.5 job 진행 가시화** — `feat(web): 실행 중 작업의 진행과 이력을 보여준다`
+- [x] **4.5 job 진행 가시화** — `feat(web): 실행 중 작업의 진행과 이력을 보여준다`. 활성 2초·유휴 15초 폴링, job 행별 이벤트 타임라인(`/jobs/:id/events` 첫 호출부), 사이드바 활성·실패 배지. 실측: 이벤트 4건 렌더, 실패 job 1건에서 사이드바 배지 표시
 - [ ] **4.6 업로드 재개·취소** — `feat(web): 대용량 업로드를 재개하고 취소할 수 있게 한다`
 - [ ] **4.7 manifest 폼 하드코딩 해소** — `feat(web): 배포 manifest 의 남은 계약 필드를 화면에 연다`
 

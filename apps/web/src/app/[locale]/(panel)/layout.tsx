@@ -59,6 +59,8 @@ const PanelLayout = async ({ children }: PanelLayoutProps) => {
                 }}
                 labels={{
                     brand: translations('brand'),
+                    jobActive: translations('jobActiveCount'),
+                    jobFailed: translations('jobFailedCount'),
                     logout: authTranslations('logout'),
                     menu: translations('menu'),
                     items: Object.fromEntries(

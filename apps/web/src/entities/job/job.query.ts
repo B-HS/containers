@@ -18,6 +18,8 @@ import { z } from 'zod'
 const backupScheduleResponseSchema = z.object({ data: backupScheduleSchema, success: z.literal(true) })
 
 const POLL_INTERVAL_MS = 1_000
+const ACTIVE_JOB_LIST_POLL_MS = 2_000
+const IDLE_JOB_LIST_POLL_MS = 15_000
 
 export const jobListQueryOptions = () =>
     queryOptions({
@@ -86,6 +88,14 @@ export const useOperationJobPolling = ({ failureLabel, onFailed, onSucceeded }: 
 }
 
 export const useGetJobs = () => useQuery(jobListQueryOptions())
+
+export const useGetJobsPolling = (enabled: boolean) =>
+    useQuery({
+        ...jobListQueryOptions(),
+        enabled,
+        refetchInterval: (query) =>
+            (query.state.data ?? []).some((job) => ACTIVE_JOB_STATUSES.includes(job.status)) ? ACTIVE_JOB_LIST_POLL_MS : IDLE_JOB_LIST_POLL_MS,
+    })
 
 export const useGetJobsByKind = (kind: OperationJobKind, enabled: boolean) => useQuery(jobListByKindQueryOptions(kind, enabled))
 
