@@ -46,4 +46,5 @@ manifest·스택 삭제는 별개 결정이다(참조 중인 릴리스가 있으
 - artifact 2건 DELETE → 200. `GET /api/artifacts` 가 빈 배열이 됐고 load 이력 행은 그대로 남았다.
 - 스택 `verifystack` DELETE → 200.
 - manifest 4건 중 `verify-internal` 은 참조가 없어 200, 릴리스가 있는 나머지 3건은 409 `DEPLOYMENT_MANIFEST_IN_USE`. 감사 로그에 attempt/success/failure 가 남았다.
-- **릴리스 이력이 있는 manifest 는 남는다(의도).** 릴리스가 manifest 를 참조하는 한 그 manifest 는 배포 이력의 일부다. manifest 행은 메타데이터라 저장소를 잠식하지 않는다. 릴리스 이력 자체의 보존 정책은 아직 없다 — 필요해지면 별도로 정한다.
+- **릴리스 이력이 있는 manifest 는 남는다(의도).** 릴리스가 manifest 를 참조하는 한 그 manifest 는 배포 이력의 일부다. manifest 행은 메타데이터라 저장소를 잠식하지 않는다.
+- 저장소를 실제로 잠식하는 것(artifact 파일)은 수동 삭제와 보존 기간 정리 양쪽이 회수한다. job 이력은 `cleanupFinished` 가 종료 14일 뒤 지우고(event 는 cascade), audit 은 아카이브 후 정리된다. 남는 것은 배포 연혁 메타데이터뿐이다.

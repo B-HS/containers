@@ -71,7 +71,8 @@
 - [x] **6.3 문서 정합** — 코드 대조로 드리프트 30여 건을 고쳤다. 없는 엔드포인트 서술(manifest DELETE, `POST /deployment-releases`, 세션 조회·폐기), 누락 엔드포인트(스택 6개·라우트 PUT·health/readyz·artifact DELETE·secret rotate·network/volume DELETE), 권한 오기(exec=owner recent, prune·registry=owner 전용, backup DELETE=API key 가능, notification 변경=recent), 존재하지 않는 테이블 서술(`docker_target`·`nginx_revision*`·`artifact_scan`·`saved_view`·traffic checkpoints), 실제와 다른 합성 규칙(`withCapability` 는 없다), 업로드 상태 기계·quota 기본값(300GiB→32GiB)·probe 네트워크 이름, CI 예시 포트(8080→18080)·스택 경로·`audit:runtime` 누락
 - [x] **6.4 정리** — 지울 수 있는 것은 전부 지웠다: 배포 컨테이너 3개, 임시 컨테이너 2개, 테스트 라우트 4개, 받아온 테스트 이미지 1개. API key 는 만든 적이 없다(0건).
     - **삭제 경로를 만들고 회수했다**(후속 커밋 `feat(deployment): 배포 자산을 회수할 수 있게 한다`): artifact 2건 삭제(파일 회수, load 이력은 유지), 스택 1건 삭제(스택 릴리스 이력 포함), manifest 1건 삭제. 릴리스가 참조하는 manifest 3건은 409 로 남는다(의도 — 배포 이력의 일부) → [bug](./bug/2026-08-06-loaded-artifacts-cannot-be-deleted.md)
-    - **남은 것**: job 이력(감사 성격이라 삭제 경로를 두지 않는다), 릴리스 이력 3건과 그 manifest
+    - **자동 정리되는 것**: job 이력은 `cleanupFinished`(종료 14일 경과분 삭제, `server.ts` 주기 태스크)가 지우고 job event 는 cascade 로 따라간다. artifact 는 보존 기간 정리가, audit 은 아카이브가 이미 있다
+    - **남기는 것(의도)**: 릴리스 이력 3건·load 이력과 그 manifest. 제품이 보여주는 배포 연혁이고 메타데이터 행이다
     - seed 계정 `stack-check@containers.local`·`e2e@containers.local`(owner)은 남겨 뒀다. 지우면 패널에 다시 못 들어간다 → 아래 "실운영 owner bootstrap" 참고
 
 ### 사용자 작업으로 남는 것 — 실운영 owner bootstrap

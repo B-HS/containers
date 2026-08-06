@@ -834,4 +834,5 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 ### 남긴 것 — 사용자 작업
 
 - **실운영 owner 계정 확보.** 이 스택은 bootstrap 이 이미 끝났다(`GET /api/bootstrap/status` → `required:false`). 초대(`POST /api/invitations`, recent owner·admin)로 실계정을 만든 뒤 seed 계정(`stack-check@`, `e2e@containers.local`)을 지우거나, `bun scripts/reset-accounts.ts --confirm` 후 `http://127.0.0.1:18080` 에서 bootstrap 한다(파괴적 — 사용자가 직접)
-- 릴리스 이력과 그 manifest, job 이력은 감사 성격이라 삭제 경로를 두지 않았다
+- **job 이력은 이미 자동 정리된다**(앞선 기술이 틀렸다): `operationJobService.cleanupFinished` 가 종료 14일이 지난 job 을 지우고 `server.ts` 의 주기 태스크로 돌며, `operation_job_event` 는 `on delete cascade` + 런타임 `PRAGMA foreign_keys = ON` 으로 함께 지워진다. 실측 시점의 job 13건도 이 주기로 사라진다
+- 릴리스 이력(`deployment_release`)과 load 이력(`deployment`), 그 manifest 는 제품이 보여주는 배포 연혁이라 남긴다. 메타데이터 행이라 저장소를 잠식하지 않는다
