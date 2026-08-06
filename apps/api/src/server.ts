@@ -153,6 +153,7 @@ const {
     deploymentReleaseService,
     deploymentSecretService,
     deploymentService,
+    deploymentStackReleaseService,
     deploymentStackService,
     maintenanceService,
     nginxProxyRouteService,
@@ -171,6 +172,7 @@ let stopOperationJobWorker: (() => void) | null = null
 await runStartupTasks({
     tasks: [
         { name: 'deployment-release-reconcile-interrupted', run: () => deploymentReleaseService.reconcileInterrupted() },
+        { name: 'deployment-stack-release-reconcile-interrupted', run: () => deploymentStackReleaseService.reconcileInterrupted() },
         { name: 'deployment-release-cleanup-expired-containers', run: () => deploymentReleaseService.cleanupExpiredContainers() },
         { name: 'upload-cleanup-expired-sessions', run: () => uploadService.cleanupExpiredSessions() },
         { name: 'artifact-cleanup-expired', run: () => uploadService.cleanupExpiredArtifacts() },
@@ -231,6 +233,7 @@ const app = createApp({
     deploymentReleaseService,
     deploymentSecretService,
     deploymentService,
+    deploymentStackReleaseService,
     deploymentStackService,
     engineAgentClient,
     maintenanceService,

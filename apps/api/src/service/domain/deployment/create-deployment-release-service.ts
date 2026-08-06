@@ -15,6 +15,7 @@ import type { DeploymentSecretService } from './create-deployment-secret-service
 
 const ACTIVE_RELEASE_STATUSES = ['creating', 'probing', 'switching', 'observing', 'rolling-back'] as const
 const DIAGNOSTIC_LOG_TAIL_LINES = 20
+const REVERT_FAILURE_CODE = 'RELEASE_REVERTED'
 
 type ReleaseRow = {
     activatedAt: Date | null
@@ -177,6 +178,20 @@ export const createDeploymentReleaseService = ({
             stateError: stateError.length > 0 ? stateError : null,
             step: DEPLOYMENT_FAILURE_DIAGNOSTICS_STEP,
         } satisfies DeploymentFailureDiagnostics
+    }
+    const revert = async (id: string) => {
+        const release = await get(id)
+        if (release.status !== 'healthy') {
+            throw createAppError('DEPLOYMENT_RELEASE_STATE_INVALID')
+        }
+        const manifest = await deploymentManifestService.get(release.manifestId)
+        if (isPublished(manifest) && release.nginxRouteId) {
+            await nginxProxyRouteService.remove(release.nginxRouteId, `${manifest.route.hostname}${manifest.route.path}`)
+        }
+        if (release.containerId) {
+            await engineAgentClient.performContainerAction(release.containerId, { action: 'stop', timeoutSeconds: 10 })
+        }
+        return update(id, { failureCode: REVERT_FAILURE_CODE, finishedAt: now(), status: 'rolled-back' })
     }
     const prepareRollback = async (id: string) => {
         const release = await get(id)
@@ -416,6 +431,7 @@ export const createDeploymentReleaseService = ({
         list: async () => deploymentReleaseListSchema.parse((await db.list()).map(toRelease)),
         prepareRollback,
         reconcileInterrupted,
+        revert,
         run: async (id: string, options: DeploymentReleaseRunOptions = {}) => {
             const release = await get(id)
             if (release.status !== 'creating') {

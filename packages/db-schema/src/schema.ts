@@ -373,6 +373,7 @@ export const operationJob = sqliteTable(
                 'deploy.load',
                 'deploy.release',
                 'deploy.rollback',
+                'deploy.stack-release',
                 'image.pull',
                 'notification.deliver',
                 'secret.rotate',

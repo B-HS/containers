@@ -252,6 +252,15 @@ const createAppTestDependencies = () => ({
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
     },
+    deploymentStackReleaseService: {
+        create: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+        get: async () => {
+            throw createAppError('DEPLOYMENT_STACK_RELEASE_NOT_FOUND')
+        },
+        list: async () => [],
+    },
     deploymentStackService: {
         create: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')

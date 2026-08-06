@@ -127,13 +127,14 @@ Deployment:      deployment(id, artifactId, containerId, status, createdBy)
                           failureCode, createdBy, finishedAt)
                           status ∈ releasing, healthy, failed, rolled-back
                           스택당 releasing 은 부분 unique index 로 1건만 허용
+                          releaseIdsJson 은 시작한 순서대로 누적 기록한다
 Jobs:            operation_job(id, kind, status, payload, result, resourceKey,
                           failureCode, attempt, maxAttempts, createdBy,
                           scheduledAt, ... )  kind ∈ backup.create,
                           backup.restore, deploy.load, deploy.release,
-                          deploy.rollback, image.pull, notification.deliver,
-                          secret.rotate, system.prune, traffic.export,
-                          upload.finalize
+                          deploy.rollback, deploy.stack-release, image.pull,
+                          notification.deliver, secret.rotate, system.prune,
+                          traffic.export, upload.finalize
                  operation_job_event(id, jobId, event, detail)
                           detail.step='failure-diagnostics' → 배포 실패 진단
                           (exitCode, stateError, stage, logLines 20줄, 리댁션 적용)
@@ -143,6 +144,10 @@ compose stack:   manifest route 는 nullable 이다. route=null 이면 내부 �
                  받고 거부 8종(privileged·host namespace·devices·docker socket·
                  호스트 bind mount·금지 capability·평문 environment·값 없는
                  environment 키)을 400 으로 막는다. 무시한 키는 응답 ignored 에 남는다.
+                 스택 배포는 serviceOrder(=depends_on 위상 순서)대로 서비스별 릴리스를
+                 돌리고, 하나라도 실패하면 이미 healthy 인 서비스를 역순으로 되돌린다.
+                 이전 버전이 있으면 prepareRollback+runRollback, 없으면 revert(라우트
+                 제거 + 컨테이너 중지)다. 되돌리기까지 실패하면 status=failed 다.
                  저장은 POST /api/deployment-stacks 한 트랜잭션(스택 1 + manifest N),
                  미리보기는 POST /api/deployment-stacks/preview 로 저장하지 않는다.
                  이미지 태그→digest 맵은 스택당 getImages() 1회로 만든다.
@@ -274,6 +279,8 @@ Deployment:      /api/artifacts/:artifactId/load POST (deployment:write or admin
                  /api/deployment-stacks GET/:id GET (deployment:read) |
                  /api/deployment-stacks/preview POST | /api/deployment-stacks POST
                  (deployment:write or recent owner·admin)
+                 /api/deployment-stacks/{stackId}/releases POST → 202 {job,stackRelease}
+                 /api/deployment-stack-releases GET | /:id GET (deployment:read)
                  /api/deployment-secrets GET/POST/DELETE (admin recent write)
 Jobs:            /api/jobs GET, /api/jobs/backup-schedule GET,
                  /api/jobs/:id GET, .../events GET, .../cancel POST (owner)

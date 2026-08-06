@@ -743,7 +743,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 - [x] 3.1 파싱·변환 계약 — `packages/contracts/src/deployment-stack.ts` + `apps/api/src/lib/compose-stack.ts`(테스트 13건). manifest `route` nullable 전환 + migration 0019. [acknowledge/0040](./acknowledge/0040-compose-stack-contract.md)
 - [ ] 3.2 스택 저장·조회 API (`deployment_stack` 테이블, preview/create 라우트)
-- [ ] 3.3 스택 릴리스 오케스트레이션 (순차 배포, 실패 시 역순 롤백, 스택 단위 잠금)
+- [x] 3.3 스택 릴리스 오케스트레이션 — job kind `deploy.stack-release`, `deployment_stack_release` 실행, 실패 시 역순 되돌리기(이전 버전 있으면 `runRollback`·없으면 신설 `revert`), 잠금은 부분 unique index + 사전 검사. [acknowledge/0042](./acknowledge/0042-stack-release-orchestration.md)
 - [ ] 3.4 compose 업로드·스택 배포 화면
 
 ### 결정 완료 (사용자 확정)
@@ -788,6 +788,16 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] g. 테스트 13건(변환기 3·서비스 6·라우트 4), `llm.txt`·`API-DATA-AUTH.md`·`UPLOAD-DEPLOYMENT.md` 갱신
 - [x] h. 검증 — typecheck 8/8, lint 0, test 467+24, format:check, build 8/8
 - [ ] i. 실측 — 2서비스 compose preview·저장. **미완. 6.2 에서 스택 배포와 함께 한다**
+
+## 작업: 3.3 스택 릴리스 오케스트레이션 (2026-08-06)
+
+- [x] a. job kind `deploy.stack-release` 5곳 등록 (contracts 상수·enum, db-schema, handler 맵, 알림 Record, llm.txt). 마이그레이션 없음 — drizzle text enum 은 CHECK 를 만들지 않는다
+- [x] b. 릴리스 서비스에 `revert` 추가 — 이전 버전이 없는 첫 배포를 원상복구할 방법이 없었다
+- [x] c. 스택 릴리스 서비스 — serviceOrder 순차 실행, 실패 시 역순 되돌리기, 중단 복구
+- [x] d. 라우트 3개 (`POST /deployment-stacks/:stackId/releases`, `GET /deployment-stack-releases`(+`/:id`))
+- [x] e. 배선 — compose·create-app·server startup task
+- [x] f. 테스트 12건(서비스 8·라우트 4), 문서(llm.txt·API-DATA-AUTH·UPLOAD-DEPLOYMENT·ADR 0042)
+- [ ] g. 실측 — 2서비스 스택 배포와 실패 시 역순 롤백. **6.2 에서 한다**
 
 ### 완료 판정
 

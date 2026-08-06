@@ -4,6 +4,7 @@ import {
     deployLoadJobPayloadSchema,
     deployReleaseJobPayloadSchema,
     deployRollbackJobPayloadSchema,
+    deployStackReleaseJobPayloadSchema,
     OPERATION_JOB_KIND,
     secretRotateJobPayloadSchema,
     systemPruneJobPayloadSchema,
@@ -14,6 +15,7 @@ import type { EngineAgentClient } from '../../../service/shared/engine-agent-cli
 import type { BackupService } from '../backup/create-backup-service'
 import type { DeploymentReleaseService } from '../deployment/create-deployment-release-service'
 import type { DeploymentService } from '../deployment/create-deployment-service'
+import type { DeploymentStackReleaseService } from '../deployment/create-deployment-stack-release-service'
 import type { MaintenanceService } from '../maintenance/create-maintenance-service'
 import type { NotificationDeliveryService } from '../notification/create-notification-delivery-service'
 import type { SecretRotationService } from '../deployment/create-secret-rotation-service'
@@ -32,6 +34,7 @@ type JobHandlersDependencies = {
     backupService: Pick<BackupService, 'create' | 'restore'>
     deploymentReleaseService: Pick<DeploymentReleaseService, 'run' | 'runRollback'>
     deploymentService: Pick<DeploymentService, 'loadArtifact'>
+    deploymentStackReleaseService: Pick<DeploymentStackReleaseService, 'run'>
     engineAgentClient: Pick<
         EngineAgentClient,
         'getPrunePreview' | 'performContainerAction' | 'pruneBuildCache' | 'pullImage' | 'removeImage' | 'removeNetwork' | 'removeVolume'
@@ -47,6 +50,7 @@ export const createJobHandlers = ({
     backupService,
     deploymentReleaseService,
     deploymentService,
+    deploymentStackReleaseService,
     engineAgentClient,
     maintenanceService,
     notificationDeliveryService,
@@ -109,6 +113,17 @@ export const createJobHandlers = ({
             throw createJobError(release.failureCode ?? 'DEPLOYMENT_ROLLBACK_FAILED', { terminal: true })
         }
         return { releaseId: release.id, status: release.status }
+    }
+
+    const handleDeployStackRelease: OperationJobHandler = async ({ job, reportProgress }) => {
+        const payload = deployStackReleaseJobPayloadSchema.parse(job.payload)
+        const stackRelease = await deploymentStackReleaseService.run(payload.stackReleaseId, {
+            reportDiagnostics: (diagnostics) => reportProgress(diagnostics.step, { ...diagnostics }),
+        })
+        if (stackRelease.status !== 'healthy') {
+            throw createJobError(stackRelease.failureCode ?? 'DEPLOYMENT_STACK_RELEASE_FAILED', { terminal: true })
+        }
+        return { releaseIds: stackRelease.releaseIds, stackReleaseId: stackRelease.id, status: stackRelease.status }
     }
 
     const handleImagePull: OperationJobHandler = async ({ job, reportProgress }) => {
@@ -221,6 +236,7 @@ export const createJobHandlers = ({
         [OPERATION_JOB_KIND.DEPLOY_LOAD]: handleDeployLoad,
         [OPERATION_JOB_KIND.DEPLOY_RELEASE]: handleDeployRelease,
         [OPERATION_JOB_KIND.DEPLOY_ROLLBACK]: handleDeployRollback,
+        [OPERATION_JOB_KIND.DEPLOY_STACK_RELEASE]: handleDeployStackRelease,
         [OPERATION_JOB_KIND.IMAGE_PULL]: handleImagePull,
         [OPERATION_JOB_KIND.NOTIFICATION_DELIVER]: notificationDeliveryService.handleDeliver,
         [OPERATION_JOB_KIND.SECRET_ROTATE]: handleSecretRotate,

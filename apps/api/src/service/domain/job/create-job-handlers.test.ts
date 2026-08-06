@@ -74,6 +74,11 @@ const unusedDependencies = {
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
     },
+    deploymentStackReleaseService: {
+        run: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
+    },
     uploadService: {
         finalizeSession: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')

@@ -189,3 +189,14 @@ manifest 에 `runtime` 블록이 있다(`profile`·`capabilities`·`writablePath
 - 저장은 `deployment_stack.manifestIdsJson` 을 `serviceOrderJson` 과 같은 순서로 남긴다. 3.3 의 순차 배포·역순 롤백이 이 순서를 쓴다.
 - compose 원문은 보관하지 않는다. 저장 정본은 변환된 manifest 다 → [acknowledge/0041](./acknowledge/0041-deployment-stack-persistence.md).
 - 거부 규칙과 label 계약은 [acknowledge/0040](./acknowledge/0040-compose-stack-contract.md) 이 정본이다.
+
+### 스택 배포와 되돌리기
+
+`POST /api/deployment-stacks/:stackId/releases` 는 `deploy.stack-release` job 을 넣고 202 로 `{ job, stackRelease }` 를 준다. job 이 `deployment_stack_release` 를 실행한다.
+
+- 순서는 스택의 `serviceOrder`(= compose `depends_on` 위상 정렬)다. 서비스마다 기존 blue-green 릴리스를 그대로 쓴다 — 새 계약을 만들지 않았다.
+- 실패하면 **이미 healthy 인 서비스를 역순으로 되돌린다.** 이전 버전이 있으면 `prepareRollback` + `runRollback` 으로 이전 컨테이너를 다시 띄우고, 첫 배포라 이전 버전이 없으면 `revert` 로 라우트를 지우고 컨테이너를 멈춘다(`failureCode=RELEASE_REVERTED`).
+- 실패한 서비스 자신은 릴리스 서비스가 이미 정리했으므로 스택은 그 앞의 것들만 되돌린다.
+- 되돌리기까지 실패하면 스택 배포는 `rolled-back` 이 아니라 `failed` 다. 손이 필요한 상태라는 뜻이다.
+- 동시성은 두 겹이다. `deployment_stack_release` 의 부분 unique index(`status='releasing'`)와 서비스의 사전 검사가 같은 스택의 두 번째 배포를 409 로 막는다.
+- API 재기동 시 `releasing` 으로 남은 스택 배포는 `DEPLOYMENT_STACK_RELEASE_INTERRUPTED` 로 `failed` 처리한다. 개별 릴리스는 기존 `reconcileInterrupted` 가 따로 수렴시킨다.

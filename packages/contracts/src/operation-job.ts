@@ -7,6 +7,7 @@ export const OPERATION_JOB_KIND = {
     DEPLOY_LOAD: 'deploy.load',
     DEPLOY_RELEASE: 'deploy.release',
     DEPLOY_ROLLBACK: 'deploy.rollback',
+    DEPLOY_STACK_RELEASE: 'deploy.stack-release',
     IMAGE_PULL: 'image.pull',
     NOTIFICATION_DELIVER: 'notification.deliver',
     SECRET_ROTATE: 'secret.rotate',
@@ -30,6 +31,7 @@ export const operationJobKindSchema = z.enum([
     OPERATION_JOB_KIND.DEPLOY_LOAD,
     OPERATION_JOB_KIND.DEPLOY_RELEASE,
     OPERATION_JOB_KIND.DEPLOY_ROLLBACK,
+    OPERATION_JOB_KIND.DEPLOY_STACK_RELEASE,
     OPERATION_JOB_KIND.IMAGE_PULL,
     OPERATION_JOB_KIND.NOTIFICATION_DELIVER,
     OPERATION_JOB_KIND.SECRET_ROTATE,
@@ -48,6 +50,10 @@ export const deployReleaseJobPayloadSchema = z.object({
 
 export const deployRollbackJobPayloadSchema = z.object({
     releaseId: z.uuid(),
+})
+
+export const deployStackReleaseJobPayloadSchema = z.object({
+    stackReleaseId: z.uuid(),
 })
 
 export const uploadFinalizeJobPayloadSchema = z.object({

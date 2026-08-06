@@ -22,6 +22,7 @@ import { composeDeploymentManifest } from './compose-deployment-manifest'
 import { composeDeploymentRelease } from './compose-deployment-release'
 import { composeDeploymentSecret } from './compose-deployment-secret'
 import { composeDeploymentStack } from './compose-deployment-stack'
+import { composeDeploymentStackRelease } from './compose-deployment-stack-release'
 import { composeHealth } from './compose-health'
 import { composeMaintenance } from './compose-maintenance'
 import { composeNginxProxyRoute } from './compose-nginx'
@@ -213,6 +214,8 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         sleep: Bun.sleep,
     })
 
+    const { deploymentStackReleaseService } = composeDeploymentStackRelease({ db, deploymentReleaseService, deploymentStackService })
+
     const { uploadService } = composeUpload({
         db,
         artifactInspectionService: createArtifactInspectionService(),
@@ -231,6 +234,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
             backupService,
             deploymentReleaseService,
             deploymentService,
+            deploymentStackReleaseService,
             engineAgentClient: clients.engineAgentClient,
             maintenanceService,
             notificationDeliveryService,
@@ -273,6 +277,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         deploymentReleaseService,
         deploymentSecretService,
         deploymentService,
+        deploymentStackReleaseService,
         deploymentStackService,
         engineAgentClient: clients.engineAgentClient,
         maintenanceService,

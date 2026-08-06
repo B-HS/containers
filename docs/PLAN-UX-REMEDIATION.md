@@ -45,7 +45,7 @@
 
 - [x] **3.1 compose 파싱·변환 계약** — 변환기 테스트 13건. manifest `route` 를 nullable 로 바꿔야 했다(내부 서비스). 결정 기록 [acknowledge/0040](./acknowledge/0040-compose-stack-contract.md)
 - [x] **3.2 스택 저장·조회 API** — `feat(api): compose 스택 등록과 미리보기를 제공한다`. migration `0020`, preview/create/list/get 4개 라우트, 테스트 13건. 값 없는 환경변수 키를 거부로 바꿨다(결정 [0041](./acknowledge/0041-deployment-stack-persistence.md)). **실측은 6.2 에서 한다 — 아직 실제 compose 로 저장해 본 적이 없다**
-- [ ] **3.3 스택 릴리스 오케스트레이션** — `feat(deployment): 스택 단위 순차 배포와 롤백을 구현한다`
+- [x] **3.3 스택 릴리스 오케스트레이션** — `feat(deployment): 스택 단위 순차 배포와 롤백을 구현한다`. job kind `deploy.stack-release`, 되돌리기 2경로(이전 버전 있으면 rollback·없으면 revert), 테스트 12건. 결정 [0042](./acknowledge/0042-stack-release-orchestration.md). **실측은 6.2**
 - [ ] **3.4 스택 웹 화면** — `feat(web): compose 업로드와 스택 배포 화면을 추가한다`
 
 ### P1 — 마찰 해소
