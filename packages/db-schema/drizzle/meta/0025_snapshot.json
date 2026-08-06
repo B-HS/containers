@@ -1,8 +1,8 @@
 {
     "version": "6",
     "dialect": "sqlite",
-    "id": "8eeca2f1-15ad-4477-a467-f56e1fb5086e",
-    "prevId": "52256816-4567-437a-9094-564b1c74b309",
+    "id": "a47f13dd-e6bf-47b7-bd31-8468ea559f0e",
+    "prevId": "3d1b24af-b008-44d9-ac83-5de135a635a6",
     "tables": {
         "account": {
             "name": "account",
@@ -326,6 +326,44 @@
             "uniqueConstraints": {},
             "checkConstraints": {}
         },
+        "audit_chain_anchor": {
+            "name": "audit_chain_anchor",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "hash": {
+                    "name": "hash",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "sequence": {
+                    "name": "sequence",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
         "audit_log": {
             "name": "audit_log",
             "columns": {
@@ -405,9 +443,35 @@
                     "primaryKey": false,
                     "notNull": true,
                     "autoincrement": false
+                },
+                "sequence": {
+                    "name": "sequence",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "previous_hash": {
+                    "name": "previous_hash",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "entry_hash": {
+                    "name": "entry_hash",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
                 }
             },
             "indexes": {
+                "audit_sequence_unique": {
+                    "name": "audit_sequence_unique",
+                    "columns": ["sequence"],
+                    "isUnique": true
+                },
                 "audit_created_at_idx": {
                     "name": "audit_created_at_idx",
                     "columns": ["created_at"],
@@ -1322,6 +1386,51 @@
                     "onUpdate": "no action"
                 }
             },
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "login_lockout": {
+            "name": "login_lockout",
+            "columns": {
+                "email_key": {
+                    "name": "email_key",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "failed_count": {
+                    "name": "failed_count",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "first_failed_at": {
+                    "name": "first_failed_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "locked_until": {
+                    "name": "locked_until",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
             "compositePrimaryKeys": {},
             "uniqueConstraints": {},
             "checkConstraints": {}

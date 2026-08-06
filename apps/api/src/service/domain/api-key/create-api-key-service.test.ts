@@ -112,4 +112,12 @@ describe('API 키 서비스', () => {
         expect((await service.authenticate(headers, API_KEY_SCOPE.BACKUP_READ)).apiKeyId).toBe(result.id)
         sqlite.close()
     })
+
+    test('만료 없는 키와 상한을 넘는 키는 만들 수 없습니다', async () => {
+        const { actor, service, sqlite } = await createTestService()
+
+        await expect(service.create(actor, { expiresInDays: null, name: 'forever', scopes: [API_KEY_SCOPE.DEPLOYMENT_READ] })).rejects.toThrow()
+        await expect(service.create(actor, { expiresInDays: 366, name: 'too long', scopes: [API_KEY_SCOPE.DEPLOYMENT_READ] })).rejects.toThrow()
+        sqlite.close()
+    })
 })

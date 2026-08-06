@@ -157,6 +157,7 @@ const createAppTestDependencies = () => ({
     auditService: {
         list: async () => ({ data: [], pagination: { limit: 50, page: 1, total: 0, totalPages: 0 } }),
         record: async () => undefined,
+        verifyIntegrity: async () => ({ anchorSequence: 0, brokenAt: null, checked: 0, unchained: 0 }),
     },
     backupService: {
         create: async () => {
@@ -302,6 +303,11 @@ const createAppTestDependencies = () => ({
         update: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
+    },
+    loginLockoutService: {
+        assertNotLocked: async () => undefined,
+        clear: async () => undefined,
+        recordFailure: async () => ({ failedCount: 0, lockedUntil: null }),
     },
     maintenanceService: {
         disable: () => undefined,
@@ -1150,6 +1156,74 @@ describe('API 애플리케이션', () => {
         expect(limited.status).toBe(429)
         expect(limited.headers.get('retry-after')).toBe('60')
         expect((await limited.json()).error.code).toBe('AUTH_RATE_LIMITED')
+    })
+
+    test('계정 잠금 상태의 로그인은 429 로 막고 남은 대기 시간을 알려줍니다', async () => {
+        const dependencies = createAppTestDependencies()
+        const app = createApp({
+            ...dependencies,
+            loginLockoutService: {
+                ...dependencies.loginLockoutService,
+                assertNotLocked: async () => {
+                    throw createAppError('AUTH_LOCKED', undefined, { retryAfterSeconds: 42 })
+                },
+            },
+        })
+        const response = await app.request('/api/auth/sign-in/email', {
+            body: JSON.stringify({ email: 'owner@example.com', password: 'invalid-password' }),
+            headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.20' },
+            method: 'POST',
+        })
+
+        expect(response.status).toBe(429)
+        expect(response.headers.get('retry-after')).toBe('42')
+        expect((await response.json()).error.code).toBe('AUTH_LOCKED')
+    })
+
+    test('로그인 실패는 계정 단위 실패로 기록하고 성공하면 지웁니다', async () => {
+        const dependencies = createAppTestDependencies()
+        const failures: unknown[] = []
+        const cleared: unknown[] = []
+        const app = createApp({
+            ...dependencies,
+            auth: { handler: async () => new Response(null, { status: 401 }) },
+            loginLockoutService: {
+                ...dependencies.loginLockoutService,
+                clear: async (email: unknown) => {
+                    cleared.push(email)
+                },
+                recordFailure: async (email: unknown) => {
+                    failures.push(email)
+                    return { failedCount: failures.length, lockedUntil: null }
+                },
+            },
+        })
+        const signIn = () =>
+            app.request('/api/auth/sign-in/email', {
+                body: JSON.stringify({ email: 'owner@example.com', password: 'invalid-password' }),
+                headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.21' },
+                method: 'POST',
+            })
+
+        expect((await signIn()).status).toBe(401)
+        expect(failures).toEqual(['owner@example.com'])
+
+        const succeeding = createApp({
+            ...dependencies,
+            auth: { handler: async () => new Response(null, { status: 200 }) },
+            loginLockoutService: {
+                ...dependencies.loginLockoutService,
+                clear: async (email: unknown) => {
+                    cleared.push(email)
+                },
+            },
+        })
+        await succeeding.request('/api/auth/sign-in/email', {
+            body: JSON.stringify({ email: 'owner@example.com', password: 'correct-password' }),
+            headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.22' },
+            method: 'POST',
+        })
+        expect(cleared).toEqual(['owner@example.com'])
     })
 
     test('Docker 변경 API는 인증되지 않은 요청을 거부합니다', async () => {

@@ -22,6 +22,7 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.ARTIFACT_MEDIA_TYPE_INVALID]: 'artifact media type이 올바르지 않습니다.',
     [ERROR_CODE.ARTIFACT_NOT_READY]: 'ready artifact를 찾을 수 없습니다.',
     [ERROR_CODE.AUDIT_UNAVAILABLE]: '감사 기록을 조회할 수 없습니다.',
+    [ERROR_CODE.AUTH_LOCKED]: '로그인 시도가 많아 잠시 잠겼습니다. 잠시 후 다시 시도해 주세요.',
     [ERROR_CODE.AUTH_RATE_LIMITED]: '로그인 요청 한도를 초과했습니다.',
     [ERROR_CODE.AUTH_REQUIRED]: '로그인이 필요합니다.',
     [ERROR_CODE.BACKUP_CONTROL_FOREIGN_KEY_INVALID]: '백업 control 스냅샷의 외래 키가 올바르지 않습니다.',

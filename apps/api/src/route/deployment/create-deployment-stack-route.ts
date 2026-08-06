@@ -147,7 +147,13 @@ export const createDeploymentStackRoute = ({ apiKeyService, auditService, authSe
                 await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
                 try {
                     const stack = await deploymentStackService.remove(id)
-                    await auditService.record({ ...audit, actorId, authMethod, detail: { name: stack.name, version: stack.version }, result: 'success' })
+                    await auditService.record({
+                        ...audit,
+                        actorId,
+                        authMethod,
+                        detail: { name: stack.name, version: stack.version },
+                        result: 'success',
+                    })
                     return context.json(successResponse(stack), 200)
                 } catch (error) {
                     const code = error instanceof Error ? error.message : 'DEPLOYMENT_STACK_DELETE_FAILED'

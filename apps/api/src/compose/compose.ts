@@ -134,7 +134,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         ...(env.apiKeyRateLimitPerMinute === undefined ? {} : { rateLimitPerMinute: env.apiKeyRateLimitPerMinute }),
     })
     const { auditService } = composeAudit({ archiveRoot: env.auditArchiveRoot, db, retentionDays: env.auditRetentionDays })
-    const { authService } = composeAuth({
+    const { authService, loginLockoutService } = composeAuth({
         auth,
         db,
         invitationBaseUrl: () => panelSettingService.getPublicOrigin() ?? env.invitationBaseUrl,
@@ -280,6 +280,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
         deploymentStackReleaseService,
         deploymentStackService,
         engineAgentClient: clients.engineAgentClient,
+        loginLockoutService,
         maintenanceService,
         nginxStatusClient: clients.nginxStatusClient,
         panelSettingService,

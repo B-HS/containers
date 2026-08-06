@@ -185,7 +185,7 @@
 | `acknowledge/`                                                                                        | 결정 기록(ADR). **최신 0040**                                                          |
 | `bug/`                                                                                                | 결함 기록. 최신 2건은 2026-08-06 CSP·고아 행                                           |
 | `quality-assurance/`                                                                                  | 감사·드릴 실행 기록                                                                    |
-| `ci-examples/`                                                                                        | 빌드 CI 3종 + API key 배포 워크플로                                                    |
+| `ci-examples/`                                                                                        | 빌드 CI 3종 + API key 배포 스크립트 1개와 이를 부르는 GitHub·Gitea·GitLab 워크플로 3종 |
 | `history/`                                                                                            | 세션별 시점 기록(현재 상태 아님)                                                       |
 | `PRODUCT-REQUIREMENTS.md`·`REQUIREMENTS-TRACEABILITY.md`·`IMPLEMENTATION-PLAN.md`·`OPEN-DECISIONS.md` | 요구사항·추적·초기 계획(시점 기록)                                                     |
 

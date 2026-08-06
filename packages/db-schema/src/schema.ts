@@ -98,6 +98,21 @@ export const invitation = sqliteTable(
     (table) => [uniqueIndex('invitation_token_hash_unique').on(table.tokenHash), index('invitation_email_idx').on(table.email)],
 )
 
+export const loginLockout = sqliteTable('login_lockout', {
+    emailKey: text('email_key').primaryKey(),
+    failedCount: integer('failed_count').notNull(),
+    firstFailedAt: integer('first_failed_at', { mode: 'timestamp' }).notNull(),
+    lockedUntil: integer('locked_until', { mode: 'timestamp' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const auditChainAnchor = sqliteTable('audit_chain_anchor', {
+    id: text('id').primaryKey(),
+    hash: text('hash').notNull(),
+    sequence: integer('sequence').notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
 export const auditLog = sqliteTable(
     'audit_log',
     {
@@ -112,8 +127,12 @@ export const auditLog = sqliteTable(
         sourceIp: text('source_ip'),
         detail: text('detail'),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+        sequence: integer('sequence'),
+        previousHash: text('previous_hash'),
+        entryHash: text('entry_hash'),
     },
     (table) => [
+        uniqueIndex('audit_sequence_unique').on(table.sequence),
         index('audit_created_at_idx').on(table.createdAt),
         index('audit_actor_id_idx').on(table.actorId),
         index('audit_operation_created_at_idx').on(table.operation, table.createdAt),
@@ -525,6 +544,7 @@ export const schema = {
     account,
     apiKey,
     artifact,
+    auditChainAnchor,
     auditLog,
     deployment,
     deploymentManifest,
@@ -533,6 +553,7 @@ export const schema = {
     deploymentStack,
     deploymentStackRelease,
     invitation,
+    loginLockout,
     maintenanceState,
     panelSetting,
     trustedProxy,

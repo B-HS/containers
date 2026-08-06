@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { eq } from 'drizzle-orm'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { auditLog, user } from '@containers/db-schema/schema'
 import { buildAuditServiceDb } from '../../../compose/compose-audit'
@@ -97,6 +98,65 @@ describe('감사 로그 보존', () => {
         const page = await service.list({ limit: 50, offset: 0 })
 
         expect(page.data.map((record) => record.targetId)).toEqual(['container-third', 'container-second', 'container-first'])
+        database.sqlite.close()
+    })
+
+    test('기록한 항목은 해시 체인으로 이어지고 무결성 검사를 통과한다', async () => {
+        const { database, service } = await createTestContext()
+        for (let index = 0; index < 3; index += 1) {
+            await service.record({
+                actorId: 'user-owner',
+                operation: `nginx.route.create.${index}`,
+                requestId: `request-${index}`,
+                result: 'success',
+                sourceIp: '203.0.113.10',
+                targetId: `route-${index}`,
+                targetType: 'nginx-route',
+            })
+        }
+
+        const stored = await database.db.select().from(auditLog).orderBy(auditLog.sequence)
+        expect(stored.map((row) => row.sequence)).toEqual([1, 2, 3])
+        expect(stored.every((row) => row.entryHash !== null && row.previousHash !== null)).toBe(true)
+        expect(await service.verifyIntegrity()).toEqual({ anchorSequence: 0, brokenAt: null, checked: 3, unchained: 0 })
+        database.sqlite.close()
+    })
+
+    test('기록을 고치면 무결성 검사가 그 지점을 짚는다', async () => {
+        const { database, service } = await createTestContext()
+        for (let index = 0; index < 3; index += 1) {
+            await service.record({
+                actorId: 'user-owner',
+                operation: `nginx.route.create.${index}`,
+                requestId: `request-${index}`,
+                result: 'success',
+                sourceIp: '203.0.113.10',
+                targetId: `route-${index}`,
+                targetType: 'nginx-route',
+            })
+        }
+        await database.db.update(auditLog).set({ result: 'failure' }).where(eq(auditLog.sequence, 2))
+
+        expect((await service.verifyIntegrity()).brokenAt).toBe(2)
+        database.sqlite.close()
+    })
+
+    test('기록을 지우면 무결성 검사가 다음 항목에서 끊김을 본다', async () => {
+        const { database, service } = await createTestContext()
+        for (let index = 0; index < 3; index += 1) {
+            await service.record({
+                actorId: 'user-owner',
+                operation: `nginx.route.create.${index}`,
+                requestId: `request-${index}`,
+                result: 'success',
+                sourceIp: '203.0.113.10',
+                targetId: `route-${index}`,
+                targetType: 'nginx-route',
+            })
+        }
+        await database.db.delete(auditLog).where(eq(auditLog.sequence, 2))
+
+        expect((await service.verifyIntegrity()).brokenAt).toBe(3)
         database.sqlite.close()
     })
 })

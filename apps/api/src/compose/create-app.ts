@@ -4,6 +4,8 @@ import type { EngineAgentClient } from '../service/shared/engine-agent-client/cr
 import type { Auth } from '../auth/create-auth'
 import { applySecureCookies, isForwardedHttps } from '../lib/secure-cookie'
 import { errorResponse } from '../lib/response'
+import { ERROR_MESSAGE } from '../lib/error-message'
+import { isAppError } from '../lib/error'
 import type { NginxStatusClient } from '../service/shared/nginx/create-nginx-status-client'
 import { createAuditRoute } from '../route/audit/create-audit-route'
 import { createApiKeyRoute } from '../route/api-key/create-api-key-route'
@@ -36,6 +38,7 @@ import type { AuditService } from '../service/domain/audit/create-audit-service'
 import type { ApiKeyService } from '../service/domain/api-key/create-api-key-service'
 import type { BackupService } from '../service/domain/backup/create-backup-service'
 import type { AuthService } from '../service/domain/auth/create-auth-service'
+import type { LoginLockoutService } from '../service/domain/auth/create-login-lockout-service'
 import { createControlService } from '../service/domain/control/create-control-service'
 import type { ControlPlaneStatusService } from '../service/domain/control-plane/create-control-plane-status-service'
 import type { DeploymentService } from '../service/domain/deployment/create-deployment-service'
@@ -62,9 +65,10 @@ import type { UploadService } from '../service/domain/upload/create-upload-servi
 type AppDependencies = {
     apiKeyService: ApiKeyService
     backupScheduleService: Pick<BackupScheduleService, 'getSchedule'>
-    auditService: Pick<AuditService, 'list' | 'record'>
+    auditService: Pick<AuditService, 'list' | 'record' | 'verifyIntegrity'>
     backupService: BackupService
     auth: Pick<Auth, 'handler'>
+    loginLockoutService: Pick<LoginLockoutService, 'assertNotLocked' | 'clear' | 'recordFailure'>
     authService: Pick<
         AuthService,
         | 'acceptInvitation'
@@ -106,6 +110,9 @@ type AppDependencies = {
     >
 }
 
+const LOCKOUT_FALLBACK_RETRY_SECONDS = 60
+const UNAUTHORIZED_STATUS = 401
+
 export const createApp = ({
     auditService,
     apiKeyService,
@@ -120,6 +127,7 @@ export const createApp = ({
     deploymentStackReleaseService,
     deploymentStackService,
     engineAgentClient,
+    loginLockoutService,
     maintenanceService,
     nginxStatusClient,
     nginxProxyRouteService,
@@ -209,6 +217,17 @@ export const createApp = ({
         return window.count > 10
     }
 
+    const readLockout = async (email: unknown) => {
+        try {
+            await loginLockoutService.assertNotLocked(email)
+            return null
+        } catch (error) {
+            const details = isAppError(error) ? error.details : undefined
+            const retryAfterSeconds = typeof details?.retryAfterSeconds === 'number' ? details.retryAfterSeconds : LOCKOUT_FALLBACK_RETRY_SECONDS
+            return { retryAfterSeconds }
+        }
+    }
+
     const MUTATING_METHODS = ['DELETE', 'PATCH', 'POST', 'PUT']
     const MAINTENANCE_RETRY_AFTER_SECONDS = 30
 
@@ -276,12 +295,25 @@ export const createApp = ({
                     .json()
                     .catch(() => undefined)
                 const email = body && typeof body === 'object' && 'email' in body ? body.email : undefined
+                const locked = await readLockout(email)
+                if (locked !== null) {
+                    context.header('retry-after', String(locked.retryAfterSeconds))
+                    return context.json(errorResponse('AUTH_LOCKED', ERROR_MESSAGE.AUTH_LOCKED, context.get('requestId')), 429)
+                }
                 if (await authService.isEmailDisabled(email).catch(() => false)) {
+                    await loginLockoutService.recordFailure(email).catch(() => undefined)
                     return context.json(
                         errorResponse('INVALID_EMAIL_OR_PASSWORD', '이메일 또는 비밀번호가 올바르지 않습니다.', context.get('requestId')),
                         401,
                     )
                 }
+                const response = await auth.handler(context.req.raw)
+                if (response.ok) {
+                    await loginLockoutService.clear(email).catch(() => undefined)
+                } else if (response.status === UNAUTHORIZED_STATUS) {
+                    await loginLockoutService.recordFailure(email).catch(() => undefined)
+                }
+                return response
             }
 
             return auth.handler(context.req.raw)

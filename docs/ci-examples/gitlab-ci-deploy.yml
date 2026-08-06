@@ -1,0 +1,58 @@
+# GitLab CI — API key 기반 무인 배포 (Containers control plane)
+#
+# 호출 순서와 성공 판정은 containers-deploy.sh 한 곳에 있다. GitHub·Gitea 예시도 같은 스크립트를 쓴다.
+# 저장소 루트의 .gitlab-ci.yml 에 넣거나 include 한다.
+#
+# GitLab 과 GitHub 의 차이
+#  - 러너는 shell executor 를 쓴다. docker executor 안에서 docker build/save 를 하려면 DinD 나
+#    소켓 마운트가 필요한데, 이 배포는 호스트의 docker 를 그대로 쓰는 편이 단순하고 안전하다.
+#  - 수동 rollback 은 `when: manual` + `ROLLBACK_RELEASE_ID` 변수로 실행한다.
+#  - 변수는 Settings > CI/CD > Variables 에 둔다. CONTAINERS_API_KEY 는 반드시 masked + protected 로.
+#
+# 준비는 github-actions-deploy.yml 의 "준비" 항목과 같다. 특히 API key scope 와
+# containers-deploy.sh 를 저장소에 복사해 두는 것(예: ci/containers-deploy.sh)을 잊지 않는다.
+
+variables:
+    DEPLOY_NAME: example-app
+    MANIFEST_FILE: ci/deploy/manifest.json
+    GIT_DEPTH: '1'
+
+default:
+    tags:
+        - self-hosted
+    before_script:
+        - set -euo pipefail
+        - for binary in curl jq docker; do command -v "$binary" > /dev/null || { echo "$binary 가 러너에 없다" >&2; exit 1; }; done
+
+stages:
+    - deploy
+
+deploy:
+    stage: deploy
+    resource_group: containers-deploy
+    rules:
+        - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    variables:
+        DEPLOY_VERSION: $CI_COMMIT_SHA
+        WORK_DIR: $CI_PROJECT_DIR/.containers-deploy
+    script:
+        - bash ci/containers-deploy.sh deploy
+    after_script:
+        - |
+            if [ "$CI_JOB_STATUS" != 'success' ]; then
+                args=(-sS -H "authorization: Bearer ${CONTAINERS_API_KEY}")
+                if [ -n "${CONTAINERS_API_HOST:-}" ]; then args+=(-H "host: ${CONTAINERS_API_HOST}"); fi
+                curl "${args[@]}" "${API_BASE}/api/jobs?limit=20" | jq '.data[] | {id, kind, status, failureCode, progressStep, finishedAt}' || true
+            fi
+
+rollback:
+    stage: deploy
+    resource_group: containers-deploy
+    when: manual
+    rules:
+        - if: $ROLLBACK_RELEASE_ID
+    variables:
+        DEPLOY_VERSION: $CI_COMMIT_SHA
+        WORK_DIR: $CI_PROJECT_DIR/.containers-deploy
+    script:
+        - bash ci/containers-deploy.sh rollback "$ROLLBACK_RELEASE_ID"

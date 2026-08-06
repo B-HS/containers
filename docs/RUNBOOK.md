@@ -250,7 +250,7 @@ curl -s 'localhost:18080/api/audit?limit=100' | jq '.data[] | select(.authMethod
 
 1. **먼저 폐기한다**: `DELETE /api/api-keys/<id>` (최근 인증한 owner·admin 세션). 폐기 즉시 rate limit 창도 삭제되고 이후 인증이 실패한다.
 2. 노출 구간을 정리한다. GitHub Secrets에 있던 값이면 Secret을 교체하고, 로그·아티팩트에 남았으면 해당 실행 로그를 삭제한다.
-3. 새 키를 최소 scope로 발급한다. CI 배포용은 `artifact:upload`, `image:load`, `deployment:read`, `deployment:write`, `job:read`가 기본이고, 배포 후 검증 단계(`docs/ci-examples/github-actions-deploy.yml`)까지 돌리면 `engine:read`·`control-plane:read`를 더한다. `backup:write`·`secret:write`는 owner만 발급 가능하므로 CI에 넣지 않는다.
+3. 새 키를 최소 scope로 발급한다. CI 배포용은 `artifact:upload`, `image:load`, `deployment:read`, `deployment:write`, `job:read`가 기본이고, 배포 후 검증까지 돌리면 `engine:read`를 더한다(`docs/ci-examples/containers-deploy.sh`). `backup:write`·`secret:write`는 owner만 발급 가능하므로 CI에 넣지 않는다.
 4. 유출 기간의 감사 로그를 훑어 실제 사용 흔적(`lastUsedAt`, `authMethod: api-key` 이벤트)을 확인하고, 의심스러운 배포가 있으면 8번·해당 release rollback 절차로 되돌린다.
 5. 배포 secret이 함께 노출됐을 가능성이 있으면 `deployment_secret` 값을 재등록한다.
 

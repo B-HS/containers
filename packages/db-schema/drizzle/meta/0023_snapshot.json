@@ -1,8 +1,8 @@
 {
     "version": "6",
     "dialect": "sqlite",
-    "id": "8eeca2f1-15ad-4477-a467-f56e1fb5086e",
-    "prevId": "52256816-4567-437a-9094-564b1c74b309",
+    "id": "3eb600ec-6709-4c66-a8a2-a5505108dbcb",
+    "prevId": "8eeca2f1-15ad-4477-a467-f56e1fb5086e",
     "tables": {
         "account": {
             "name": "account",
@@ -1322,6 +1322,51 @@
                     "onUpdate": "no action"
                 }
             },
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "checkConstraints": {}
+        },
+        "login_lockout": {
+            "name": "login_lockout",
+            "columns": {
+                "email_key": {
+                    "name": "email_key",
+                    "type": "text",
+                    "primaryKey": true,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "failed_count": {
+                    "name": "failed_count",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "first_failed_at": {
+                    "name": "first_failed_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                },
+                "locked_until": {
+                    "name": "locked_until",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "autoincrement": false
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": true,
+                    "autoincrement": false
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
             "compositePrimaryKeys": {},
             "uniqueConstraints": {},
             "checkConstraints": {}

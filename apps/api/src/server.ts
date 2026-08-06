@@ -155,6 +155,7 @@ const {
     deploymentService,
     deploymentStackReleaseService,
     deploymentStackService,
+    loginLockoutService,
     maintenanceService,
     nginxProxyRouteService,
     panelSettingService,
@@ -224,6 +225,7 @@ const recurringTasks = [
 
 const app = createApp({
     apiKeyService,
+    loginLockoutService,
     backupScheduleService,
     auditService,
     auth,

@@ -35,7 +35,7 @@
 28. [quality-assurance/2026-08-05-disaster-recovery-drill.md](./quality-assurance/2026-08-05-disaster-recovery-drill.md) — 새 호스트 재해복구 드릴 실행 기록
 29. [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) — 진행 중 실행 계획: UX 감사 후속·런타임 개방·compose 스택 (항목별 근거·주의·완료 판정)
 30. [quality-assurance/2026-08-05-panel-ux-audit.md](./quality-assurance/2026-08-05-panel-ux-audit.md) — 패널 UX 감사(원본 64건 → 검증 44건 → 원인 12개)와 배포 런타임 제약 실측
-31. `ci-examples/` — CI 워크플로 예제(빌드 CI 3종 + API key 기반 배포 워크플로)
+31. `ci-examples/` — CI 예제. 빌드 CI 3종과, API key 배포 스크립트 `containers-deploy.sh` + 이를 부르는 GitHub·Gitea·GitLab 워크플로
 32. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0036 공개 주소 단일 출처·종료 드레인)
 33. `history/` — 세션별 작업 이력 (시간순, 현재 상태가 아님)
 

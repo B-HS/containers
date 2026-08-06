@@ -43,11 +43,19 @@ describe('nginx 기본 설정', () => {
         for (const path of CONFIGS) {
             const directives = readConfig(path)
                 .split('\n')
-                .filter((line) => line.includes('Content-Security-Policy'))
+                .filter((line) => line.includes('Content-Security-Policy') || line.includes('containers_csp "'))
 
             expect(directives.length).toBeGreaterThan(0)
-            expect(directives.every((line) => line.includes("'wasm-unsafe-eval'"))).toBe(true)
+            expect(directives.some((line) => line.includes("'wasm-unsafe-eval'"))).toBe(true)
         }
+    })
+
+    test('패널 CSP 는 인라인 스크립트 대신 요청마다 다른 nonce 를 쓴다', () => {
+        const config = readConfig('infra/nginx/nginx.conf')
+
+        expect(config).toContain("script-src 'self' 'nonce-$request_id' 'wasm-unsafe-eval'")
+        expect(config).not.toContain("script-src 'self' 'unsafe-inline'")
+        expect(config).toContain('proxy_set_header Content-Security-Policy $containers_csp;')
     })
 
     test('CSP 가 임의 스크립트 eval 은 허용하지 않는다', () => {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { AUDIT_CHAIN_GENESIS, findAuditChainBreak } from '@containers/config/audit-chain'
 import { mkdir, open } from 'node:fs/promises'
 import { join } from 'node:path'
 import { auditEventListSchema, auditQuerySchema, type AuditResult, type AuditTargetType } from '@containers/contracts/audit'
@@ -51,7 +52,27 @@ type AuditListPage = {
 
 type AuditArchiveRecord = Omit<AuditListRecord, 'actorEmail'>
 
+type AuditChainRow = {
+    actorId: string | null
+    authMethod: string
+    createdAt: Date
+    detail: string | null
+    entryHash: string
+    id: string
+    operation: string
+    previousHash: string
+    requestId: string
+    result: string
+    sequence: number
+    sourceIp: string | null
+    targetId: string | null
+    targetType: string
+}
+
 type AuditServiceDb = {
+    countUnchained: () => Promise<number>
+    listChainAfter: (sequence: number, limit: number) => Promise<AuditChainRow[]>
+    readAnchor: () => Promise<{ hash: string; sequence: number } | undefined>
     list: (query: AuditListQuery) => Promise<AuditListPage>
     listBefore: (threshold: Date, limit: number) => Promise<AuditArchiveRecord[]>
     deleteByIds: (ids: string[]) => Promise<void>
@@ -139,6 +160,33 @@ export const createAuditService = ({ archiveRoot, db, now, retentionDays }: Audi
             }
         }
         return archivedCount
+    },
+    verifyIntegrity: async () => {
+        const anchor = await db.readAnchor()
+        let expectedPrevious = anchor?.hash ?? AUDIT_CHAIN_GENESIS
+        let cursor = anchor?.sequence ?? 0
+        let checked = 0
+        for (;;) {
+            const entries = await db.listChainAfter(cursor, ARCHIVE_BATCH_SIZE)
+            if (entries.length === 0) {
+                break
+            }
+            const brokenAt = findAuditChainBreak(entries, expectedPrevious)
+            if (brokenAt !== null) {
+                return { anchorSequence: anchor?.sequence ?? 0, brokenAt, checked: checked + entries.length, unchained: await db.countUnchained() }
+            }
+            const last = entries[entries.length - 1]
+            if (last === undefined) {
+                break
+            }
+            expectedPrevious = last.entryHash
+            cursor = last.sequence
+            checked += entries.length
+            if (entries.length < ARCHIVE_BATCH_SIZE) {
+                break
+            }
+        }
+        return { anchorSequence: anchor?.sequence ?? 0, brokenAt: null, checked, unchained: await db.countUnchained() }
     },
     list: async (input: unknown) => {
         const query = auditQuerySchema.parse(input)

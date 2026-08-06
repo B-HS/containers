@@ -1,0 +1,77 @@
+# Gitea Actions — API key 기반 무인 배포 (Containers control plane)
+#
+# 호출 순서와 성공 판정은 containers-deploy.sh 한 곳에 있다. GitHub·GitLab 예시도 같은 스크립트를 쓴다.
+# 저장소의 .gitea/workflows/deploy.yml 로 둔다.
+#
+# Gitea 와 GitHub 의 차이
+#  - `runs-on` 라벨은 Gitea Runner 등록 시 정한 라벨이다. docker·jq·curl 이 있는 라벨을 쓴다.
+#    act_runner 의 기본 `ubuntu-latest` 이미지에는 docker CLI 가 없다. 호스트의 docker 를 쓰려면
+#    러너를 host 모드(`labels: ["self-hosted:host"]`)로 등록하고 그 라벨을 지정한다.
+#  - `vars` 는 Gitea 1.22+ 에서만 쓸 수 있다. 그 이전 버전이면 secrets 로 넣거나 여기 상수로 적는다.
+#  - `runner.temp` 는 Gitea 에도 있지만, 없을 때를 대비해 WORK_DIR 기본값을 두었다.
+#
+# 준비는 github-actions-deploy.yml 의 "준비" 항목과 같다. 특히 API key scope 와
+# containers-deploy.sh 를 저장소에 복사해 두는 것(예: ci/containers-deploy.sh)을 잊지 않는다.
+
+name: Deploy via control plane API
+
+on:
+    push:
+        branches: [main]
+    workflow_dispatch:
+        inputs:
+            rollback_release_id:
+                description: '되돌릴 현재 healthy release id (지정하면 배포 대신 rollback 만 수행)'
+                required: false
+                type: string
+
+concurrency:
+    group: containers-deploy
+    cancel-in-progress: false
+
+env:
+    API_BASE: ${{ vars.CONTAINERS_API_BASE }}
+    CONTAINERS_API_HOST: ${{ vars.CONTAINERS_API_HOST }}
+    DEPLOY_NAME: example-app
+    MANIFEST_FILE: ci/deploy/manifest.json
+
+jobs:
+    deploy:
+        name: build · upload · load · release
+        runs-on: self-hosted
+        timeout-minutes: 60
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Check tooling
+              run: |
+                  set -euo pipefail
+                  for binary in curl jq docker; do
+                      command -v "$binary" > /dev/null || { echo "$binary 가 러너에 없다" >&2; exit 1; }
+                  done
+
+            - name: Deploy
+              if: ${{ inputs.rollback_release_id == '' }}
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  DEPLOY_VERSION: ${{ gitea.sha }}
+                  WORK_DIR: ${{ runner.temp || '/tmp' }}/containers-deploy
+              run: bash ci/containers-deploy.sh deploy
+
+            - name: Rollback
+              if: ${{ inputs.rollback_release_id != '' }}
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+                  DEPLOY_VERSION: ${{ gitea.sha }}
+                  WORK_DIR: ${{ runner.temp || '/tmp' }}/containers-deploy
+              run: bash ci/containers-deploy.sh rollback '${{ inputs.rollback_release_id }}'
+
+            - name: Dump recent jobs on failure
+              if: ${{ failure() }}
+              env:
+                  CONTAINERS_API_KEY: ${{ secrets.CONTAINERS_API_KEY }}
+              run: |
+                  set -euo pipefail
+                  args=(-sS -H "authorization: Bearer ${CONTAINERS_API_KEY}")
+                  if [ -n "${CONTAINERS_API_HOST:-}" ]; then args+=(-H "host: ${CONTAINERS_API_HOST}"); fi
+                  curl "${args[@]}" "${API_BASE}/api/jobs?limit=20" | jq '.data[] | {id, kind, status, failureCode, progressStep, finishedAt}' || true

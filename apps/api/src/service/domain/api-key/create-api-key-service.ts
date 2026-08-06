@@ -50,6 +50,8 @@ type ApiKeyServiceDependencies = {
 
 export type { ApiKeyServiceDb }
 
+const DAY_MS = 24 * 60 * 60 * 1_000
+
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 
 const parseScopes = (value: string) => JSON.parse(value) as unknown
@@ -119,7 +121,7 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
             }
             const token = `ctk_${randomBytes(32).toString('base64url')}`
             const createdAt = now()
-            const expiresAt = payload.expiresInDays === null ? null : new Date(createdAt.getTime() + payload.expiresInDays * 24 * 60 * 60 * 1_000)
+            const expiresAt = new Date(createdAt.getTime() + payload.expiresInDays * DAY_MS)
             const record = {
                 createdAt,
                 createdBy: actor.id,

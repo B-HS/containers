@@ -9,8 +9,9 @@
 - 작업 경로: `/Users/gkn/containers`. Git 저장소(원격 `origin`, 브랜치 `dev`).
 - **현재 검증 수치·커밋·완료 범위는 [HANDOFF.md](./HANDOFF.md) §1·§3 을 본다.** push 여부는 문서가 아니라 `git status -sb` 로 판단한다.
 - **2026-08-06 전체 초기화를 했다.** `control-data`·`traffic-data`·`artifacts`·`backups`·`nginx-config`·`nginx-logs` 볼륨을 지웠고 자격증명 볼륨 3종만 남겼다. 따라서:
-    - **owner 계정이 없다.** `http://127.0.0.1:18080` 에서 bootstrap 으로 최초 owner 를 만들기 전에는 패널·인증 API 를 쓸 수 없다. 공개 주소에서는 bootstrap 이 403 이다.
-    - 공개 주소·신뢰 프록시·API 키·감사 로그·배포·라우트가 전부 비어 있다.
+    - **owner 계정과 공개 주소는 2026-08-06 재설정을 마쳤다.** 사용자가 `bun scripts/reset-accounts.ts --confirm` 으로 seed 계정을 비운 뒤 `http://127.0.0.1:18080` 에서 실운영 owner 를 bootstrap 했고, 패널 설정에서 공개 주소를 `https://hyuns.uk` 로 되돌렸다(초기화가 `panel_setting` 을 비워 그때까지 hyuns.uk 요청이 전부 444/502 였다).
+    - 계정이 다시 비어 bootstrap 이 필요하면 로컬 이름에서만 된다. bootstrap 허용 host 는 `127.0.0.1`·`localhost`·`::1`·`panel.containers.local`·`api.containers.local` 이고(`packages/config/src/bootstrap-origin.ts`), 공개 주소로 오면 `BOOTSTRAP_ORIGIN_FORBIDDEN` 이다.
+    - 신뢰 프록시·API 키·감사 로그·배포·라우트는 비어 있다.
     - `/data/ingest-checkpoint.json` 은 **첫 트래픽 인입 뒤에 생성된다.** 초기화 직후 `stat` 실패는 정상이다.
 - Compose 5개 서비스 `nginx`·`web`·`api`·`engine-agent`·`traffic-worker` 가 healthy 여야 한다.
 

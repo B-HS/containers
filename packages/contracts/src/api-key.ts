@@ -35,7 +35,7 @@ export const API_KEY_SCOPE_VALUES = [
 const apiKeyScopeSchema = z.enum(API_KEY_SCOPE_VALUES)
 
 export const apiKeyCreateSchema = z.object({
-    expiresInDays: z.number().int().min(1).max(365).nullable(),
+    expiresInDays: z.number().int().min(1).max(365),
     name: z.string().trim().min(1).max(80),
     scopes: z
         .array(apiKeyScopeSchema)

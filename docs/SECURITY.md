@@ -145,7 +145,7 @@ blue-green 릴리스가 실패하면 원인이 컨테이너 안에만 남고 패
 - audit row는 append-only이며 애플리케이션에서 update·delete endpoint를 만들지 않는다.
 - actor, authMethod, operation, targetType·targetId, requestId, result, source IP, `detail` JSON, createdAt 을 기록한다. user agent·jobId·before/after·duration 전용 컬럼은 없고 필요한 값만 `detail` 에 넣는다.
 - secret, cookie, API key, full env, exec stdin, raw terminal output은 기록하지 않는다.
-- 각 row에 이전 row hash를 포함하는 tamper-evident chain을 선택적으로 적용하고 주기적으로 외부 저장소에 checkpoint를 내보낸다.
+- **각 row 는 이전 row 의 hash 를 포함하는 tamper-evident chain 을 이룬다(2026-08-06 구현).** `audit_log.sequence`·`previous_hash`·`entry_hash` 를 한 트랜잭션에서 채우고, `GET /api/audit/integrity`(owner·admin·auditor)가 체인을 걸어 끊긴 첫 sequence 를 돌려준다. 보존 정리로 지운 구간은 `audit_chain_anchor` 가 마지막 hash 를 붙잡아 이어 검증한다. 기능 도입 전 기록은 hash 가 없어 `unchained` 로 따로 센다. 외부 저장소 checkpoint 는 아직 없어 **가장 최근 기록을 통째로 잘라내는 것은 이 방법으로 탐지되지 않는다**.
 - root 권한 공격자가 로컬 기록을 모두 바꿀 수 있다는 한계를 문서와 UI에 명시한다.
 
 ## 12. 원본 IP 개인정보 통제
@@ -277,3 +277,28 @@ bootstrap 은 인증 없이 첫 owner 를 만든다. 계정이 없는 상태에�
 렌더된 설정이 변수 `proxy_pass` 를 쓰기 때문에 대상이 존재하지 않아도 **`nginx -t` 와 리로드가 모두 성공**했다. 이름 오타나 nginx 와 다른 네트워크의 컨테이너를 넣어도 API 가 201 을 주고 라우트 테이블에 정상으로 보이다가 도메인 접속 시 502 로만 드러났다.
 
 서버가 `create`·`upsert` 양쪽에서 대상의 존재와 네트워크 공유를 확인한다(`NGINX_ROUTE_TARGET_NOT_FOUND`·`NGINX_ROUTE_TARGET_UNREACHABLE`, 둘 다 400). **API key 경로로도 같은 실수가 가능하므로 서버 검증이 본체다.** 중지된 컨테이너는 라우트를 미리 준비하는 정당한 사용이라 허용한다. 상세는 [acknowledge/0038](./acknowledge/0038-nginx-route-target-validation.md).
+
+## 20. 2026-08-06 공개 노출 대비 강화
+
+공개 주소(`https://hyuns.uk`)로 패널을 다시 열면서 실측으로 확인하고 보강한 것.
+
+### 보강
+
+- **계정 단위 로그인 잠금** — 기존 방어는 nginx 5r/m 과 애플리케이션 IP 10회/분뿐이라 IP 를 바꾸는 분산 시도에 뚫린다. `login_lockout` 테이블로 주소별 연속 실패를 세고, 허용 5회를 넘기면 1분에서 시작해 두 배씩 늘려 최대 15분까지 잠근다(`packages/config/src/login-lockout.ts`). 잠긴 동안은 `AUTH_LOCKED`(429)와 `retry-after` 를 준다. **존재하지 않는 주소도 똑같이 세어** 잠금 여부가 계정 유무를 알려주지 않게 한다. 성공하면 즉시 지운다. 상한을 15분으로 둔 이유는 잠금 자체가 운영자를 영구히 막는 수단이 되지 않게 하기 위함이다.
+- **만료 없는 API key 금지** — `expiresInDays` 에서 `null` 을 없앴다. 모든 키는 1~365일 안에서 만료한다. 공개된 API 에 영구 자격증명을 두지 않는다.
+- **짧은 세션** — better-auth 세션을 절대 12시간·갱신 1시간으로 고정했다(`apps/api/src/auth/create-auth.ts`). 유휴 세션이 반나절 안에 죽는다.
+- **감사 해시 체인** — §11 참고.
+- **CSP nonce** — 패널 `script-src` 에서 `'unsafe-inline'` 을 빼고 nginx 가 요청마다 `$request_id` 를 nonce 로 발급한다. nginx 가 같은 값을 응답 CSP 와 `proxy_set_header Content-Security-Policy` 로 함께 보내면 Next.js 가 그 nonce 를 자기 스크립트에 붙인다(실측: 요청 헤더의 nonce 가 렌더된 `<script nonce=...>` 에 그대로 나온다). 앱 코드 변경이 필요 없다.
+
+### 실측으로 확인한 것 (바꾸지 않음)
+
+- **CSRF** — `content-type: text/plain` 과 `application/x-www-form-urlencoded` 은 검증 단계에서 400 이다. `application/json` 은 브라우저가 preflight 를 요구하는데 CORS 헤더를 아무 데서도 내보내지 않으므로 교차 출처 요청이 성립하지 않는다.
+- **무인증 엔드포인트** — 라우트 전수 확인 결과 `GET /api/health` 와 `GET /api/readyz` 둘뿐이다. 스트림·업로드 경로는 파일 안의 헬퍼에서 인증한다.
+- **bootstrap** — host 이름이 `127.0.0.1`·`localhost`·`::1`·`panel.containers.local`·`api.containers.local` 일 때만 통과한다. 공개 주소로 오면 `BOOTSTRAP_ORIGIN_FORBIDDEN`.
+- **세션 쿠키** — better-auth 는 부팅 시 한 번만 secure 를 정하므로, 응답 미들웨어가 `x-forwarded-proto` 를 보고 요청마다 `Secure` 를 붙인다.
+
+### 남는 한계
+
+- `set_real_ip_from 127.0.0.1/32` + `real_ip_header CF-Connecting-IP` 라서 **호스트에서 직접 loopback 에 붙을 수 있는 프로세스는 client IP 를 위조**할 수 있다(감사 source IP·IP 기준 rate limit 에 영향). publish 가 loopback 한정이라 그럴 수 있는 주체는 이미 호스트 권한을 가진 쪽이고, 근본 해결은 Cloudflare Access JWT 검증이다.
+- 패널 앞단에 Cloudflare Access 같은 인증 게이트가 없다. 지금은 누구나 로그인 화면까지는 도달한다.
+- 감사 체인의 외부 checkpoint 가 없다(§11).

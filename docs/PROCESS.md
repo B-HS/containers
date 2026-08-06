@@ -836,3 +836,28 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - **실운영 owner 계정 확보.** 이 스택은 bootstrap 이 이미 끝났다(`GET /api/bootstrap/status` → `required:false`). 초대(`POST /api/invitations`, recent owner·admin)로 실계정을 만든 뒤 seed 계정(`stack-check@`, `e2e@containers.local`)을 지우거나, `bun scripts/reset-accounts.ts --confirm` 후 `http://127.0.0.1:18080` 에서 bootstrap 한다(파괴적 — 사용자가 직접)
 - **job 이력은 이미 자동 정리된다**(앞선 기술이 틀렸다): `operationJobService.cleanupFinished` 가 종료 14일이 지난 job 을 지우고 `server.ts` 의 주기 태스크로 돌며, `operation_job_event` 는 `on delete cascade` + 런타임 `PRAGMA foreign_keys = ON` 으로 함께 지워진다. 실측 시점의 job 13건도 이 주기로 사라진다
 - 릴리스 이력(`deployment_release`)과 load 이력(`deployment`), 그 manifest 는 제품이 보여주는 배포 연혁이라 남긴다. 메타데이터 행이라 저장소를 잠식하지 않는다
+
+## 작업: 실운영 보안 강화 + headless API 모드 완주 (2026-08-06 시작)
+
+공개 주소(`https://hyuns.uk`)로 실제 컴퓨터가 물린 상태다. 보안을 최우선으로 두고, API(headless) 경로와 운영 검증까지 닫는다. 계획 정본은 이 체크리스트다.
+
+### A. 보안 (최우선)
+
+- [x] A1. 공개 노출 공격면 전수 — 무인증은 `/api/health`·`/api/readyz` 둘뿐, CSRF 는 content-type 검증+CORS 부재로 성립하지 않음(실측), bootstrap 은 host 제한, 세션 쿠키는 요청별 Secure
+- [x] A2. 계정 단위 로그인 잠금 — `login_lockout` 테이블 + 지수 backoff(5회 허용 → 1분에서 두 배씩 최대 15분), 없는 주소도 동일하게 세어 계정 유무 비노출
+- [x] A3. API key 만료 필수화 — `expiresInDays` 에서 null 제거(1~365일). 저장은 sha256, 조회 시 만료·폐기·비활성 소유자 필터 확인
+- [x] A4. 감사 해시 체인 — `sequence`/`previous_hash`/`entry_hash` + `audit_chain_anchor`, `GET /api/audit/integrity`
+- [x] A5. CSP nonce — nginx 가 `$request_id` 를 nonce 로 발급하고 Next 가 그대로 사용(실측 확인). 앱 변경 없음
+- [x] A6. `CF-Connecting-IP` — loopback 한정 publish 라 위조 주체는 이미 호스트 권한. 한계로 문서화, 근본 해결은 Cloudflare Access
+- [x] A7. 세션 수명 12시간·갱신 1시간으로 축소. typecheck·lint·test 519·build 통과
+
+### B. headless API 모드
+
+- [ ] B1. API key 발급 후 전 구간 E2E 실측 (업로드→load→manifest→release→rollback), 세션 없이 키만으로
+- [ ] B2. compose 스택 배포 E2E (키만으로)
+- [ ] B3. 배포 샘플 3종 — GitHub Actions / Gitea Actions / GitLab CI. 실측한 호출 순서와 판정 기준을 반영
+
+### C. 기능·운영
+
+- [ ] C1. backup·restore E2E
+- [ ] C2. 남은 운영 결함 정리와 문서 반영

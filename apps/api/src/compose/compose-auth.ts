@@ -1,8 +1,9 @@
 import { and, asc, count, eq, gt, isNull } from 'drizzle-orm'
 import type { ControlDatabase } from '@containers/db-schema/database'
-import { account, invitation, apiKey as apiKeyTable, session as sessionTable, user, userRole } from '@containers/db-schema/schema'
+import { account, invitation, apiKey as apiKeyTable, loginLockout, session as sessionTable, user, userRole } from '@containers/db-schema/schema'
 import type { Auth } from '../auth/create-auth'
 import { createAuthService, type AuthServiceDb } from '../service/domain/auth/create-auth-service'
+import { createLoginLockoutService, type LoginLockoutServiceDb } from '../service/domain/auth/create-login-lockout-service'
 
 type ComposeAuthDependencies = {
     auth: Auth
@@ -113,7 +114,27 @@ export const buildAuthServiceDb = (db: ControlDatabase): AuthServiceDb => ({
     },
 })
 
+export const buildLoginLockoutServiceDb = (db: ControlDatabase): LoginLockoutServiceDb => ({
+    clear: async (emailKey) => {
+        await db.delete(loginLockout).where(eq(loginLockout.emailKey, emailKey))
+    },
+    findByEmailKey: async (emailKey) => {
+        const [record] = await db.select().from(loginLockout).where(eq(loginLockout.emailKey, emailKey)).limit(1)
+        return record
+    },
+    upsert: async (row) => {
+        await db
+            .insert(loginLockout)
+            .values(row)
+            .onConflictDoUpdate({
+                set: { failedCount: row.failedCount, firstFailedAt: row.firstFailedAt, lockedUntil: row.lockedUntil, updatedAt: row.updatedAt },
+                target: loginLockout.emailKey,
+            })
+    },
+})
+
 export const composeAuth = ({ auth, db, invitationBaseUrl }: ComposeAuthDependencies) => ({
     auth,
     authService: createAuthService({ auth, db: buildAuthServiceDb(db), invitationBaseUrl, now: () => new Date() }),
+    loginLockoutService: createLoginLockoutService({ db: buildLoginLockoutServiceDb(db), now: () => new Date() }),
 })

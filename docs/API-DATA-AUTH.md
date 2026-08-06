@@ -114,7 +114,7 @@ middleware는 Host 문자열만 신뢰하지 않고 Nginx가 내부 network에�
 | `GET /api/panel-settings` / `PUT`                                                                             | 불가                        | owner·admin / recent owner                                                       |
 | `GET /api/trusted-proxies` / `POST`·`DELETE`                                                                  | 불가                        | owner·admin / recent owner                                                       |
 
-CI·자동화가 배포 전 구간을 무인으로 수행하려면 `artifact:upload`, `image:load`, `deployment:read`, `deployment:write`, `job:read`가 필요하고, 배포 후 검증까지 하려면 `engine:read`·`control-plane:read`를, 교착 job 해소까지 하려면 `job:write`를 추가한다. 실제 워크플로는 [ci-examples/github-actions-deploy.yml](./ci-examples/github-actions-deploy.yml)에 있다.
+CI·자동화가 배포 전 구간을 무인으로 수행하려면 `artifact:upload`, `image:load`, `deployment:read`, `deployment:write`, `job:read`가 필요하고, 배포 후 검증까지 하려면 `engine:read`·`control-plane:read`를, 교착 job 해소까지 하려면 `job:write`를 추가한다. 호출 순서와 성공 판정은 [ci-examples/containers-deploy.sh](./ci-examples/containers-deploy.sh) 한 곳에 있고, GitHub·Gitea·GitLab 워크플로 예시가 그 스크립트를 부른다.
 
 ## 3. 응답과 오류
 
