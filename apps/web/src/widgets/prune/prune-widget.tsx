@@ -48,7 +48,7 @@ export const PruneWidget: FC<PruneWidgetProps> = ({ role }) => {
         pruneMutation.mutate(
             { confirmation, includeVolumes, previewSha256: data.sha256 },
             {
-                onError: () => toast.error(t('pruneFailed')),
+                onError: (error) => toast.error(error instanceof Error ? error.message : t('pruneFailed')),
                 onSuccess: () => toast.success(t('pruneStarted')),
             },
         )

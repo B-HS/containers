@@ -88,7 +88,7 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) 
                 },
             },
             {
-                onError: () => toast.error(t('containerCreateFailed')),
+                onError: (error) => toast.error(error instanceof Error ? error.message : t('containerCreateFailed')),
                 onSuccess: () => {
                     toast.success(t('containerCreated'))
                     router.push('/containers')

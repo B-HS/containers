@@ -50,7 +50,7 @@
 
 ### P1 — 마찰 해소
 
-- [ ] **4.1 에러 파싱 통일** — `fix(web): 서버가 준 실패 사유를 화면에 그대로 전달한다`
+- [x] **4.1 에러 파싱 통일** — `fix(web): 서버가 준 실패 사유를 화면에 그대로 전달한다`. 검증 issue 배열·compose 거부 상세를 읽고, 에러 코드를 Error 에 실어 보존한다. 아티팩트 검사 실패도 안정적인 코드로 정규화했다. 실측: compose 거부 토스트가 `app: LOG_LEVEL 에 값이 없다…` 처럼 서비스·키를 그대로 보여준다
 - [ ] **4.2 단계 간 CTA 링크** — `feat(web): 배포 흐름 단계 사이를 잇는 이동 경로를 만든다`
 - [ ] **4.3 라우트 수정·토글** — `feat(nginx): 라우트 수정과 사용 여부 전환을 지원한다`
 - [ ] **4.4 라우트 소유권 표시** — `feat(nginx): 배포가 관리하는 라우트를 구분한다`
@@ -242,7 +242,7 @@ release:     failureCode=DEPLOYMENT_HEALTHCHECK_FAILED, containerName=demo-a-1.0
 
 | 항목              | 핵심                                                                                                                                                                                                                                                       | 파일                                                                                                                                                 |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 4.1 에러 파싱     | `parse-api-error.ts` 가 `{error:{code,message}}` 만 파싱해 `@hono/standard-validator` 의 `{error: issue[]}` 를 못 읽는다. 둘 다 지원하고 `code` 를 보존해 로케일 문구로 매핑한다. `onError: () => toast.error(t(...))` 로 error 인자를 버리는 5곳을 고친다 | `shared/lib/parse-api-error.ts`, `client-fetch.ts`, `container-create-widget.tsx:82`, `prune-widget.tsx:51`, `container-control-widget.tsx:73,87,97` |
+| 4.1 에러 파싱     | **완료.** 봉투·issue 배열·평평한 message 3형태를 읽고 `details.rejections` 를 메시지 뒤에 붙인다. `parseApiErrorCode` 로 코드를 보존해 `ApiError.code` 로 던진다(로케일 매핑은 아직 없다 — 서버 한국어 메시지를 그대로 쓴다). error 인자를 버리던 5곳 수정 | `shared/lib/parse-api-error.ts`, `client-fetch.ts`, `container-create-widget.tsx:82`, `prune-widget.tsx:51`, `container-control-widget.tsx:73,87,97` |
 | 4.2 CTA 링크      | artifact load 성공 시 생성된 태그 표시 + `/containers/new?image=`, 이미지 행에 "컨테이너 만들기", 컨테이너 생성 후 `/nginx/routes?container=&port=`, 개요에 온보딩 카드                                                                                    | `artifact-widget.tsx`, `image-widget.tsx`, `container-create-widget.tsx`, `overview-widget.tsx`                                                      |
 | 4.3 라우트 수정   | `upsert` 는 이미 구현돼 있고 배포만 쓴다. `PUT /nginx/routes/:id` 로 노출하고 `pathMode`·`enabled` 를 폼에 연다(둘 다 서버는 쓰는데 UI 가 하드코딩)                                                                                                        | `create-nginx-route.ts`, `nginx.query.ts`, `nginx-route-create-form.tsx`                                                                             |
 | 4.4 라우트 소유권 | `nginx_route` 에 `managedBy`(manifest id) 추가. 배포가 만든 라우트를 수동 삭제하면 서비스가 끊기고 자동 복구되지 않는다                                                                                                                                    | `schema.ts`, `create-deployment-release-service.ts`, `nginx-route-table.tsx`                                                                         |

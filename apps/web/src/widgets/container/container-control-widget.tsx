@@ -70,7 +70,7 @@ export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ role }
                 ...(CONTAINER_STOP_ACTIONS.includes(action) ? { timeoutSeconds: CONTAINER_ACTION_TIMEOUT_SECONDS } : {}),
             },
             {
-                onError: () => toast.error(t('actionFailed')),
+                onError: (error) => toast.error(error instanceof Error ? error.message : t('actionFailed')),
                 onSuccess: () => toast.success(t('containerActionSucceeded')),
             },
         )
@@ -84,7 +84,7 @@ export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ role }
         executeCommand.mutate(
             { containerId, command },
             {
-                onError: () => toast.error(t('actionFailed')),
+                onError: (error) => toast.error(error instanceof Error ? error.message : t('actionFailed')),
                 onSuccess: (result) => setExecOutput((current) => ({ ...current, [containerId]: `${result.stdout}${result.stderr}` })),
             },
         )
@@ -94,7 +94,7 @@ export const ContainerControlWidget: FC<ContainerControlWidgetProps> = ({ role }
         removeContainer.mutate(
             { containerId, ...input },
             {
-                onError: () => toast.error(t('actionFailed')),
+                onError: (error) => toast.error(error instanceof Error ? error.message : t('actionFailed')),
                 onSuccess: () => toast.success(t('containerRemoved')),
             },
         )

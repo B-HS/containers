@@ -87,6 +87,26 @@ describe('Artifact archive 검사', () => {
         })
     })
 
+    test('tar 로 읽히지 않는 파일은 ARCHIVE_INVALID 로 정규화합니다', async () => {
+        const corrupted = Buffer.from('this is not a tar archive'.repeat(64))
+
+        await withArchive(corrupted, async (filePath) => {
+            await expect(
+                createArtifactInspectionService().inspect(filePath, ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE, corrupted.byteLength),
+            ).rejects.toThrow('ARCHIVE_INVALID')
+        })
+    })
+
+    test('manifest 내용이 스키마와 어긋나면 ARCHIVE_METADATA_INVALID 로 정규화합니다', async () => {
+        const archive = await createArchive([{ body: Buffer.from('{"unexpected":true}'), name: 'manifest.json' }])
+
+        await withArchive(archive, async (filePath) => {
+            await expect(
+                createArtifactInspectionService().inspect(filePath, ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE, archive.byteLength),
+            ).rejects.toThrow('ARCHIVE_METADATA_INVALID')
+        })
+    })
+
     test('경로 순회와 symlink archive entry를 거부합니다', async () => {
         const pathTraversal = await createArchive([{ body: Buffer.from('bad'), name: '../escape' }])
         const symlink = await createArchive([{ name: 'link', type: 'symlink' }])

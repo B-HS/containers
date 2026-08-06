@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { formatBytes } from './format-bytes'
 import { formatDateTime } from './format-date-time'
-import { parseApiError } from './parse-api-error'
+import { parseApiError, parseApiErrorCode } from './parse-api-error'
 
 const KIB = 1_024
 const MIB = 1_048_576
@@ -46,5 +46,49 @@ describe('parseApiError', () => {
         expect(parseApiError({ error: 'boom' }, '실패')).toBe('실패')
         expect(parseApiError(null, '실패')).toBe('실패')
         expect(parseApiError('boom', '실패')).toBe('실패')
+    })
+
+    test('검증 실패 issue 배열을 경로와 함께 읽는다', () => {
+        expect(
+            parseApiError(
+                {
+                    data: {},
+                    error: [
+                        { message: 'Invalid string', path: ['name'] },
+                        { message: 'Too small', path: ['compose'] },
+                    ],
+                },
+                '실패',
+            ),
+        ).toBe('name: Invalid string · compose: Too small')
+    })
+
+    test('compose 거부 상세를 메시지 뒤에 붙인다', () => {
+        expect(
+            parseApiError(
+                {
+                    error: {
+                        code: 'DEPLOYMENT_STACK_REJECTED',
+                        details: {
+                            rejections: [{ detail: 'LOG_LEVEL 에 값이 없다.', rule: 'environment-value-missing', service: 'app' }],
+                        },
+                        message: 'compose 파일에 허용하지 않는 설정이 있습니다.',
+                    },
+                    success: false,
+                },
+                '실패',
+            ),
+        ).toBe('compose 파일에 허용하지 않는 설정이 있습니다. · app: LOG_LEVEL 에 값이 없다.')
+    })
+})
+
+describe('parseApiErrorCode', () => {
+    test('에러 봉투에서 코드를 꺼낸다', () => {
+        expect(parseApiErrorCode({ error: { code: 'FORBIDDEN', message: '권한이 없습니다.' }, success: false })).toBe('FORBIDDEN')
+    })
+
+    test('코드가 없으면 null 이다', () => {
+        expect(parseApiErrorCode({ message: '중복된 요청입니다.' })).toBeNull()
+        expect(parseApiErrorCode({ data: {}, error: [{ message: 'Invalid string', path: ['name'] }] })).toBeNull()
     })
 })

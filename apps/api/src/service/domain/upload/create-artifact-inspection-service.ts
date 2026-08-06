@@ -6,7 +6,7 @@ import { createGunzip } from 'node:zlib'
 import { extract } from 'tar-stream'
 import { z } from 'zod'
 import { ARTIFACT_MEDIA_TYPE } from '@containers/contracts/upload'
-import { createAppError } from '../../../lib/error'
+import { createAppError, isAppError } from '../../../lib/error'
 
 const MAX_ARCHIVE_ENTRIES = 100_000
 const MAX_METADATA_BYTES = 16_777_216
@@ -67,6 +67,8 @@ const isGzip = async (filePath: string) => {
     return signature[0] === 0x1f && signature[1] === 0x8b
 }
 
+const toInspectionError = (error: unknown, code: string) => (isAppError(error) ? error : createAppError(code, error))
+
 export const createArtifactInspectionService = () => ({
     inspect: async (filePath: string, mediaType: string, uploadedBytes: number) => {
         const archiveEntries = new Set<string>()
@@ -125,36 +127,44 @@ export const createArtifactInspectionService = () => ({
                 .catch((error: unknown) => archive.destroy(error instanceof Error ? error : createAppError('ARCHIVE_INVALID')))
         })
 
-        if (await isGzip(filePath)) {
-            await pipeline(createReadStream(filePath), createGunzip(), archive)
-        } else {
-            await pipeline(createReadStream(filePath), archive)
+        try {
+            if (await isGzip(filePath)) {
+                await pipeline(createReadStream(filePath), createGunzip(), archive)
+            } else {
+                await pipeline(createReadStream(filePath), archive)
+            }
+        } catch (error) {
+            throw toInspectionError(error, 'ARCHIVE_INVALID')
         }
 
-        if (mediaType === ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE) {
-            const manifest = dockerManifestSchema.parse(parseJson(metadata.get('manifest.json')))
-            for (const image of manifest) {
-                if (!archiveEntries.has(normalizeArchivePath(image.Config))) {
-                    throw createAppError('DOCKER_CONFIG_MISSING')
-                }
-                for (const layer of image.Layers) {
-                    if (!archiveEntries.has(normalizeArchivePath(layer))) {
-                        throw createAppError('DOCKER_LAYER_MISSING')
+        try {
+            if (mediaType === ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE) {
+                const manifest = dockerManifestSchema.parse(parseJson(metadata.get('manifest.json')))
+                for (const image of manifest) {
+                    if (!archiveEntries.has(normalizeArchivePath(image.Config))) {
+                        throw createAppError('DOCKER_CONFIG_MISSING')
+                    }
+                    for (const layer of image.Layers) {
+                        if (!archiveEntries.has(normalizeArchivePath(layer))) {
+                            throw createAppError('DOCKER_LAYER_MISSING')
+                        }
                     }
                 }
-            }
-        } else if (mediaType === ARTIFACT_MEDIA_TYPE.OCI_IMAGE_ARCHIVE) {
-            ociLayoutSchema.parse(parseJson(metadata.get('oci-layout')))
-            const index = ociIndexSchema.parse(parseJson(metadata.get('index.json')))
-            for (const descriptor of index.manifests) {
-                const expectedDigest = descriptor.digest.slice('sha256:'.length)
-                const blobPath = `blobs/sha256/${expectedDigest}`
-                if (!archiveEntries.has(blobPath) || blobHashes.get(blobPath) !== expectedDigest) {
-                    throw createAppError('OCI_BLOB_DIGEST_INVALID')
+            } else if (mediaType === ARTIFACT_MEDIA_TYPE.OCI_IMAGE_ARCHIVE) {
+                ociLayoutSchema.parse(parseJson(metadata.get('oci-layout')))
+                const index = ociIndexSchema.parse(parseJson(metadata.get('index.json')))
+                for (const descriptor of index.manifests) {
+                    const expectedDigest = descriptor.digest.slice('sha256:'.length)
+                    const blobPath = `blobs/sha256/${expectedDigest}`
+                    if (!archiveEntries.has(blobPath) || blobHashes.get(blobPath) !== expectedDigest) {
+                        throw createAppError('OCI_BLOB_DIGEST_INVALID')
+                    }
                 }
+            } else {
+                throw createAppError('ARTIFACT_MEDIA_TYPE_INVALID')
             }
-        } else {
-            throw createAppError('ARTIFACT_MEDIA_TYPE_INVALID')
+        } catch (error) {
+            throw toInspectionError(error, 'ARCHIVE_METADATA_INVALID')
         }
 
         return { entryCount, uncompressedBytes }
