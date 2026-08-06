@@ -66,8 +66,8 @@
 
 ### 최종
 
-- [ ] **6.1 전 구간 재검증** — 표준 `nginx` 이미지로 업로드→배포→`https://a.hyuns.uk` 200
-- [ ] **6.2 compose 스택 실측** — 2서비스 compose 업로드→스택 배포→두 도메인 확인
+- [x] **6.1 전 구간 재검증** — 표준 `nginx:alpine` 아카이브 26MB 업로드 → `Loaded image: nginx:alpine` → manifest → blue-green 배포 healthy → `https://a.hyuns.uk` 200(nginx 기본 페이지). 도중에 업로드 슬롯 결함 1건을 찾아 고쳤다 → [bug](./bug/2026-08-06-rejected-upload-session-blocks-slot.md)
+- [x] **6.2 compose 스택 실측** — 2서비스 compose 미리보기→등록(manifest 2건)→스택 배포. `depends_on` 순서(cache → web)대로 배포되고 내부 서비스는 라우트 없이 healthy, 공개 서비스는 `https://b.hyuns.uk` 200. **내부 서비스가 항상 실패하던 결함을 찾아 고쳤다** → [bug](./bug/2026-08-06-internal-service-observation-unreachable.md)
 - [ ] **6.3 문서 정합** — `llm.txt`·`UPLOAD-DEPLOYMENT.md`·`API-DATA-AUTH.md`·`SECURITY.md`·CI 예시
 - [ ] **6.4 정리** — 테스트 컨테이너·이미지·아티팩트·라우트·API key·임시 계정 제거
 

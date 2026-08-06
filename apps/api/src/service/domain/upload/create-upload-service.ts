@@ -18,6 +18,7 @@ import { createAppError } from '../../../lib/error'
 const DAY_MS = 24 * 60 * 60 * 1_000
 const MAX_CHUNK_BYTES = 67_108_864
 const SESSION_TTL_MS = 24 * 60 * 60 * 1_000
+const REJECTED_SESSION_STATUS = 'rejected'
 
 type UploadSessionRow = {
     createdAt: Date
@@ -316,9 +317,15 @@ export const createUploadService = ({
                 throw createAppError('UPLOAD_INCOMPLETE')
             }
             if ((await hashFile(session.temporaryPath)) !== session.expectedSha256) {
+                await db.updateSessionStatus(sessionId, REJECTED_SESSION_STATUS, now())
                 throw createAppError('ARTIFACT_DIGEST_MISMATCH')
             }
-            await artifactInspectionService.inspect(session.temporaryPath, session.mediaType, session.expectedSizeBytes)
+            try {
+                await artifactInspectionService.inspect(session.temporaryPath, session.mediaType, session.expectedSizeBytes)
+            } catch (error) {
+                await db.updateSessionStatus(sessionId, REJECTED_SESSION_STATUS, now())
+                throw error
+            }
 
             const createdAt = now()
             const id = randomUUID()
@@ -365,7 +372,7 @@ export const createUploadService = ({
             return session ? toUploadSession(session) : null
         },
         cleanupExpiredSessions: async () => {
-            const expired = await db.listExpiredSessions(now(), ['uploading', 'completed'])
+            const expired = await db.listExpiredSessions(now(), ['uploading', 'completed', REJECTED_SESSION_STATUS])
             let removed = 0
             for (const session of expired) {
                 await rm(session.temporaryPath, { force: true }).catch(() => undefined)

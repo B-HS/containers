@@ -788,7 +788,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] f. 권한 — manifest 라우트와 동일(read 전 역할 / write 는 `deployment:write` 또는 owner·admin 15분)
 - [x] g. 테스트 13건(변환기 3·서비스 6·라우트 4), `llm.txt`·`API-DATA-AUTH.md`·`UPLOAD-DEPLOYMENT.md` 갱신
 - [x] h. 검증 — typecheck 8/8, lint 0, test 467+24, format:check, build 8/8
-- [ ] i. 실측 — 2서비스 compose preview·저장. **미완. 6.2 에서 스택 배포와 함께 한다**
+- [x] i. 실측 — 6.2 에서 완료. preview→저장(manifest 2건)→스택 배포까지 실제로 돌렸다
 
 ## 작업: 3.3 스택 릴리스 오케스트레이션 (2026-08-06)
 
@@ -798,7 +798,7 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 - [x] d. 라우트 3개 (`POST /deployment-stacks/:stackId/releases`, `GET /deployment-stack-releases`(+`/:id`))
 - [x] e. 배선 — compose·create-app·server startup task
 - [x] f. 테스트 12건(서비스 8·라우트 4), 문서(llm.txt·API-DATA-AUTH·UPLOAD-DEPLOYMENT·ADR 0042)
-- [ ] g. 실측 — 2서비스 스택 배포와 실패 시 역순 롤백. **6.2 에서 한다**
+- [x] g. 실측 — 2서비스 스택 배포 healthy 확인. 첫 시도에서 내부 서비스 관찰 실패를 잡아 고쳤고, 그 실패가 스택을 `rolled-back` 으로 수렴시키는 것도 함께 확인했다
 
 ### 완료 판정
 

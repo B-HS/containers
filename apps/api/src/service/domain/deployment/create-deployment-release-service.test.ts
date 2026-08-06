@@ -24,12 +24,14 @@ const createTestContext = async ({
     containerLogStderr = 'nginx: [emerg] mkdir("/var/cache/nginx") failed (30: Read-only file system)',
     health = true,
     manifestSecrets = [],
+    published = true,
     resolvedEnvironment = [],
     routeProbes = [true, true],
 }: {
     containerLogStderr?: string
     health?: boolean
     manifestSecrets?: Array<{ environmentKey: string; reference: string }>
+    published?: boolean
     resolvedEnvironment?: string[]
     routeProbes?: boolean[]
 } = {}) => {
@@ -73,10 +75,11 @@ const createTestContext = async ({
         internalPort: 3000,
         name: 'sample-app',
         rollout: { observationSeconds: 10, rollbackRetentionSeconds: 60 },
-        route: { hostname: 'sample.example.com' },
+        route: published ? { hostname: 'sample.example.com' } : null,
         secrets: manifestSecrets,
         version: '1.0.0',
     })
+    const attachedNetworks = new Set<string>(['containers_probe'])
     const operations: string[] = []
     const createdEnvironments: string[][] = []
     const logTails: number[] = []
@@ -121,16 +124,19 @@ const createTestContext = async ({
         engineAgentClient: {
             connectContainerNetwork: async (_containerId, input) => {
                 const attachment = containerNetworkAttachmentSchema.parse(input)
+                attachedNetworks.add(attachment.network)
                 operations.push(attachment.network === 'containers_probe' ? 'connect-probe' : 'connect-edge')
                 return { operation: 'connect-network', targetId: 'new-container-id' }
             },
             createContainer: async (input) => {
+                attachedNetworks.add('containers_probe')
                 operations.push('create')
                 createdEnvironments.push(containerCreateRequestSchema.parse(input).environment)
                 return { operation: 'create-container', targetId: 'new-container-id' }
             },
             disconnectContainerNetwork: async (_containerId, input) => {
                 const attachment = containerNetworkAttachmentSchema.parse(input)
+                attachedNetworks.delete(attachment.network)
                 operations.push(attachment.network === 'containers_probe' ? 'disconnect-probe' : 'disconnect-network')
                 return { operation: 'disconnect-network', targetId: 'new-container-id' }
             },
@@ -144,7 +150,15 @@ const createTestContext = async ({
                 logTails.push(containerLogRequestSchema.parse(input).tail)
                 return containerLogs
             },
-            probeContainer: async () => ({ error: health ? null : 'HTTP_503', healthy: health, latencyMs: 1, statusCode: health ? 200 : 503 }),
+            probeContainer: async () => {
+                const reachable = attachedNetworks.has('containers_probe')
+                return {
+                    error: health && reachable ? null : 'HTTP_503',
+                    healthy: health && reachable,
+                    latencyMs: 1,
+                    statusCode: health && reachable ? 200 : 503,
+                }
+            },
         },
         nginxProxyRouteService: {
             list: async () => [],
@@ -211,6 +225,17 @@ describe('blue-green deployment release', () => {
         expect(result.status).toBe('healthy')
         expect(result.containerId).toBe('new-container-id')
         expect(operations).toEqual(['create', 'connect-edge', 'disconnect-probe', 'switch-route'])
+        sqlite.close()
+    })
+
+    test('내부 서비스는 관찰까지 probe 네트워크를 유지하고 성공 후에 분리합니다', async () => {
+        const { actorId, manifest, operations, releaseService, sqlite } = await createTestContext({ published: false })
+        const release = await releaseService.create(actorId, manifest.id)
+        const result = await releaseService.run(release.id)
+
+        expect(result.status).toBe('healthy')
+        expect(result.nginxRouteId).toBeNull()
+        expect(operations).toEqual(['create', 'connect-edge', 'disconnect-probe'])
         sqlite.close()
     })
 

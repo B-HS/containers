@@ -492,7 +492,9 @@ export const createDeploymentReleaseService = ({
                 }
 
                 await engineAgentClient.connectContainerNetwork(containerId, { network: manifest.network })
-                await engineAgentClient.disconnectContainerNetwork(containerId, { network: probeNetwork })
+                if (isPublished(manifest)) {
+                    await engineAgentClient.disconnectContainerNetwork(containerId, { network: probeNetwork })
+                }
                 await update(id, { status: 'switching' })
                 if (isPublished(manifest)) {
                     const switched = await nginxProxyRouteService.upsert(routeInput(manifest, release.containerName), { managedBy: manifest.id })
@@ -539,6 +541,7 @@ export const createDeploymentReleaseService = ({
                     if (!finalProbe.healthy) {
                         throw createAppError('DEPLOYMENT_OBSERVATION_FAILED')
                     }
+                    await engineAgentClient.disconnectContainerNetwork(containerId, { network: probeNetwork })
                 }
                 const healthyRelease = await update(id, { activatedAt: now(), finishedAt: now(), status: 'healthy' })
                 if (previous?.containerId) {

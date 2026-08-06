@@ -8,6 +8,7 @@ import { ARTIFACT_MEDIA_TYPE } from '@containers/contracts/upload'
 import { createControlDatabase } from '@containers/db-schema/database'
 import { artifact, deployment, uploadSession, user } from '@containers/db-schema/schema'
 import { buildUploadServiceDb } from '../../../compose/compose-upload'
+import { createAppError } from '../../../lib/error'
 import { toStreamChunks } from '../../../lib/stream-chunks'
 import { createUploadService } from './create-upload-service'
 
@@ -21,8 +22,9 @@ afterEach(async () => {
 
 const createTestService = async ({
     initialAvailableBytes = 1_000_000,
+    inspectionFailure,
     totalQuotaBytes = 10_000_000,
-}: { initialAvailableBytes?: number; totalQuotaBytes?: number } = {}) => {
+}: { initialAvailableBytes?: number; inspectionFailure?: string; totalQuotaBytes?: number } = {}) => {
     const directory = await mkdtemp(join(tmpdir(), 'containers-upload-'))
     temporaryDirectories.push(directory)
     const database = createControlDatabase({
@@ -41,7 +43,14 @@ const createTestService = async ({
     })
     let availableBytes = initialAvailableBytes
     const service = createUploadService({
-        artifactInspectionService: { inspect: async () => ({ entryCount: 3, uncompressedBytes: 20 }) },
+        artifactInspectionService: {
+            inspect: async () => {
+                if (inspectionFailure !== undefined) {
+                    throw createAppError(inspectionFailure)
+                }
+                return { entryCount: 3, uncompressedBytes: 20 }
+            },
+        },
         artifactRetentionDays: RETENTION_DAYS,
         artifactRetentionMinimumCount: RETENTION_MINIMUM_COUNT,
         artifactRoot: join(directory, 'artifacts'),
@@ -225,6 +234,27 @@ describe('업로드 서비스', () => {
         await service.createSession(actorId, 'upload-test-0004', input)
 
         await expect(service.createSession(actorId, 'upload-test-0005', input)).rejects.toThrow('UPLOAD_CONCURRENCY_LIMIT')
+        sqlite.close()
+    })
+
+    test('검사에 실패한 session 은 활성 슬롯을 붙잡지 않습니다', async () => {
+        const { actorId, db, service, sqlite } = await createTestService({ inspectionFailure: 'ARCHIVE_INVALID' })
+        const bytes = new TextEncoder().encode('archive')
+        const input = {
+            expectedSha256: digest(bytes),
+            expectedSizeBytes: bytes.byteLength,
+            fileName: 'image.tar',
+            mediaType: ARTIFACT_MEDIA_TYPE.DOCKER_IMAGE_ARCHIVE,
+        }
+        const session = await service.createSession(actorId, 'upload-rejected-0001', input)
+        await service.appendChunk(actorId, session.id, 0, digest(bytes), bytes)
+
+        await expect(service.finalizeSession(actorId, session.id)).rejects.toThrow('ARCHIVE_INVALID')
+        const [record] = await db.select().from(uploadSession).where(eq(uploadSession.id, session.id))
+
+        expect(record?.status).toBe('rejected')
+        await service.createSession(actorId, 'upload-rejected-0002', input)
+        await service.createSession(actorId, 'upload-rejected-0003', input)
         sqlite.close()
     })
 
