@@ -20,7 +20,7 @@ type NginxRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     nginxService: NginxService
-    nginxProxyRouteService: Pick<NginxProxyRouteService, 'create' | 'list' | 'remove'>
+    nginxProxyRouteService: Pick<NginxProxyRouteService, 'create' | 'list' | 'remove' | 'update'>
 }
 
 const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
@@ -112,6 +112,62 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                     throw error
                 }
             }),
+        )
+        .put(
+            '/nginx/routes/:id',
+            describeRoute({
+                responses: { 200: { description: 'Nginx 프록시 라우트 수정' } },
+                summary: 'Nginx 프록시 라우트 수정',
+                tags: ['Nginx'],
+            }),
+            validator('param', nginxRouteIdParamSchema),
+            validator('json', nginxProxyRouteInputSchema),
+            withErrorHandling(
+                async (
+                    context: ApiRouteContext<{ param: z.infer<typeof nginxRouteIdParamSchema>; json: z.infer<typeof nginxProxyRouteInputSchema> }>,
+                ) => {
+                    const targetId = context.req.valid('param').id
+                    const input = context.req.valid('json')
+                    const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                    const actorId = session.user.id
+                    await auditService.record({
+                        actorId,
+                        operation: 'nginx.route.update',
+                        requestId: context.get('requestId'),
+                        result: 'attempt',
+                        sourceIp: getSourceIp(context.req.raw.headers),
+                        targetId,
+                        targetType: 'nginx-route',
+                    })
+                    try {
+                        const result = await nginxProxyRouteService.update(targetId, input)
+                        await auditService.record({
+                            actorId,
+                            detail: { configSha256: result.configSha256, enabled: result.route.enabled, hostname: result.route.hostname },
+                            operation: 'nginx.route.update',
+                            requestId: context.get('requestId'),
+                            result: 'success',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId,
+                            targetType: 'nginx-route',
+                        })
+                        return context.json(successResponse(result), 200)
+                    } catch (error) {
+                        const code = error instanceof Error ? error.message : 'NGINX_ROUTE_UPDATE_FAILED'
+                        await auditService.record({
+                            actorId,
+                            detail: { code },
+                            operation: 'nginx.route.update',
+                            requestId: context.get('requestId'),
+                            result: 'failure',
+                            sourceIp: getSourceIp(context.req.raw.headers),
+                            targetId,
+                            targetType: 'nginx-route',
+                        })
+                        throw error
+                    }
+                },
+            ),
         )
         .delete(
             '/nginx/routes/:id',

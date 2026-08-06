@@ -228,6 +228,45 @@ describe('Nginx proxy route service 지속성 순서', () => {
     })
 })
 
+describe('Nginx proxy route service 수정', () => {
+    test('id 로 hostname 과 사용 여부를 바꾼다', async () => {
+        const { rows, service } = createHarness()
+        const created = await service.create(input())
+
+        const updated = await service.update(created.route.id, input({ enabled: false, hostname: 'moved.example.com', targetPort: 9000 }))
+
+        expect(updated.route.id).toBe(created.route.id)
+        expect(updated.route.hostname).toBe('moved.example.com')
+        expect(updated.route.enabled).toBe(false)
+        expect(updated.route.createdAt).toBe(created.route.createdAt)
+        expect(rows).toHaveLength(1)
+        expect(rows[0]?.targetPort).toBe(9000)
+    })
+
+    test('다른 라우트와 같은 hostname·path 로는 바꿀 수 없다', async () => {
+        const { service } = createHarness()
+        const first = await service.create(input())
+        await service.create(input({ hostname: 'other.example.com' }))
+
+        await expect(service.update(first.route.id, input({ hostname: 'other.example.com' }))).rejects.toThrow('NGINX_ROUTE_COLLISION')
+    })
+
+    test('없는 라우트는 거부한다', async () => {
+        const { service } = createHarness()
+
+        await expect(service.update('11111111-1111-4111-8111-111111111111', input())).rejects.toThrow('NGINX_ROUTE_NOT_FOUND')
+    })
+
+    test('적용이 실패하면 이전 값을 복원한다', async () => {
+        const { failure, rows, service } = createHarness()
+        const created = await service.create(input())
+        failure.apply = true
+
+        await expect(service.update(created.route.id, input({ targetPort: 9000 }))).rejects.toThrow('apply failed')
+        expect(rows[0]?.targetPort).toBe(3000)
+    })
+})
+
 describe('Nginx proxy route service reconcile', () => {
     test('config가 이미 일치하면 적용하지 않습니다', async () => {
         const { calls, service } = createHarness()

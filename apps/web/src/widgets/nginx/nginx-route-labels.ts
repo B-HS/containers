@@ -9,18 +9,25 @@ export type NginxRouteLabels = {
     create: string
     created: string
     empty: string
+    enabled: string
     emptyDescription: string
     failed: string
     hostname: string
     invalidValue: string
     path: string
+    pathMode: string
+    pathModeExact: string
+    pathModePrefix: string
     port: string
     protocol: string
     remove: string
     removed: string
     removeImpact: string
     routeCreate: string
+    routeEdit: string
+    save: string
     stripPrefix: string
+    updated: string
     timeout: string
     title: string
 }

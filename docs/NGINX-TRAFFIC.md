@@ -240,3 +240,13 @@ p50·p95·p99를 정확히 재계산할 수 있는 histogram bucket을 저장한
 - client IP: 원본을 raw row에 14일 저장, 일반 UI mask, 제한된 상세 열람
 
 보존 purge 전 disk watermark를 감시하고 hard watermark에서는 업로드·배포를 차단하되 프록시와 log append를 우선한다. 원본 IP는 rollup, Discord webhook, 일반 export에 복제하지 않으며 열람·보안 export를 별도로 감사한다.
+
+## 라우트 수정과 사용 여부 (2026-08-06)
+
+`PUT /api/nginx/routes/:id` 로 등록된 라우트를 고친다. 기존 `upsert` 는 hostname+path+pathMode 로 대상을 찾기 때문에 **hostname 을 바꾸면 새 라우트가 생겼다** — 그래서 id 로 찾는 `update` 를 따로 뒀다.
+
+- 같은 hostname·path·pathMode 를 쓰는 다른 라우트가 있으면 `NGINX_ROUTE_COLLISION` 이다. 자기 자신은 충돌로 보지 않는다.
+- 보호 hostname·보호 대상·대상 도달 가능성 검사는 생성과 같다.
+- 적용에 실패하면 DB 값을 이전 상태로 되돌린다(생성·삭제와 같은 보상 규칙).
+- `enabled: false` 인 라우트는 DB 에 남지만 렌더된 nginx 설정에서 빠진다. 화면의 사용 스위치가 이 필드를 토글한다.
+- `pathMode`(prefix·exact)도 이제 화면에서 고른다. 이전에는 폼이 `prefix` 를 하드코딩했다.

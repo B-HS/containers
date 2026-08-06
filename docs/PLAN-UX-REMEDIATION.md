@@ -52,7 +52,7 @@
 
 - [x] **4.1 에러 파싱 통일** — `fix(web): 서버가 준 실패 사유를 화면에 그대로 전달한다`. 검증 issue 배열·compose 거부 상세를 읽고, 에러 코드를 Error 에 실어 보존한다. 아티팩트 검사 실패도 안정적인 코드로 정규화했다. 실측: compose 거부 토스트가 `app: LOG_LEVEL 에 값이 없다…` 처럼 서비스·키를 그대로 보여준다
 - [x] **4.2 단계 간 CTA 링크** — `feat(web): 배포 흐름 단계 사이를 잇는 이동 경로를 만든다`. 개요 온보딩 카드, 이미지 행 → `/containers/new?image=`, 컨테이너 생성 후 포트가 있으면 `/nginx/routes?container=&port=`. 실측: 프리필 3곳 확인. **아티팩트 load 후 태그·CTA 는 아티팩트가 없어 미실측 — 6.1 에서 확인한다**
-- [ ] **4.3 라우트 수정·토글** — `feat(nginx): 라우트 수정과 사용 여부 전환을 지원한다`
+- [x] **4.3 라우트 수정·토글** — `feat(nginx): 라우트 수정과 사용 여부 전환을 지원한다`. `PUT /api/nginx/routes/:id` 신설(id 기준 수정, 충돌 검사, 실패 시 이전 값 복원), 폼에 `pathMode`·`enabled` 노출, 표에 사용 스위치와 수정 버튼. 실측: PUT 으로 hostname·path·pathMode·protocol·timeout 을 바꿔도 id·createdAt 유지, `enabled=false` 면 렌더된 nginx 설정에서 빠지고 다시 켜면 돌아온다
 - [ ] **4.4 라우트 소유권 표시** — `feat(nginx): 배포가 관리하는 라우트를 구분한다`
 - [ ] **4.5 job 진행 가시화** — `feat(web): 실행 중 작업의 진행과 이력을 보여준다`
 - [ ] **4.6 업로드 재개·취소** — `feat(web): 대용량 업로드를 재개하고 취소할 수 있게 한다`

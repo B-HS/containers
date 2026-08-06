@@ -26,30 +26,50 @@ type NginxRouteCreateFormProps = {
     busy: boolean
     containers: RouteTargetCandidate[]
     defaultTarget: { container: string; port: string }
+    editing: NginxRouteInput | null
     labels: {
         bodySize: string
+        cancel: string
         container: string
         containerUnreachable: string
         create: string
+        enabled: string
         hostname: string
         invalidValue: string
         path: string
+        pathMode: string
+        pathModeExact: string
+        pathModePrefix: string
         port: string
         protocol: string
         routeCreate: string
+        routeEdit: string
+        save: string
         stripPrefix: string
         timeout: string
     }
+    onCancelEdit: () => void
     onCreate: (input: NginxRouteInput) => void
     routableNetworks: string[]
 }
 
-export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, containers, defaultTarget, labels, onCreate, routableNetworks }) => {
+export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({
+    busy,
+    containers,
+    defaultTarget,
+    editing,
+    labels,
+    onCancelEdit,
+    onCreate,
+    routableNetworks,
+}) => {
     const [errors, setErrors] = useState<Record<string, string>>({})
-    const [protocol, setProtocol] = useState<NginxRouteInput['protocol']>('http')
-    const [stripPrefix, setStripPrefix] = useState(false)
-    const [targetContainer, setTargetContainer] = useState(defaultTarget.container)
-    const [targetPort, setTargetPort] = useState(defaultTarget.port)
+    const [enabled, setEnabled] = useState(editing?.enabled ?? true)
+    const [pathMode, setPathMode] = useState<NginxRouteInput['pathMode']>(editing?.pathMode ?? 'prefix')
+    const [protocol, setProtocol] = useState<NginxRouteInput['protocol']>(editing?.protocol ?? 'http')
+    const [stripPrefix, setStripPrefix] = useState(editing?.stripPrefix ?? false)
+    const [targetContainer, setTargetContainer] = useState(editing?.targetContainer ?? defaultTarget.container)
+    const [targetPort, setTargetPort] = useState(editing ? String(editing.targetPort) : defaultTarget.port)
 
     const isReachable = (candidate: RouteTargetCandidate) =>
         candidate.state !== 'running' || candidate.networks.some((network) => routableNetworks.includes(network))
@@ -65,10 +85,10 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
     const submit = (form: FormData) => {
         const result = nginxProxyRouteInputSchema.safeParse({
             bodySizeMegabytes: Number(form.get('bodySizeMegabytes')),
-            enabled: true,
+            enabled,
             hostname: String(form.get('hostname') ?? ''),
             path: String(form.get('path') ?? '/'),
-            pathMode: 'prefix',
+            pathMode,
             protocol,
             stripPrefix,
             targetContainer,
@@ -100,7 +120,7 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
                 submit(new FormData(event.currentTarget))
             }}
         >
-            <p className="text-sm font-medium text-text-strong">{labels.routeCreate}</p>
+            <p className="text-sm font-medium text-text-strong">{editing ? labels.routeEdit : labels.routeCreate}</p>
             <div className="grid gap-4 lg:grid-cols-4">
                 <div className="grid min-w-0 gap-2 lg:col-span-2">
                     <Label htmlFor="route-hostname">{labels.hostname}</Label>
@@ -108,6 +128,7 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
                         id="route-hostname"
                         name="hostname"
                         placeholder="app.example.com"
+                        defaultValue={editing?.hostname ?? ''}
                         required
                         aria-invalid={errors.hostname !== undefined}
                         aria-describedby={errors.hostname === undefined ? undefined : 'route-hostname-error'}
@@ -123,7 +144,7 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
                     <Input
                         id="route-path"
                         name="path"
-                        defaultValue="/"
+                        defaultValue={editing?.path ?? '/'}
                         required
                         aria-invalid={errors.path !== undefined}
                         aria-describedby={errors.path === undefined ? undefined : 'route-path-error'}
@@ -197,6 +218,18 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
                     </Select>
                 </div>
                 <div className="grid min-w-0 gap-2">
+                    <Label htmlFor="route-path-mode">{labels.pathMode}</Label>
+                    <Select value={pathMode} onValueChange={(value) => setPathMode(value === 'exact' ? 'exact' : 'prefix')}>
+                        <SelectTrigger id="route-path-mode" className="w-full">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="prefix">{labels.pathModePrefix}</SelectItem>
+                            <SelectItem value="exact">{labels.pathModeExact}</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="grid min-w-0 gap-2">
                     <Label htmlFor="route-timeout">{labels.timeout}</Label>
                     <Input
                         id="route-timeout"
@@ -204,7 +237,7 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
                         type="number"
                         min="1"
                         max="3600"
-                        defaultValue={DEFAULT_TIMEOUT_SECONDS}
+                        defaultValue={editing?.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS}
                         required
                         aria-invalid={errors.timeoutSeconds !== undefined}
                     />
@@ -217,20 +250,33 @@ export const NginxRouteCreateForm: FC<NginxRouteCreateFormProps> = ({ busy, cont
                         type="number"
                         min="1"
                         max="1024"
-                        defaultValue={DEFAULT_BODY_SIZE_MEGABYTES}
+                        defaultValue={editing?.bodySizeMegabytes ?? DEFAULT_BODY_SIZE_MEGABYTES}
                         required
                         aria-invalid={errors.bodySizeMegabytes !== undefined}
                     />
                 </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-4">
-                <Label htmlFor="route-strip-prefix" className="text-text-muted">
-                    <Switch id="route-strip-prefix" checked={stripPrefix} onCheckedChange={setStripPrefix} />
-                    {labels.stripPrefix}
-                </Label>
-                <Button type="submit" size="sm" disabled={busy}>
-                    {labels.create}
-                </Button>
+                <div className="flex flex-wrap items-center gap-4">
+                    <Label htmlFor="route-strip-prefix" className="text-text-muted">
+                        <Switch id="route-strip-prefix" checked={stripPrefix} onCheckedChange={setStripPrefix} />
+                        {labels.stripPrefix}
+                    </Label>
+                    <Label htmlFor="route-enabled" className="text-text-muted">
+                        <Switch id="route-enabled" checked={enabled} onCheckedChange={setEnabled} />
+                        {labels.enabled}
+                    </Label>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    {editing ? (
+                        <Button type="button" size="sm" variant="outline" onClick={onCancelEdit}>
+                            {labels.cancel}
+                        </Button>
+                    ) : null}
+                    <Button type="submit" size="sm" disabled={busy}>
+                        {editing ? labels.save : labels.create}
+                    </Button>
+                </div>
             </div>
         </form>
     )

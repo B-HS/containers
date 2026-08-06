@@ -293,6 +293,9 @@ const createAppTestDependencies = () => ({
         remove: async () => {
             throw createAppError('테스트에서 호출되지 않습니다.')
         },
+        update: async () => {
+            throw createAppError('테스트에서 호출되지 않습니다.')
+        },
     },
     maintenanceService: {
         disable: () => undefined,

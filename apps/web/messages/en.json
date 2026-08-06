@@ -790,7 +790,13 @@
         "onboardingContainer": "Create a container",
         "onboardingRoute": "Connect a domain route",
         "onboardingStack": "Register a compose stack",
-        "onboardingDone": "Done"
+        "onboardingDone": "Done",
+        "nginxRouteEnabled": "Enabled",
+        "nginxRouteEdit": "Edit",
+        "nginxRouteUpdated": "The route was updated.",
+        "nginxRoutePathMode": "Path matching",
+        "nginxRoutePathModePrefix": "prefix (includes sub-paths)",
+        "nginxRoutePathModeExact": "exact (exact match only)"
     },
     "Nav": {
         "brand": "Containers",

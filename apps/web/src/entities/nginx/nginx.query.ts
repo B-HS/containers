@@ -60,6 +60,21 @@ export const useCreateNginxRoute = () => {
     })
 }
 
+export const useUpdateNginxRoute = () => {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: (input: { routeId: string; route: z.infer<typeof nginxProxyRouteInputSchema> }) =>
+            clientFetchData<unknown>(`/api/nginx/routes/${encodeURIComponent(input.routeId)}`, {
+                body: JSON.stringify(input.route),
+                headers: { 'content-type': 'application/json' },
+                method: 'PUT',
+            }),
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEY.NGINX.ALL })
+        },
+    })
+}
+
 export const useRemoveNginxRoute = () => {
     const queryClient = useQueryClient()
     return useMutation({

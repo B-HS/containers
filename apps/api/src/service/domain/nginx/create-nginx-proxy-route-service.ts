@@ -248,6 +248,42 @@ export const createNginxProxyRouteService = ({
                 )
                 return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
             }),
+        update: async (id: string, input: unknown) =>
+            serialize(async () => {
+                const payload = nginxProxyRouteInputSchema.parse(input)
+                if (protectedHostnames().includes(payload.hostname)) {
+                    throw createAppError('NGINX_ROUTE_PROTECTED_HOSTNAME')
+                }
+                assertProtectedTarget(payload)
+                await assertReachableTarget(payload)
+                const current = await list()
+                const existing = current.find((candidate) => candidate.id === id)
+                if (!existing) {
+                    throw createAppError('NGINX_ROUTE_NOT_FOUND')
+                }
+                const collision = current.find(
+                    (candidate) =>
+                        candidate.id !== id &&
+                        candidate.hostname === payload.hostname &&
+                        candidate.path === payload.path &&
+                        candidate.pathMode === payload.pathMode,
+                )
+                if (collision !== undefined) {
+                    throw createAppError('NGINX_ROUTE_COLLISION')
+                }
+                const timestamp = now()
+                const route = nginxProxyRouteListSchema.element.parse({
+                    ...payload,
+                    createdAt: existing.createdAt,
+                    id: existing.id,
+                    updatedAt: timestamp.toISOString(),
+                })
+                await db.update(id, { ...payload, updatedAt: timestamp })
+                const result = await applyWithCompensation([...current.filter((candidate) => candidate.id !== id), route], () =>
+                    db.update(id, toUpdateRecord(existing)),
+                )
+                return nginxProxyRouteMutationResultSchema.parse({ configSha256: result.sha256, route })
+            }),
         upsert: async (input: unknown) =>
             serialize(async () => {
                 const payload = nginxProxyRouteInputSchema.parse(input)

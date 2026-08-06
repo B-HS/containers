@@ -91,7 +91,7 @@ type AppDependencies = {
     panelSettingService: Pick<PanelSettingService, 'get' | 'update'>
     trustedProxyService: Pick<TrustedProxyService, 'approve' | 'getState' | 'revoke'>
     maintenanceService: Pick<MaintenanceService, 'disable' | 'enable' | 'enter' | 'getStatus' | 'isEnabled' | 'leave'>
-    nginxProxyRouteService: Pick<NginxProxyRouteService, 'create' | 'list' | 'remove'>
+    nginxProxyRouteService: Pick<NginxProxyRouteService, 'create' | 'list' | 'remove' | 'update'>
     controlPlaneStatusService: Pick<ControlPlaneStatusService, 'getStatus'>
     readinessService: Pick<ReadinessService, 'getReadiness'>
     notificationDeliveryService: Pick<NotificationDeliveryService, 'deliverTest'>

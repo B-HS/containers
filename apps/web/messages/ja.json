@@ -790,7 +790,13 @@
         "onboardingContainer": "コンテナを作成",
         "onboardingRoute": "ドメインルートを接続",
         "onboardingStack": "compose スタックを登録",
-        "onboardingDone": "完了"
+        "onboardingDone": "完了",
+        "nginxRouteEnabled": "有効",
+        "nginxRouteEdit": "編集",
+        "nginxRouteUpdated": "ルートを更新しました。",
+        "nginxRoutePathMode": "パスの一致方法",
+        "nginxRoutePathModePrefix": "prefix（下位パスを含む）",
+        "nginxRoutePathModeExact": "exact（完全一致のみ）"
     },
     "Nav": {
         "brand": "Containers",

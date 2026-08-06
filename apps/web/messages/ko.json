@@ -790,7 +790,13 @@
         "onboardingContainer": "컨테이너 만들기",
         "onboardingRoute": "도메인 라우트 연결",
         "onboardingStack": "compose 스택 등록",
-        "onboardingDone": "완료"
+        "onboardingDone": "완료",
+        "nginxRouteEnabled": "사용",
+        "nginxRouteEdit": "수정",
+        "nginxRouteUpdated": "라우트를 수정했습니다.",
+        "nginxRoutePathMode": "경로 매칭",
+        "nginxRoutePathModePrefix": "prefix (하위 경로 포함)",
+        "nginxRoutePathModeExact": "exact (정확히 일치)"
     },
     "Nav": {
         "brand": "Containers",
