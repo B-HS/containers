@@ -853,11 +853,11 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 
 ### B. headless API 모드
 
-- [ ] B1. API key 발급 후 전 구간 E2E 실측 (업로드→load→manifest→release→rollback), 세션 없이 키만으로
-- [ ] B2. compose 스택 배포 E2E (키만으로)
-- [ ] B3. 배포 샘플 3종 — GitHub Actions / Gitea Actions / GitLab CI. 실측한 호출 순서와 판정 기준을 반영
+- [x] B1. API key 전 구간 E2E — 최소 scope 8종·만료 1일 키로 업로드→load→manifest→release healthy, 재배포(1.0.1), 롤백(1.0.1 중지·1.0.0 복귀)까지 세션 없이 완주. 실측 중 재배포가 항상 409 로 막히던 결함을 찾아 고쳤다(같은 내용 artifact 재사용)
+- [x] B2. compose 스택 E2E — `depends_on` 순서(cache→web)대로 healthy, 키만으로
+- [x] B3. 배포 샘플 — `containers-deploy.sh` 한 곳에 호출 순서를 모으고 GitHub·Gitea·GitLab 3종이 이를 부른다. 스텁 서버 테스트 7건이 호출 순서·실패 처리·artifact 재사용을 강제한다
 
 ### C. 기능·운영
 
-- [ ] C1. backup·restore E2E
-- [ ] C2. 남은 운영 결함 정리와 문서 반영
+- [x] C1. backup·restore E2E — 백업이 전혀 되지 않던 critical 결함을 찾아 고쳤다(계정 초기화가 외래 키를 끈 채 사용자를 지워 고아 참조 107건). 수정·복구 후 백업 생성 200, 복원 job succeeded, 복원 뒤 `foreign_key_check` 0건·`integrity_check` ok·readyz 6/6
+- [x] C2. 실측 자원 정리 — 스택 1건·컨테이너 4개·manifest(참조 없는 것)·artifact 1건 삭제, API key 폐기, 로컬 토큰 파일 삭제. 릴리스 이력이 참조하는 manifest 2건은 409 로 남는다(의도)

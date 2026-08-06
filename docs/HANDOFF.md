@@ -2,7 +2,7 @@
 
 - 대응 커밋: `HEAD`(`feat(deployment): 배포 자산을 회수할 수 있게 한다`) 기준 (`dev`)
 - 최종 갱신일: 2026-08-06
-- 검증 상태: typecheck 8/8 · lint 0 · **test 495**(+ web 28) · build 8/8 · `audit:runtime` 5/5 · 스택 5개 healthy
+- 검증 상태: typecheck 8/8 · lint 0 · **test 527**(+ web 28) · build 8/8 · format · `audit:runtime` 5/5 · 스택 5개 healthy · `foreign_key_check` 0
 - **이 문서가 세션 인수인계 단일 진입점이다.** 다른 문서보다 먼저 읽는다.
 - **현재 상태와 검증 수치는 이 문서가 단독으로 소유한다.** `RESUME-CHECKLIST.md` 는 절차·불변식, `HANDOFF-STATUS.md` 는 구현 범위·한계(시점 기록)를 소유한다. 같은 수치를 두 곳에 적지 않는다.
 - **진행 중 작업의 실행 계획 정본은 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 다.**
@@ -16,6 +16,7 @@
 - **최종 목표**: 실운영 가능 + GitHub Actions 가 API key 만으로 배포를 완주.
 - **현재 마일스톤**: 패널 UX 감사 후속 처리(원본 64건 → 검증 44건 → 원인 12개) + 라이브 실측 결함 + compose 스택 본격 지원.
 - **직전 작업(2026-08-06)**: 2.2 → 1.3 → 3.1 → **3.2 → 3.3 → 3.4 → 4.1~~4.7 → 5.1~~5.3 → 6.1~6.4 완료.** [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 체크리스트를 전부 닫았다. 중간에 사용자 지시로 실운영 전 전체 초기화를 했고, 그 뒤 실측으로 결함 4건을 더 찾아 3건 수정·1건 기록했다.
+- **2026-08-06 후반**: 공개 주소(`https://hyuns.uk`) 복구 후 보안 강화(계정 잠금·API key 만료 필수·세션 12시간·감사 해시 체인·CSP nonce)와 headless API 완주(업로드→배포→롤백·compose 스택·backup/restore)를 마쳤다. 라이브 실측이 결함 3건을 잡았다 — 감사 체인 해시 정밀도, 재배포 409, **백업 전면 불가(critical)**. 전부 수정·검증했다.
 - **다음 한 줄**: **계획서를 전부 닫았다.** 남은 결정 2건 중 아티팩트·manifest·스택 삭제는 A 안(이력 유지 + 파일 회수)으로 구현·실측을 마쳤다. 남은 것은 **실운영 owner 계정 확보 하나**이며 비밀번호가 걸려 사용자 작업이다(절차는 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) "사용자 작업으로 남는 것"). 그 뒤 새 마일스톤을 잡는다.
 
 ## 3. 완료 / 진행 중 / 미착수
