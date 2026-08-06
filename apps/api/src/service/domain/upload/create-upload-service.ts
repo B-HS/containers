@@ -39,7 +39,7 @@ type UploadSessionRow = {
 
 type ArtifactRow = {
     createdAt: Date
-    createdBy: string
+    createdBy: string | null
     fileName: string
     id: string
     mediaType: string

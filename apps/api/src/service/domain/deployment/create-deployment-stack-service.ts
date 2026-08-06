@@ -20,7 +20,7 @@ import {
 
 type StackRow = {
     createdAt: Date
-    createdBy: string
+    createdBy: string | null
     id: string
     manifestIdsJson: string
     name: string

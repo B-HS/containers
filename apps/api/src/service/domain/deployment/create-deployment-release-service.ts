@@ -22,7 +22,7 @@ type ReleaseRow = {
     containerId: string | null
     containerName: string
     createdAt: Date
-    createdBy: string
+    createdBy: string | null
     failureCode: string | null
     finishedAt: Date | null
     id: string

@@ -14,7 +14,7 @@ type SecretRow = {
     authenticationTag: string
     ciphertext: string
     createdAt: Date
-    createdBy: string
+    createdBy: string | null
     id: string
     initializationVector: string
     keyVersion: number

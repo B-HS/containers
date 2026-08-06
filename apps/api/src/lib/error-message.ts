@@ -97,6 +97,7 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.DEPLOYMENT_STACK_PARSE_FAILED]: 'compose 파일을 해석할 수 없습니다.',
     [ERROR_CODE.DEPLOYMENT_STACK_PORT_MISSING]: 'compose 서비스의 컨테이너 포트를 알 수 없습니다.',
     [ERROR_CODE.DEPLOYMENT_STACK_REJECTED]: 'compose 파일에 허용하지 않는 설정이 있습니다.',
+    [ERROR_CODE.DEPLOYMENT_STACK_RELEASE_ACTOR_MISSING]: '스택 배포를 시작한 계정이 없어 실행할 수 없습니다.',
     [ERROR_CODE.DEPLOYMENT_STACK_RELEASE_IN_PROGRESS]: 'compose 스택 배포가 진행 중입니다.',
     [ERROR_CODE.DEPLOYMENT_STACK_RELEASE_NOT_FOUND]: 'compose 스택 배포를 찾을 수 없습니다.',
     [ERROR_CODE.DEPLOYMENT_STACK_SERVICES_MISSING]: 'compose 파일에 services 가 없습니다.',

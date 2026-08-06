@@ -25,7 +25,7 @@ type RecordedRequest = {
     path: string
 }
 
-const createStubServer = () => {
+const createStubServer = (existingArtifacts: { id: string; sha256: string; status: string }[] = []) => {
     const requests: RecordedRequest[] = []
     const server = Bun.serve({
         fetch: async (request) => {
@@ -36,6 +36,9 @@ const createStubServer = () => {
 
             const json = (data: unknown) => Response.json({ data, success: true })
 
+            if (url.pathname === '/api/artifacts' && request.method === 'GET') {
+                return json(existingArtifacts)
+            }
             if (url.pathname === '/api/uploads/sessions' && request.method === 'POST') {
                 return json({ id: 'session-1', receivedBytes: 0, status: 'uploading' })
             }
@@ -132,6 +135,7 @@ describe('containers-deploy.sh', () => {
         expect(result.exitCode).toBe(0)
         expect(result.stdout.trim()).toBe(RELEASE_ID)
         expect(requests.map((request) => `${request.method} ${request.path.split('?')[0]}`)).toEqual([
+            'GET /api/artifacts',
             'POST /api/uploads/sessions',
             'PUT /api/uploads/sessions/session-1/chunks',
             'POST /api/uploads/sessions/session-1/finalize',
@@ -147,7 +151,7 @@ describe('containers-deploy.sh', () => {
         expect(requests.every((request) => request.authorization === 'Bearer ctk_test')).toBe(true)
     })
 
-    test('업로드 세션은 아카이브 해시를 idempotency-key 로 쓰고 manifest 에 digest·version 을 주입한다', async () => {
+    test('업로드 세션은 이름·버전·해시를 idempotency-key 로 쓰고 manifest 에 digest·version 을 주입한다', async () => {
         const { requests, server } = createStubServer()
         const workspace = await createWorkspace()
         await runScript(['deploy'], {
@@ -170,6 +174,36 @@ describe('containers-deploy.sh', () => {
             mediaType: 'application/vnd.docker.image.rootfs.diff.tar',
         })
         expect(JSON.parse(manifest?.body ?? '{}')).toMatchObject({ imageDigest: IMAGE_DIGEST, name: 'probe', version: '9.9.9' })
+    })
+
+    test('이미 같은 내용의 artifact 가 있으면 업로드를 건너뛴다', async () => {
+        const workspace = await createWorkspace()
+        const archiveSha = new Bun.CryptoHasher('sha256').update(await Bun.file(workspace.archive).bytes()).digest('hex')
+        const { requests, server } = createStubServer([{ id: ARTIFACT_ID, sha256: archiveSha, status: 'ready' }])
+        const result = await runScript(['deploy'], {
+            API_BASE: server.url.origin,
+            CONTAINERS_API_KEY: 'ctk_test',
+            DEPLOY_NAME: 'probe',
+            DEPLOY_VERSION: '1.0.0',
+            IMAGE_ARCHIVE: workspace.archive,
+            IMAGE_DIGEST,
+            MANIFEST_FILE: workspace.manifestFile,
+            WORK_DIR: workspace.directory,
+        })
+        await server.stop(true)
+
+        expect(result.exitCode).toBe(0)
+        expect(requests.some((request) => request.path.includes('/chunks'))).toBe(false)
+        expect(requests.map((request) => `${request.method} ${request.path.split('?')[0]}`)).toEqual([
+            'GET /api/artifacts',
+            `POST /api/artifacts/${ARTIFACT_ID}/load`,
+            'GET /api/jobs/job-load',
+            'GET /api/images',
+            'POST /api/deployment-manifests',
+            `POST /api/deployment-manifests/${MANIFEST_ID}/releases`,
+            'GET /api/jobs/job-release',
+            `GET /api/deployment-releases/${RELEASE_ID}`,
+        ])
     })
 
     test('stack 은 미리보기 뒤에 등록하고 스택 배포가 healthy 인지 확인한다', async () => {

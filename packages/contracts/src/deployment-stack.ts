@@ -60,7 +60,7 @@ export const composeStackInputSchema = z.object({
 
 export const deploymentStackSchema = z.object({
     createdAt: z.iso.datetime(),
-    createdBy: z.string().min(1),
+    createdBy: z.string().min(1).nullable(),
     id: z.uuid(),
     manifestIds: z.array(z.uuid()),
     name: deploymentNameSchema,
@@ -87,7 +87,7 @@ export const deploymentStackReleaseStatusSchema = z.enum([
 
 export const deploymentStackReleaseSchema = z.object({
     createdAt: z.iso.datetime(),
-    createdBy: z.string().min(1),
+    createdBy: z.string().min(1).nullable(),
     failureCode: z.string().nullable(),
     finishedAt: z.iso.datetime().nullable(),
     id: z.uuid(),

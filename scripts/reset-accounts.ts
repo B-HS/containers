@@ -42,6 +42,7 @@ console.log(JSON.stringify(rows))
 const RESET_SCRIPT = `import { Database } from 'bun:sqlite'
 
 const database = new Database(process.env.CONTROL_DB_PATH ?? '')
+database.run('PRAGMA foreign_keys = ON')
 database.transaction(() => {
     database.run('delete from session')
     database.run('delete from account')
@@ -49,6 +50,10 @@ database.transaction(() => {
     database.run('delete from user')
     database.run('delete from invitation')
 })()
+const violations = database.query('pragma foreign_key_check').all()
+if (violations.length > 0) {
+    throw new Error(\`계정을 지운 뒤 참조 무결성이 깨졌다: \${violations.length}건\`)
+}
 console.log(JSON.stringify({ remaining: database.query('select count(*) as total from user').get() }))
 `
 

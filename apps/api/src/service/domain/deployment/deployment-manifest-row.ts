@@ -6,7 +6,7 @@ const RESERVED_NETWORKS = ['bridge', 'host', 'none']
 export type ManifestRow = {
     commandJson: string
     createdAt: Date
-    createdBy: string
+    createdBy: string | null
     entrypointJson: string
     environmentKeysJson: string
     healthcheckIntervalSeconds: number

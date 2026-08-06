@@ -25,6 +25,10 @@
 #   stack                     compose 미리보기 → 스택 등록 → 스택 배포 → healthy 확인
 #   rollback <releaseId>      지정한 release 를 이전 상태로 되돌린다
 #
+# idempotency-key 는 이름·버전·아카이브 해시를 합친 값이다. 같은 배포를 다시 돌리면 같은 세션을
+# 이어받고, 버전이 바뀌면 새 세션이 열린다. 아카이브 내용이 이미 ready artifact 로 있으면 업로드
+# 자체를 건너뛰고 그 artifact 를 재사용한다(GET /api/artifacts, artifact:read scope 가 필요하다).
+#
 # 성공 판정은 전부 durable job 이다. job status 는 queued|running|cancelling|succeeded|failed|cancelled
 # 이며 succeeded 만 성공이다. release job 은 자동 재시도가 없고, 실패하면 서버가 이전 라우트로 돌린다.
 set -euo pipefail
@@ -134,9 +138,16 @@ image_digest_of() {
 
 upload_artifact() {
     local archive="$1"
-    local sha size session session_id session_status received offset skip chunk chunk_dir chunk_size digest finalize job_id result
+    local sha size existing session session_id session_status received offset skip chunk chunk_dir chunk_size digest finalize job_id result
     sha="$(sha256_of "$archive")"
     size="$(wc -c < "$archive" | tr -d ' ')"
+
+    existing="$(api_curl GET /api/artifacts | jq -r --arg sha "$sha" '.data[] | select(.sha256 == $sha and .status == "ready") | .id' | head -n 1)"
+    if [ -n "$existing" ]; then
+        log "같은 내용의 artifact 가 이미 있다: ${existing}"
+        printf '%s' "$existing"
+        return 0
+    fi
 
     session="$(api_json POST /api/uploads/sessions "$(jq -nc \
         --arg sha "$sha" \
@@ -144,7 +155,7 @@ upload_artifact() {
         --arg name "${DEPLOY_NAME}-${DEPLOY_VERSION}.tar" \
         --arg mediaType "$MEDIA_TYPE" \
         '{expectedSha256: $sha, expectedSizeBytes: $size, fileName: $name, mediaType: $mediaType}')" \
-        -H "idempotency-key: ${sha}")"
+        -H "idempotency-key: ${DEPLOY_NAME}-${DEPLOY_VERSION}-${sha}")"
     session_id="$(jq -r '.data.id' <<< "$session")"
     session_status="$(jq -r '.data.status' <<< "$session")"
     received="$(jq -r '.data.receivedBytes' <<< "$session")"

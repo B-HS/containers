@@ -14,7 +14,7 @@ type DestinationRow = {
     authenticationTag: string
     ciphertext: string
     createdAt: Date
-    createdBy: string
+    createdBy: string | null
     enabled: boolean
     eventTypes: string
     id: string

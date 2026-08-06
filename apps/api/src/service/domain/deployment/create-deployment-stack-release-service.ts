@@ -14,7 +14,7 @@ const INTERRUPTED_FAILURE_CODE = 'DEPLOYMENT_STACK_RELEASE_INTERRUPTED'
 
 type StackReleaseRow = {
     createdAt: Date
-    createdBy: string
+    createdBy: string | null
     failureCode: string | null
     finishedAt: Date | null
     id: string
@@ -147,6 +147,9 @@ export const createDeploymentStackReleaseService = ({
             const startedReleaseIds: string[] = []
 
             for (const manifestId of stack.manifestIds) {
+                if (stackRelease.createdBy === null) {
+                    throw createAppError('DEPLOYMENT_STACK_RELEASE_ACTOR_MISSING')
+                }
                 const release = await deploymentReleaseService.create(stackRelease.createdBy, manifestId)
                 startedReleaseIds.push(release.id)
                 await update(id, { releaseIdsJson: JSON.stringify(startedReleaseIds) })

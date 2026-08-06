@@ -12,7 +12,7 @@ type ComposeDeploymentDependencies = {
 type DeploymentRow = {
     artifactId: string | null
     createdAt: Date
-    createdBy: string
+    createdBy: string | null
     id: string
     status: string
     updatedAt: Date

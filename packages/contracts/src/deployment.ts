@@ -76,7 +76,7 @@ export const deploymentManifestInputSchema = z
 
 export const deploymentManifestSchema = deploymentManifestInputSchema.safeExtend({
     createdAt: z.iso.datetime(),
-    createdBy: z.string().min(1),
+    createdBy: z.string().min(1).nullable(),
     id: z.uuid(),
     updatedAt: z.iso.datetime(),
 })
@@ -99,7 +99,7 @@ export const deploymentReleaseSchema = z.object({
     containerId: z.string().nullable(),
     containerName: z.string(),
     createdAt: z.iso.datetime(),
-    createdBy: z.string().min(1),
+    createdBy: z.string().min(1).nullable(),
     failureCode: z.string().nullable(),
     finishedAt: z.iso.datetime().nullable(),
     id: z.uuid(),

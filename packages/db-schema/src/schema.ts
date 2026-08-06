@@ -175,9 +175,7 @@ export const artifact = sqliteTable(
         sizeBytes: integer('size_bytes').notNull(),
         status: text('status').notNull(),
         storagePath: text('storage_path').notNull(),
-        createdBy: text('created_by')
-            .notNull()
-            .references(() => user.id, { onDelete: 'restrict' }),
+        createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
     },
     (table) => [uniqueIndex('artifact_sha256_unique').on(table.sha256), index('artifact_created_at_idx').on(table.createdAt)],
@@ -231,9 +229,7 @@ export const deployment = sqliteTable(
         artifactId: text('artifact_id').references(() => artifact.id, { onDelete: 'set null' }),
         containerId: text('container_id'),
         status: text('status').notNull(),
-        createdBy: text('created_by')
-            .notNull()
-            .references(() => user.id, { onDelete: 'restrict' }),
+        createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
         updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
     },
@@ -270,9 +266,7 @@ export const deploymentManifest = sqliteTable(
         routeStripPrefix: integer('route_strip_prefix', { mode: 'boolean' }),
         rolloutObservationSeconds: integer('rollout_observation_seconds').notNull(),
         rolloutRollbackRetentionSeconds: integer('rollout_rollback_retention_seconds').notNull(),
-        createdBy: text('created_by')
-            .notNull()
-            .references(() => user.id, { onDelete: 'restrict' }),
+        createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
         updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
     },
@@ -293,9 +287,7 @@ export const deploymentSecret = sqliteTable(
         authenticationTag: text('authentication_tag').notNull(),
         keyVersion: integer('key_version').default(1).notNull(),
         version: integer('version').default(1).notNull(),
-        createdBy: text('created_by')
-            .notNull()
-            .references(() => user.id, { onDelete: 'restrict' }),
+        createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
         updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
     },
@@ -318,9 +310,7 @@ export const deploymentRelease = sqliteTable(
             enum: ['creating', 'probing', 'switching', 'observing', 'healthy', 'failed', 'rolling-back', 'rolled-back'],
         }).notNull(),
         failureCode: text('failure_code'),
-        createdBy: text('created_by')
-            .notNull()
-            .references(() => user.id, { onDelete: 'restrict' }),
+        createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
         updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
         activatedAt: integer('activated_at', { mode: 'timestamp' }),
@@ -341,9 +331,7 @@ export const deploymentStack = sqliteTable(
         version: text('version').notNull(),
         manifestIdsJson: text('manifest_ids_json').notNull(),
         serviceOrderJson: text('service_order_json').notNull(),
-        createdBy: text('created_by')
-            .notNull()
-            .references(() => user.id, { onDelete: 'restrict' }),
+        createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
         updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
     },
@@ -363,9 +351,7 @@ export const deploymentStackRelease = sqliteTable(
         releaseIdsJson: text('release_ids_json').notNull(),
         status: text('status', { enum: ['releasing', 'healthy', 'failed', 'rolled-back'] }).notNull(),
         failureCode: text('failure_code'),
-        createdBy: text('created_by')
-            .notNull()
-            .references(() => user.id, { onDelete: 'restrict' }),
+        createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
         updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
         finishedAt: integer('finished_at', { mode: 'timestamp' }),
@@ -506,9 +492,7 @@ export const notificationDestination = sqliteTable(
         eventTypes: text('event_types').notNull(),
         keyVersion: integer('key_version').default(1).notNull(),
         version: integer('version').default(1).notNull(),
-        createdBy: text('created_by')
-            .notNull()
-            .references(() => user.id, { onDelete: 'restrict' }),
+        createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
         createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
         updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
     },
