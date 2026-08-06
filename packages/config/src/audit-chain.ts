@@ -17,11 +17,13 @@ type AuditChainEntry = {
     targetType: string
 }
 
+const MILLISECONDS_PER_SECOND = 1_000
+
 const canonical = (entry: AuditChainEntry) =>
     JSON.stringify([
         entry.sequence,
         entry.id,
-        entry.createdAt.toISOString(),
+        Math.floor(entry.createdAt.getTime() / MILLISECONDS_PER_SECOND),
         entry.actorId,
         entry.authMethod,
         entry.operation,
@@ -37,6 +39,9 @@ const canonical = (entry: AuditChainEntry) =>
  * Derives the tamper-evident hash of an audit entry from its own fields and the hash of the entry
  * before it. Editing or removing any earlier entry changes every hash that follows, so a single
  * stored head hash is enough to detect rewritten history.
+ *
+ * The timestamp enters the hash as whole seconds because that is the precision the column keeps;
+ * hashing milliseconds would make every stored entry fail its own recomputation.
  */
 export const computeAuditEntryHash = (entry: AuditChainEntry, previousHash: string) =>
     createHash('sha256').update(previousHash).update('\n').update(canonical(entry)).digest('hex')

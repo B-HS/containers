@@ -17,7 +17,7 @@ afterEach(async () => {
     await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
 })
 
-const createTestContext = async () => {
+const createTestContext = async (now: Date = NOW) => {
     const directory = await mkdtemp(join(tmpdir(), 'containers-audit-service-'))
     temporaryDirectories.push(directory)
     const database = createControlDatabase({
@@ -36,7 +36,7 @@ const createTestContext = async () => {
     const service = createAuditService({
         archiveRoot,
         db: buildAuditServiceDb(database.db),
-        now: () => NOW,
+        now: () => now,
         retentionDays: RETENTION_DAYS,
     })
     return { archiveRoot, database, service }
@@ -102,7 +102,7 @@ describe('감사 로그 보존', () => {
     })
 
     test('기록한 항목은 해시 체인으로 이어지고 무결성 검사를 통과한다', async () => {
-        const { database, service } = await createTestContext()
+        const { database, service } = await createTestContext(new Date('2026-08-05T00:00:00.750Z'))
         for (let index = 0; index < 3; index += 1) {
             await service.record({
                 actorId: 'user-owner',
@@ -118,7 +118,7 @@ describe('감사 로그 보존', () => {
         const stored = await database.db.select().from(auditLog).orderBy(auditLog.sequence)
         expect(stored.map((row) => row.sequence)).toEqual([1, 2, 3])
         expect(stored.every((row) => row.entryHash !== null && row.previousHash !== null)).toBe(true)
-        expect(await service.verifyIntegrity()).toEqual({ anchorSequence: 0, brokenAt: null, checked: 3, unchained: 0 })
+        expect(await service.verifyIntegrity()).toEqual({ anchorSequence: 0, brokenAt: null, brokenEntry: null, checked: 3, unchained: 0 })
         database.sqlite.close()
     })
 
@@ -137,7 +137,9 @@ describe('감사 로그 보존', () => {
         }
         await database.db.update(auditLog).set({ result: 'failure' }).where(eq(auditLog.sequence, 2))
 
-        expect((await service.verifyIntegrity()).brokenAt).toBe(2)
+        const verification = await service.verifyIntegrity()
+        expect(verification.brokenAt).toBe(2)
+        expect(verification.brokenEntry?.operation).toBe('nginx.route.create.1')
         database.sqlite.close()
     })
 

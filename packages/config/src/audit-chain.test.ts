@@ -40,6 +40,15 @@ describe('감사 로그 해시 체인', () => {
         expect(computeAuditEntryHash(baseEntry, 'other-previous')).not.toBe(original)
     })
 
+    test('같은 초 안의 밀리초 차이는 해시를 바꾸지 않는다 — 컬럼이 초까지만 보관한다', () => {
+        const withMilliseconds = { ...baseEntry, createdAt: new Date('2026-08-06T00:00:00.750Z') }
+
+        expect(computeAuditEntryHash(withMilliseconds, AUDIT_CHAIN_GENESIS)).toBe(computeAuditEntryHash(baseEntry, AUDIT_CHAIN_GENESIS))
+        expect(computeAuditEntryHash({ ...baseEntry, createdAt: new Date('2026-08-06T00:00:01.000Z') }, AUDIT_CHAIN_GENESIS)).not.toBe(
+            computeAuditEntryHash(baseEntry, AUDIT_CHAIN_GENESIS),
+        )
+    })
+
     test('온전한 체인은 끊긴 지점이 없다', () => {
         expect(findAuditChainBreak(chain(5), AUDIT_CHAIN_GENESIS)).toBeNull()
     })

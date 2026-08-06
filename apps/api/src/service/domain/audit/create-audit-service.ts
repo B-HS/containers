@@ -173,7 +173,17 @@ export const createAuditService = ({ archiveRoot, db, now, retentionDays }: Audi
             }
             const brokenAt = findAuditChainBreak(entries, expectedPrevious)
             if (brokenAt !== null) {
-                return { anchorSequence: anchor?.sequence ?? 0, brokenAt, checked: checked + entries.length, unchained: await db.countUnchained() }
+                const broken = entries.find((entry) => entry.sequence === brokenAt)
+                return {
+                    anchorSequence: anchor?.sequence ?? 0,
+                    brokenAt,
+                    brokenEntry:
+                        broken === undefined
+                            ? null
+                            : { createdAt: broken.createdAt.toISOString(), id: broken.id, operation: broken.operation, result: broken.result },
+                    checked: checked + entries.length,
+                    unchained: await db.countUnchained(),
+                }
             }
             const last = entries[entries.length - 1]
             if (last === undefined) {
@@ -186,7 +196,7 @@ export const createAuditService = ({ archiveRoot, db, now, retentionDays }: Audi
                 break
             }
         }
-        return { anchorSequence: anchor?.sequence ?? 0, brokenAt: null, checked, unchained: await db.countUnchained() }
+        return { anchorSequence: anchor?.sequence ?? 0, brokenAt: null, brokenEntry: null, checked, unchained: await db.countUnchained() }
     },
     list: async (input: unknown) => {
         const query = auditQuerySchema.parse(input)
