@@ -70,8 +70,18 @@
 - [x] **6.2 compose 스택 실측** — 2서비스 compose 미리보기→등록(manifest 2건)→스택 배포. `depends_on` 순서(cache → web)대로 배포되고 내부 서비스는 라우트 없이 healthy, 공개 서비스는 `https://b.hyuns.uk` 200. **내부 서비스가 항상 실패하던 결함을 찾아 고쳤다** → [bug](./bug/2026-08-06-internal-service-observation-unreachable.md)
 - [x] **6.3 문서 정합** — 코드 대조로 드리프트 30여 건을 고쳤다. 없는 엔드포인트 서술(manifest DELETE, `POST /deployment-releases`, 세션 조회·폐기), 누락 엔드포인트(스택 6개·라우트 PUT·health/readyz·artifact DELETE·secret rotate·network/volume DELETE), 권한 오기(exec=owner recent, prune·registry=owner 전용, backup DELETE=API key 가능, notification 변경=recent), 존재하지 않는 테이블 서술(`docker_target`·`nginx_revision*`·`artifact_scan`·`saved_view`·traffic checkpoints), 실제와 다른 합성 규칙(`withCapability` 는 없다), 업로드 상태 기계·quota 기본값(300GiB→32GiB)·probe 네트워크 이름, CI 예시 포트(8080→18080)·스택 경로·`audit:runtime` 누락
 - [x] **6.4 정리** — 지울 수 있는 것은 전부 지웠다: 배포 컨테이너 3개, 임시 컨테이너 2개, 테스트 라우트 4개, 받아온 테스트 이미지 1개. API key 는 만든 적이 없다(0건).
-    - **지우지 못한 것**: artifact 2건·manifest 4건·스택 1건·스택 배포 2건·job 8건. 삭제 경로가 아예 없다 → [bug](./bug/2026-08-06-loaded-artifacts-cannot-be-deleted.md). 처리 방향은 사용자 판단이 필요하다
-    - seed 계정 `stack-check@containers.local`(owner)은 남겨 뒀다. 지우면 패널에 다시 못 들어간다(실운영 owner 를 bootstrap 으로 만든 뒤 정리한다)
+    - **삭제 경로를 만들고 회수했다**(후속 커밋 `feat(deployment): 배포 자산을 회수할 수 있게 한다`): artifact 2건 삭제(파일 회수, load 이력은 유지), 스택 1건 삭제(스택 릴리스 이력 포함), manifest 1건 삭제. 릴리스가 참조하는 manifest 3건은 409 로 남는다(의도 — 배포 이력의 일부) → [bug](./bug/2026-08-06-loaded-artifacts-cannot-be-deleted.md)
+    - **남은 것**: job 이력(감사 성격이라 삭제 경로를 두지 않는다), 릴리스 이력 3건과 그 manifest
+    - seed 계정 `stack-check@containers.local`·`e2e@containers.local`(owner)은 남겨 뒀다. 지우면 패널에 다시 못 들어간다 → 아래 "실운영 owner bootstrap" 참고
+
+### 사용자 작업으로 남는 것 — 실운영 owner bootstrap
+
+에이전트가 대신할 수 없다(비밀번호를 다루지 않는다).
+
+**현재 이 스택은 bootstrap 이 이미 끝난 상태다.** `GET /api/bootstrap/status` 가 `{"required":false}` 이고, `bootstrapOwner` 는 사용자가 1명이라도 있으면 `BOOTSTRAP_COMPLETE` 를 던진다(`create-auth-service.ts`). 그래서 선택지는 둘이다.
+
+- **초대(권장, 비파괴)** — seed owner 로 로그인한 뒤 `POST /api/invitations` 로 실운영 계정을 owner 로 초대한다(권한: recent owner·admin). 초대를 수락해 실계정을 만든 뒤 seed 계정 `stack-check@containers.local`·`e2e@containers.local` 을 지운다.
+- **초기화 후 bootstrap(파괴적)** — `bun scripts/reset-accounts.ts --confirm` 으로 계정을 비우고 `http://127.0.0.1:18080` 에서 bootstrap 한다. bootstrap 은 host 이름이 `127.0.0.1`·`localhost`·`::1`·`panel.containers.local`·`api.containers.local` 일 때만 통과하고(`packages/config/src/bootstrap-origin.ts`), 공개 주소로 오면 `BOOTSTRAP_ORIGIN_FORBIDDEN` 이다. 파괴적이라 사용자가 직접 실행한다.
 
 ---
 

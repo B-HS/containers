@@ -821,7 +821,17 @@ prune dry-run·관리 plane 보호는 Phase 13 으로 분리한다.
 4. 로케일 키를 잘못된 네임스페이스에 넣어 라벨이 `Nav.jobActiveCount` 로 노출됐다
 5. `docker compose build web api` 가 web 을 실제로 다시 빌드하지 않아 옛 번들이 떠 있었다 — 재빌드 후 이미지 시각·번들 내용으로 반영을 확인한다
 
-### 남긴 것
+### 후속: 배포 자산 회수 (같은 날)
 
-- 로드한 아티팩트·manifest·스택은 삭제 경로가 없어 지우지 못했다. 처리 방향은 사용자 판단이 필요하다
-- seed owner 계정은 실운영 owner 를 bootstrap 으로 만든 뒤 정리한다
+삭제 경로를 만들고 실측으로 회수까지 마쳤다. A 안 — load 이력은 남기고 파일만 회수한다.
+
+- `deployment.artifact_id` nullable + `on delete set null`(migration 0022, generate)
+- artifact 삭제·보존 정리는 `status='loading'` 인 배포만 참조로 본다
+- `DELETE /api/deployment-manifests/:id`(릴리스·스택 참조 시 409), `DELETE /api/deployment-stacks/:id`(releasing 릴리스 시 409, 아니면 스택 릴리스 이력까지 한 트랜잭션)
+- 실측: artifact 2건 200(목록 빈 배열), 스택 1건 200, manifest 4건 중 참조 없는 1건 200 · 참조 있는 3건 409. 감사 로그에 attempt/success/failure 기록
+- 테스트 6건 추가(서비스 4·라우트 2), 전체 495 pass
+
+### 남긴 것 — 사용자 작업
+
+- **실운영 owner 계정 확보.** 이 스택은 bootstrap 이 이미 끝났다(`GET /api/bootstrap/status` → `required:false`). 초대(`POST /api/invitations`, recent owner·admin)로 실계정을 만든 뒤 seed 계정(`stack-check@`, `e2e@containers.local`)을 지우거나, `bun scripts/reset-accounts.ts --confirm` 후 `http://127.0.0.1:18080` 에서 bootstrap 한다(파괴적 — 사용자가 직접)
+- 릴리스 이력과 그 manifest, job 이력은 감사 성격이라 삭제 경로를 두지 않았다
