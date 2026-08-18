@@ -36,7 +36,7 @@
 29. [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) — **완료된** 실행 계획: UX 감사 후속·런타임 개방·compose 스택 (항목별 근거·주의·완료 판정). 2026-08-06 에 전 항목을 닫았다
 30. [quality-assurance/2026-08-05-panel-ux-audit.md](./quality-assurance/2026-08-05-panel-ux-audit.md) — 패널 UX 감사(원본 64건 → 검증 44건 → 원인 12개)와 배포 런타임 제약 실측
 31. `ci-examples/` — CI 예제. 빌드 CI 3종과, API key 배포 스크립트 `containers-deploy.sh` + 이를 부르는 GitHub·Gitea·GitLab 워크플로
-32. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0042 스택 배포 오케스트레이션)
+32. `acknowledge/` — 번호 순 확정 결정 기록 (최신: 0043 패널 서브도메인·apex 워크로드)
 33. `bug/` — 결함 기록. 증상·원인·수정·교훈을 한 건씩 남긴다. 라이브 실측으로 잡은 것이 대부분이다
 34. [llm.txt](./llm.txt) — AI 참조용 단일 파일(아키텍처·전 엔드포인트·스키마·보안·배포 흐름). 코드와 어긋나면 `packages/db-schema/src/llm-reference.test.ts` 가 깨진다
 35. `history/` — 세션별 작업 이력 (시간순, 현재 상태가 아님)

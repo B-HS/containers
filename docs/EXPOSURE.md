@@ -71,6 +71,12 @@ macOS 에서 `sudo cloudflared service install` 로 만든 LaunchDaemon 은 `Pro
 
 와일드카드로 받아도 **실제로 어떤 호스트를 열지는 패널의 nginx 라우트 목록이 단독으로 결정한다.** 등록하지 않은 호스트는 catch-all 이 `444` 로 끊는다.
 
+**와일드카드는 apex 를 덮지 않는다.** `*.example.com` 은 레이블이 하나 이상 앞에 붙은 이름에만 매칭되므로 `example.com` 자체는 레코드가 없는 상태로 남고, Cloudflare 는 **Error 1016 Origin DNS error** 를 낸다. apex 로도 서비스하려면 public hostname(Subdomain 칸을 **비우고** Domain 만 고른다) 또는 DNS 레코드(Type `CNAME`, Name `@`, Target `<TUNNEL_ID>.cfargotunnel.com`, Proxied)를 **하나 더** 등록한다. 등록하면 CNAME flattening 으로 apex 에 A 레코드가 생긴다.
+
+레코드를 만든 뒤에도 로컬 리졸버가 이전 NXDOMAIN 을 네거티브 캐싱하고 있으면 한동안 해석되지 않는다. 권위 네임서버에 직접 묻거나(`dig @<ns> <domain>`) `curl --resolve` 로 우회해 확인한다. macOS 는 `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder` 로 비운다.
+
+**패널을 apex 에 두면 그 도메인을 워크로드에 쓸 수 없다.** 패널 공개 주소의 hostname 은 보호 목록에 들어가 프록시 라우트 등록이 409 로 막힌다. 패널은 서브도메인에 두고 apex 는 워크로드에 넘기는 것을 권장한다 — [acknowledge/0043](./acknowledge/0043-panel-subdomain-and-apex-workload.md).
+
 ### 2.2.1 최초 계정은 로컬에서 만든다
 
 배포에는 seed 계정이 없다. 첫 owner 는 인증 없이 만들어지는 경로라 **공개 주소에서는 403**(`BOOTSTRAP_ORIGIN_FORBIDDEN`)이고, 공개 주소가 설정되기 전부터 존재하는 이름(`127.0.0.1`·`localhost`·`::1`·`panel.containers.local`·`api.containers.local`)에서만 받는다.

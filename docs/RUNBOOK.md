@@ -303,7 +303,65 @@ bun scripts/reset-accounts.ts --confirm    # 실행 전 control.sqlite.pre-reset
 
 ---
 
-## 12. 사고 후 정리
+## 12. docker compose up 이 통째로 실패한다
+
+**증상** — `docker compose up -d --wait` 이 아래로 끝나고 일부 서비스만 정지 상태로 남는다. `docker compose logs` 에는 원인이 나오지 않는다.
+
+```
+Error response from daemon: error while removing network: network containers_edge
+has active endpoints (name:"containers-api-1" ...)
+```
+
+**원인** — `compose.yaml` 의 네트워크 정의(주로 `subnet`)가 이미 만들어진 네트워크와 다르다. Compose 는 기존 네트워크를 그 자리에서 갱신하지 못해 삭제 후 재생성을 시도하는데, 다른 서비스가 붙어 있으면 삭제가 거부되고 `up` 전체가 멈춘다. 스택을 오래 띄워 둔 채 `compose.yaml` 만 갱신하면 재현된다.
+
+**진단** — 정의와 실제를 대조한다. `scripts/setup.sh` 는 기동 전에 이 점검을 자동으로 한다.
+
+```bash
+docker compose config --format json | jq '.networks'
+docker network inspect containers_edge --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+```
+
+**조치** — 스택 전체를 내렸다 올린다. 네트워크는 마지막 컨테이너가 떨어질 때 삭제되고 다음 `up` 에서 정의대로 만들어진다.
+
+```bash
+docker compose down          # -v 를 붙이지 않는다. 볼륨과 DB 는 보존된다
+docker compose up -d --wait
+```
+
+컨테이너가 네트워크에서만 분리된 중간 상태로 남아 `up` 도 `restart` 도 받지 않으면(`is not connected to the network ...`), 그 컨테이너만 `docker rm` 으로 지운 뒤 `down` 을 실행한다.
+
+**확인** — 5개 서비스 healthy, `docker volume ls | grep containers` 로 볼륨 보존 확인.
+
+상세는 [bug/2026-08-18-edge-subnet-mismatch-blocks-startup.md](./bug/2026-08-18-edge-subnet-mismatch-blocks-startup.md).
+
+---
+
+## 13. 프록시 라우트 저장이 409 NGINX_PROTECTED_CONTRACT 로 막힌다
+
+**증상** — 입력값이 유효한데도 "관리 plane에서 보호하는 Nginx 계약을 변경할 수 없습니다" 로 저장이 거부된다.
+
+**원인** — 추가하려는 라우트가 아니라 **기존 `current.conf` 가** 보호 계약을 어기고 있다. 라우트 추가는 설정 전체를 다시 적용하는 동작이라 여기서 함께 검사된다. 오래 운영한 스택의 관리 설정이 코드가 요구하는 계약보다 낡으면 발생한다.
+
+**진단** — catch-all 서버가 있는지 본다. 없으면 이 경우다.
+
+```bash
+docker run --rm -v containers_nginx-config:/managed:ro alpine grep -c "return 444" /managed/current.conf
+```
+
+**조치** — 등록된 라우트를 먼저 확인한 뒤(있으면 내용을 기록해 둔다) 옛 설정을 치우고 nginx 를 재시작한다. `entrypoint.sh` 가 이미지의 최신 템플릿을 복사한다.
+
+```bash
+docker run --rm -v containers_nginx-config:/managed alpine mv /managed/current.conf /managed/current.conf.old
+docker compose restart nginx
+```
+
+**교체 직후 공개 hostname 이 끊긴다.** 템플릿의 패널 블록에는 loopback 이름만 있다. `http://127.0.0.1:18080` 으로 접속해 패널 설정에서 공개 주소를 저장하면 `server_name` 에 다시 들어간다. 그 다음 프록시 라우트를 추가한다.
+
+상세는 [bug/2026-08-18-stale-nginx-config-fails-protected-contract.md](./bug/2026-08-18-stale-nginx-config-fails-protected-contract.md).
+
+---
+
+## 14. 사고 후 정리
 
 - 원인·조치·타임라인을 `docs/history/`에 남긴다. 반복되면 `docs/quality-assurance/`에 점검 체크리스트로 승격한다.
 - 절차가 실제와 달랐던 부분은 **이 문서를 그 자리에서 고친다.** 문서와 코드가 어긋나면 코드가 진실이다.

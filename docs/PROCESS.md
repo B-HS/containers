@@ -892,3 +892,15 @@ HANDOFF §6 을 "미해결 질문"에서 "결정 완료"로 바꿨다. 사용자
 - `containers-dr-*` 이미지 5개(약 770MB) 삭제. 쓰는 컨테이너가 없고 드릴 기록은 문서에 남는다. 삭제 후 스택 5개 healthy·readyz 200 확인
 - 오프박스 백업·Cloudflare Access·`CF-Connecting-IP` 는 **하지 않기로 한 결정**으로 기록했다. 보류가 아니라 대가를 알고 감수하는 선택이다
 - HSTS `preload` 는 비가역성 때문에 넣지 않는 것으로 확정했다
+
+## 작업: 2026-08-18 기동 실패 복구와 재발 방지
+
+실운영 스택이 `docker compose up` 단계에서 통째로 멈춘 사고를 복구하고, 같은 실패가 다시 나지 않도록 스크립트와 문서를 고쳤다. 상세는 [history/2026-08-18-startup-recovery.md](./history/2026-08-18-startup-recovery.md).
+
+- [x] a. edge 네트워크 subnet 불일치로 인한 기동 실패를 `bug/` 에 기록
+- [x] b. 낡은 `current.conf` 가 보호 계약을 만족하지 못해 라우트 추가가 409 로 막히는 문제를 `bug/` 에 기록
+- [x] c. 가드 훅이 `mkdir -p` 를 포트 publish 로 오탐하던 결함을 고치고 `bug/` 에 기록
+- [x] d. `scripts/setup.sh` 에 네트워크 정의 불일치 사전 점검을 추가
+- [x] e. 패널 공개 주소를 서브도메인으로 두고 apex 를 워크로드에 넘기는 결정을 `acknowledge/` 에 기록
+- [x] f. `EXPOSURE.md` 에 와일드카드가 apex 를 덮지 않는다는 사실을 명시
+- [x] g. 검증 후 커밋
