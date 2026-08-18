@@ -70,12 +70,26 @@ git pull --ff-only
     docker compose up -d --wait
     ```
 
+    **`compose.yaml` 의 네트워크·볼륨 정의가 바뀐 릴리스라면 이 단계가 통째로 실패할 수 있다.** compose 는 이미 만들어진 네트워크의 `subnet` 을 그 자리에서 바꾸지 못해 삭제 후 재생성을 시도하는데, 다른 서비스가 붙어 있으면 삭제가 거부되고 `up` 이 중단된다(`network ... has active endpoints`). 이때는 `docker compose down` 으로 전부 내린 뒤 다시 올린다 — `-v` 를 붙이지 않는 한 볼륨은 보존된다. `scripts/setup.sh` 는 기동 전에 이 불일치를 점검한다. 상세는 [bug/2026-08-18-edge-subnet-mismatch-blocks-startup.md](./bug/2026-08-18-edge-subnet-mismatch-blocks-startup.md).
+
 7. owner UI 또는 `GET /api/control-plane/status` 로 다음을 확인한다.
     - `version` 이 새 코드 버전인가
     - `databaseIntegrity.control` 이 `ok` 인가
     - `docker compose logs api | grep startup_task_failed` 로 격리된 부가 단계 실패가 없는지 확인한다
 8. 문제가 없으면 maintenance 를 끈다 (`POST /api/maintenance { "enabled": false }`).
 9. 문제가 있으면 아래 rollback 절차를 따른다.
+
+### 관리 nginx 설정은 upgrade 를 따라오지 않는다
+
+nginx 설정의 정본은 이미지가 아니라 **관리 볼륨의 `current.conf`** 다. `infra/nginx/entrypoint.sh` 는 그 파일이 **없을 때만** 이미지 템플릿을 복사하므로, 이미지를 아무리 갱신해도 한 번 만들어진 관리 설정은 그대로 남는다.
+
+코드가 요구하는 보호 계약(`verifyProtectedContract`)이 릴리스마다 늘어나면 이 격차가 벌어지고, 어느 순간 계약을 건드리는 기능이 통째로 막힌다. 프록시 라우트 저장이 `NGINX_PROTECTED_CONTRACT`(409)로 거부되는 것이 대표적인 증상이다. 진단과 교체 절차는 [RUNBOOK §13](./RUNBOOK.md) 에 있다.
+
+upgrade 후 이 격차를 확인하려면 catch-all 서버가 있는지 본다.
+
+```sh
+docker run --rm -v containers_nginx-config:/managed:ro alpine grep -c "return 444" /managed/current.conf
+```
 
 ### 다운타임 예상
 

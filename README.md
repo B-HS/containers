@@ -33,7 +33,7 @@ The recommended way is the interactive setup script:
 ./scripts/setup.sh
 ```
 
-It checks the environment, detects the docker socket group id (Linux), verifies the Compose file, optionally builds, starts the stack, and runs a smoke test — including a sign-in call with a real `Origin` header so a mismatched public origin fails here instead of at first login. It creates a `compose.override.yaml` for customization (panel bind address/port, public origin, backup interval/retention, traffic retention).
+It checks the environment, detects the docker socket group id (Linux), verifies the Compose file, compares the declared network subnets against the ones Docker actually created, optionally builds, starts the stack, and runs a smoke test — including a sign-in call with a real `Origin` header so a mismatched public origin fails here instead of at first login. It creates a `compose.override.yaml` for customization (panel bind address/port, public origin, backup interval/retention, traffic retention).
 
 For CI and unattended provisioning it also runs without prompts. Non-interactive mode is implied when stdin is not a TTY, and every prompt falls back to a flag or an environment variable of the same name (`scripts/setup.sh --help` lists them):
 
@@ -44,6 +44,8 @@ For CI and unattended provisioning it also runs without prompts. Non-interactive
 ```
 
 Exposing the panel on a domain? Run the tunnel or reverse proxy however you like — the stack never holds its token. Point it at the published port, then approve the proxy address and the public origin from the panel itself: both screens list what actually hit the access log, so you pick from observed values instead of typing them. See [`docs/EXPOSURE.md`](docs/EXPOSURE.md) §2.
+
+Two things bite people here. A wildcard record (`*.example.com`) does **not** cover the apex (`example.com`) — the apex needs its own hostname or DNS record, otherwise it fails DNS resolution while every subdomain works. And whichever hostname you give the panel becomes a *protected* hostname, so you cannot later point it at a workload container. Put the panel on a subdomain and leave the apex free if you want to serve something else from it.
 
 `--start-mode` picks `build` (build then start, the default), `up` (start without building) or `skip` (checks only). An existing `compose.override.yaml` is kept as is unless you pass `--replace-override`, which backs it up to `compose.override.yaml.bak` first.
 
@@ -77,6 +79,22 @@ Customization goes in `compose.override.yaml`. Most defaults below come from `co
 | Nginx revisions kept      | `engine-agent`   | `NGINX_REVISION_KEEP_COUNT`                                 | `20`              |
 
 If you change the panel port, host, or scheme, change the public origin **and** the trusted origin list together — otherwise the stack comes up healthy and every sign-in fails with `403 INVALID_ORIGIN`. Serving the panel over HTTPS automatically switches session cookies to `Secure`, so an HTTPS public origin behind an HTTP-only edge will not keep a session.
+
+## Upgrading
+
+```bash
+git pull --ff-only
+./scripts/migration-dry-run.sh   # snapshot volumes first if migrations are pending
+docker compose build
+docker compose up -d --wait
+```
+
+Two failure modes are worth knowing before you need them, because neither shows up in `docker compose logs`:
+
+- **A release that changes network or volume definitions can stop `up` entirely.** Compose cannot edit an existing network in place, so it tries to recreate it and fails while other services are still attached (`network ... has active endpoints`). Bring the stack down with `docker compose down` — without `-v`, so volumes survive — and start it again.
+- **The managed nginx config does not follow the image.** Its source of truth is the `nginx-config` volume, not `infra/nginx/nginx.conf`, and the entrypoint only seeds it when the file is absent. A config from an older release keeps running until something that validates it — saving a proxy route, for instance — fails with a `409` that names none of this.
+
+Full procedure, readiness checks, volume snapshots, and rollback: [`docs/CONTROL-PLANE-UPGRADE.md`](docs/CONTROL-PLANE-UPGRADE.md). Incident playbooks: [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 ## Development
 
