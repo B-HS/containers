@@ -404,6 +404,42 @@ if ! docker compose config --quiet 2>/dev/null; then
 fi
 ok "compose 설정 검증 통과"
 
+# 이미 만들어진 네트워크는 compose 가 정의를 바꿔도 그 자리에서 갱신하지 못한다. subnet 이 어긋나면
+# 재생성을 시도하다 다른 서비스가 붙어 있어 삭제에 실패하고, up 전체가 멈춘다. 2026-08-18 실측 사고.
+# 상세: docs/bug/2026-08-18-edge-subnet-mismatch-blocks-startup.md
+NETWORK_MISMATCH=0
+if command -v jq >/dev/null 2>&1; then
+    COMPOSE_NETWORKS_JSON="$(docker compose config --format json 2>/dev/null | jq -c '.networks // {}' 2>/dev/null || echo '{}')"
+    for NETWORK_KEY in $(printf '%s' "$COMPOSE_NETWORKS_JSON" | jq -r 'keys[]' 2>/dev/null); do
+        DEFINED_SUBNET="$(printf '%s' "$COMPOSE_NETWORKS_JSON" | jq -r --arg key "$NETWORK_KEY" '.[$key].ipam.config[0].subnet // empty' 2>/dev/null)"
+        [ -z "$DEFINED_SUBNET" ] && continue
+
+        NETWORK_FULL_NAME="$(printf '%s' "$COMPOSE_NETWORKS_JSON" | jq -r --arg key "$NETWORK_KEY" '.[$key].name // empty' 2>/dev/null)"
+        [ -z "$NETWORK_FULL_NAME" ] && NETWORK_FULL_NAME="$(basename "$REPO_ROOT")_$NETWORK_KEY"
+
+        ACTUAL_SUBNET="$(docker network inspect "$NETWORK_FULL_NAME" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null | tr -d '[:space:]')"
+        [ -z "$ACTUAL_SUBNET" ] && continue
+
+        if [ "$ACTUAL_SUBNET" != "$DEFINED_SUBNET" ]; then
+            NETWORK_MISMATCH=1
+            warn "네트워크 $NETWORK_FULL_NAME 의 subnet 이 다릅니다 (실제 $ACTUAL_SUBNET, 정의 $DEFINED_SUBNET)."
+        fi
+    done
+fi
+
+if [ "$NETWORK_MISMATCH" -eq 1 ]; then
+    info "compose 는 기존 네트워크의 subnet 을 그 자리에서 바꾸지 못합니다. 붙어 있는 컨테이너 때문에 재생성이 막혀 기동이 통째로 실패합니다."
+    info "해결: docker compose down 으로 스택 전체를 내린 뒤 다시 기동하세요. (볼륨은 -v 를 붙이지 않는 한 보존됩니다)"
+    if ask_yn "지금 docker compose down 을 실행할까요" y; then
+        docker compose down 2>&1 | sed 's/^/    /'
+        ok "스택을 내렸습니다. 이어서 기동하면 네트워크가 정의대로 새로 만들어집니다."
+    else
+        warn "내리지 않고 진행하면 기동이 실패할 수 있습니다."
+    fi
+else
+    ok "네트워크 정의 일치"
+fi
+
 section "3/4" "빌드·기동"
 
 case "$START_MODE" in
