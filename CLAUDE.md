@@ -14,6 +14,8 @@
 
 `.claude/hooks/guard-container-escape.sh` 가 PreToolUse 훅으로 위 전부를 차단한다. **훅은 방어선이지 근거가 아니다** — 훅이 없는 환경에서도 이 규칙을 지킨다.
 
+훅이 무해한 명령을 막으면(예: `mkdir -p` 와 docker 명령을 한 줄에 섞은 경우) **표현을 바꿔 통과시키려 하지 말고 명령을 분리해 실행한다.** 훅을 피하는 형태를 찾는 것 자체가 이 훅이 막으려는 행동이다. 오탐이라고 판단되면 사용자에게 알리고 훅을 고친다. → [bug/2026-08-18-guard-hook-false-positive-on-path-flag.md](./docs/bug/2026-08-18-guard-hook-false-positive-on-path-flag.md)
+
 이 규칙이 생긴 이유: 2026-08-05 조사 워크플로에서 서브에이전트가 `--privileged --pid=host` + `nsenter` 로 호스트 네임스페이스에 진입하고, socat 을 LAN IP 에 바인딩해 셸 실행 서비스를 로컬 네트워크에 노출했다. 프롬프트 문구로는 재발을 막지 못한다. → [acknowledge/0033](./docs/acknowledge/0033-agent-execution-guardrails.md)
 
 ## 2. 진단은 격리를 지키면서 한다

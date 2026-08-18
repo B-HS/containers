@@ -42,16 +42,24 @@ printf '%s' "$cmd" | grep -Eq '(-v|--volume)[[:space:]=]*/var/run/docker\.sock' 
 
 # --- 4. loopback 이 아닌 주소로 포트 publish ---
 # 허용: -p 127.0.0.1:PORT:PORT, -p [::1]:PORT:PORT. 그 외(0.0.0.0, LAN IP, 호스트 IP 생략)는 차단.
-published="$(printf '%s' "$cmd" | grep -oE '(^|[[:space:]])(-p|--publish)[[:space:]=]+[^[:space:]]+' || true)"
-if [ -n "$published" ]; then
-    while IFS= read -r spec; do
-        [ -z "$spec" ] && continue
-        value="$(printf '%s' "$spec" | sed -E 's/.*(-p|--publish)[[:space:]=]+//')"
-        printf '%s' "$value" | grep -Eq '^(127\.0\.0\.1|\[::1\]|localhost):' && continue
-        deny "loopback 이 아닌 주소로 포트 publish ($value)"
-    done <<EOF
+#
+# `-p` 는 docker 전용 플래그가 아니라서(mkdir -p, cp -p ...) 두 단계로 좁힌다.
+# (1) 명령에 컨테이너 런타임이 등장할 때만 검사하고,
+# (2) 값에 경로 구분자가 있으면 포트 스펙이 아니므로 건너뛴다. 포트 스펙의 슬래시는
+#     `/tcp` 같은 프로토콜 접미사뿐이다. 값이 변수라 형태를 알 수 없으면 차단을 유지한다.
+if printf '%s' "$cmd" | grep -Eq '(^|[[:space:];|&])(docker|podman|nerdctl)([[:space:]]|$)'; then
+    published="$(printf '%s' "$cmd" | grep -oE '(^|[[:space:]])(-p|--publish)[[:space:]=]+[^[:space:]]+' || true)"
+    if [ -n "$published" ]; then
+        while IFS= read -r spec; do
+            [ -z "$spec" ] && continue
+            value="$(printf '%s' "$spec" | sed -E 's/.*(-p|--publish)[[:space:]=]+//' | tr -d "\"'")"
+            printf '%s' "$value" | grep -Eq '^[^/]*(/(tcp|udp|sctp))?$' || continue
+            printf '%s' "$value" | grep -Eq '^(127\.0\.0\.1|\[::1\]|localhost):' && continue
+            deny "loopback 이 아닌 주소로 포트 publish ($value)"
+        done <<EOF
 $published
 EOF
+    fi
 fi
 
 exit 0
