@@ -904,3 +904,29 @@ HANDOFF §6 을 "미해결 질문"에서 "결정 완료"로 바꿨다. 사용자
 - [x] e. 패널 공개 주소를 서브도메인으로 두고 apex 를 워크로드에 넘기는 결정을 `acknowledge/` 에 기록
 - [x] f. `EXPOSURE.md` 에 와일드카드가 apex 를 덮지 않는다는 사실을 명시
 - [x] g. 검증 후 커밋
+
+## 작업: 2026-08-20 MySQL 9 + Forgejo 배포 (panel.hyuns.uk 원격 운영)
+
+사용자 결정: 호스트네임 `forge.hyuns.uk`, 세션 전용 작업(이미지 pull·MySQL 컨테이너 생성)은 사용자의 Chrome 패널 세션으로 브라우저 자동화. Forgejo 는 API 키(`deployment:*`·`secret:*`)로 deployment-stack 경로 배포. MySQL 계정은 컨테이너 생성 env(`MYSQL_DATABASE`·`MYSQL_USER`·`MYSQL_PASSWORD`)로 초기화해 설치와 묶는다.
+
+- [x] a. 경로 조사 — 이미지 pull·직접 컨테이너 생성은 세션 전용, MySQL 은 HTTP 프로브 불가로 스택 경로 배제, Forgejo 는 스택 경로(내부 nginx 프로브라 외부 DNS 무관), `*.hyuns.uk` 와일드카드 터널 실측 확인
+- [x] b. 이미지 준비 — `mysql:9` 는 패널 pull 성공. `codeberg.org/forgejo/forgejo:16` 은 `REGISTRY_RESOLVE_FAILED`(engine-agent 가 internal control 네트워크라 레지스트리 호스트 DNS 해석 불가 — 호스트 붙은 참조는 pull 불가, bug 기록 필요) → 로컬 docker save + artifact upload + image load 로 우회 (digest `sha256:2fdfe28b...`)
+- [ ] c. `forgejo-mysql` 컨테이너 생성 — env 로 forgejo DB·계정 초기화, `containers_edge`, 볼륨 `forgejo-mysql-data:/var/lib/mysql`
+- [x] c-2. deployment secrets 9개 생성, Forgejo 16 이미지를 로컬 docker save + artifact upload + load 로 원격 엔진에 적재
+- [ ] d. deployment secrets 생성 + forgejo 스택 preview·생성·릴리스 (route `forge.hyuns.uk`, health `/api/healthz`, `INSTALL_LOCK=true`, SSH 비활성) — **API 패리티 배포 후 재개**
+- [ ] e. 실측 검증 — 스택 릴리스 healthy, `https://forge.hyuns.uk` 응답 확인, 결과 보고 — **API 패리티 배포 후 재개**
+
+## 작업: 2026-08-20 API 키 패리티·egress-broker (feat/api-key-parity)
+
+기준 문서: [API-PARITY-PLAN.md](./API-PARITY-PLAN.md), [acknowledge/0044](./acknowledge/0044-api-key-parity-and-egress-broker.md). MySQL 컨테이너 생성이 세션 전용에 막히고 codeberg pull 이 REGISTRY_RESOLVE_FAILED 로 죽는 것을 계기로, 웹 세션 조작 전체의 API 키 패리티와 egress 계층을 근본 수정한다.
+
+- [x] a. 라우트 109개 인증 방식 전수 조사, 갭분석·플랜 작성, 사용자 결정 수신(0044)
+- [ ] b. contracts — API_KEY_SCOPE 22종 추가, egress-broker 계약 신설
+- [ ] c. api — authenticate 가 role 반환, authenticateScopeOrRole 헬퍼, OWNER_ONLY 확장
+- [ ] d. api — 라우트 패리티 적용 (control·nginx·backup·secret·artifact·traffic·audit·notification·maintenance·panel-setting·trusted-proxy·stream)
+- [ ] e. egress-broker 앱 신설 (resolve·webhook 대행, shared-secret 인증, Dockerfile·compose)
+- [ ] f. 레지스트리 검증 재설계 — api 측 broker resolve + 정적 검증, agent 는 정적 검증 유지, webhook 발송 broker 경유
+- [ ] g. web — 컨테이너 생성 폼 env·volumes·entrypoint, api-key 위젯 role 인지 기본값
+- [ ] h. 테스트 — 헬퍼·라우트 통합·broker·정적 검증 + 기존 회귀
+- [ ] i. 문서 — API-DATA-AUTH 인증 표, bug 3건(레지스트리 DNS·webhook egress·api-key 위젯), compose-security 불변식
+- [ ] j. 검증 — typecheck→lint→test→build 전체 통과
