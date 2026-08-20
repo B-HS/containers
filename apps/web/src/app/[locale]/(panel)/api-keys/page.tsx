@@ -24,7 +24,7 @@ const ApiKeysPage = async () => {
         <HydrationBoundary state={dehydrate(queryClient)}>
             <div className="grid gap-px">
                 <PageHeader description={navTranslations('subtitles.apiKeys')} title={navTranslations('items.apiKeys')} />
-                <ApiKeyWidget />
+                <ApiKeyWidget isOwner={session.isOwner} />
             </div>
         </HydrationBoundary>
     )

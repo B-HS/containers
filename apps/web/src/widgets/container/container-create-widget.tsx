@@ -33,6 +33,8 @@ const DEFAULT_NETWORK = 'containers_edge'
 const MEBIBYTE = 1_048_576
 const NANO_CPU = 1_000_000_000
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/
+const ENVIRONMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.*$/
+const VOLUME_PATTERN = /^([a-zA-Z0-9][a-zA-Z0-9_.-]*):(\/[^:]*)(:ro)?$/
 const SKELETON_ROWS = [0, 1, 2, 3]
 
 type ContainerCreateWidgetProps = {
@@ -41,7 +43,7 @@ type ContainerCreateWidgetProps = {
 
 export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) => {
     const [autoStart, setAutoStart] = useState(true)
-    const [errors, setErrors] = useState<{ image?: string; name?: string }>({})
+    const [errors, setErrors] = useState<{ environment?: string; image?: string; name?: string; volumes?: string }>({})
     const [image, setImage] = useState('')
     const [network, setNetwork] = useState(DEFAULT_NETWORK)
     const [hardened, setHardened] = useState(false)
@@ -63,9 +65,17 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) 
 
     const submit = (formData: FormData) => {
         const name = String(formData.get('name') ?? '').trim()
+        const environmentLines = splitLines(String(formData.get('environment') ?? ''))
+        const volumeLines = splitLines(String(formData.get('volumes') ?? ''))
+        const volumeMounts = volumeLines.map((line) => {
+            const matched = VOLUME_PATTERN.exec(line)
+            return matched ? { mountPath: matched[2] ?? '', name: matched[1] ?? '', readOnly: matched[3] === ':ro' } : null
+        })
         const nextErrors = {
             ...(NAME_PATTERN.test(name) ? {} : { name: t('containerNameInvalid') }),
             ...(selectedImage ? {} : { image: t('containerImageRequired') }),
+            ...(environmentLines.every((line) => ENVIRONMENT_PATTERN.test(line)) ? {} : { environment: t('containerEnvironmentInvalid') }),
+            ...(volumeMounts.every((mount) => mount !== null) ? {} : { volumes: t('containerVolumesInvalid') }),
         }
         setErrors(nextErrors)
         if (Object.keys(nextErrors).length > 0) {
@@ -79,6 +89,8 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) 
                 autoStart,
                 command: splitLines(String(formData.get('command') ?? '')),
                 containerPort: port ? Number(port) : undefined,
+                environment: environmentLines,
+                volumes: volumeMounts.filter((mount) => mount !== null),
                 image: selectedImage,
                 memoryBytes: Number(formData.get('memoryMiB')) * MEBIBYTE,
                 name,
@@ -238,6 +250,42 @@ export const ContainerCreateWidget: FC<ContainerCreateWidgetProps> = ({ role }) 
                             <Label htmlFor="container-create-cpu">{t('containerCpu')}</Label>
                             <Input id="container-create-cpu" name="cpu" type="number" min="0.1" max="10" step="0.1" defaultValue="1" required />
                             <p className="text-xs text-text-subtle">{t('containerCpuHelp')}</p>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset className="grid gap-4 bg-surface-1 p-6">
+                    <legend className="sr-only">{t('containerSectionData')}</legend>
+                    <div>
+                        <h3 className="text-sm font-semibold text-text-strong">{t('containerSectionData')}</h3>
+                        <p className="mt-1 text-xs text-text-muted">{t('containerSectionDataHelp')}</p>
+                    </div>
+                    <div className="grid gap-4 xl:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label htmlFor="container-create-environment">{t('containerEnvironment')}</Label>
+                            <Textarea
+                                id="container-create-environment"
+                                name="environment"
+                                rows={4}
+                                placeholder={'MYSQL_DATABASE=app\nMYSQL_USER=app'}
+                                aria-invalid={errors.environment !== undefined}
+                            />
+                            <p className={errors.environment ? 'text-xs text-danger' : 'text-xs text-text-subtle'}>
+                                {errors.environment ?? t('containerEnvironmentHelp')}
+                            </p>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="container-create-volumes">{t('containerVolumes')}</Label>
+                            <Textarea
+                                id="container-create-volumes"
+                                name="volumes"
+                                rows={4}
+                                placeholder={'app-data:/var/lib/app\nconfig:/etc/app:ro'}
+                                aria-invalid={errors.volumes !== undefined}
+                            />
+                            <p className={errors.volumes ? 'text-xs text-danger' : 'text-xs text-text-subtle'}>
+                                {errors.volumes ?? t('containerVolumesHelp')}
+                            </p>
                         </div>
                     </div>
                 </fieldset>

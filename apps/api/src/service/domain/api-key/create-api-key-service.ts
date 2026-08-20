@@ -1,20 +1,16 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { API_KEY_SCOPE, apiKeyCreateResultSchema, apiKeyCreateSchema, apiKeyListSchema, type ApiKeyScope } from '@containers/contracts/api-key'
+import {
+    apiKeyCreateResultSchema,
+    apiKeyCreateSchema,
+    apiKeyListSchema,
+    OWNER_ONLY_API_KEY_SCOPES,
+    type ApiKeyScope,
+} from '@containers/contracts/api-key'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/error'
 
-const OWNER_ONLY_API_KEY_SCOPES: readonly ApiKeyScope[] = [
-    API_KEY_SCOPE.BACKUP_RESTORE,
-    API_KEY_SCOPE.BACKUP_WRITE,
-    API_KEY_SCOPE.MAINTENANCE_WRITE,
-    API_KEY_SCOPE.PANEL_SETTING_WRITE,
-    API_KEY_SCOPE.REGISTRY_CREDENTIAL_WRITE,
-    API_KEY_SCOPE.SECRET_WRITE,
-    API_KEY_SCOPE.SYSTEM_PRUNE,
-    API_KEY_SCOPE.TRUSTED_PROXY_WRITE,
-]
-
-export const requiresOwnerApiKeyScope = (scopes: readonly ApiKeyScope[]) => scopes.some((scope) => OWNER_ONLY_API_KEY_SCOPES.includes(scope))
+export const requiresOwnerApiKeyScope = (scopes: readonly ApiKeyScope[]) =>
+    scopes.some((scope) => (OWNER_ONLY_API_KEY_SCOPES as readonly ApiKeyScope[]).includes(scope))
 
 type ApiKeyRow = {
     createdAt: Date

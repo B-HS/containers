@@ -4,7 +4,7 @@ import type { FC } from 'react'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { API_KEY_SCOPE_VALUES, type ApiKeyScope } from '@containers/contracts/api-key'
+import { API_KEY_SCOPE_VALUES, OWNER_ONLY_API_KEY_SCOPES, type ApiKeyScope } from '@containers/contracts/api-key'
 import { useCreateApiKey, useGetApiKeys, useRevokeApiKey } from '@entities/api-key/api-key.query'
 import { ApiKeyTokenNotice } from '@features/api-key-token-notice/api-key-token-notice'
 import { ConfirmActionDialog } from '@features/confirm-action-dialog/confirm-action-dialog'
@@ -17,9 +17,15 @@ import { Label } from '@shared/ui/label'
 import { Skeleton } from '@shared/ui/skeleton'
 import { WidgetSection } from '@shared/common/widget-section'
 
-export const ApiKeyWidget: FC = () => {
+const isOwnerOnlyScope = (scope: ApiKeyScope) => (OWNER_ONLY_API_KEY_SCOPES as readonly ApiKeyScope[]).includes(scope)
+
+type ApiKeyWidgetProps = {
+    isOwner: boolean
+}
+
+export const ApiKeyWidget: FC<ApiKeyWidgetProps> = ({ isOwner }) => {
     const [createdToken, setCreatedToken] = useState<string>()
-    const [scopes, setScopes] = useState<Set<ApiKeyScope>>(() => new Set(API_KEY_SCOPE_VALUES))
+    const [scopes, setScopes] = useState<Set<ApiKeyScope>>(() => new Set(API_KEY_SCOPE_VALUES.filter((scope) => isOwner || !isOwnerOnlyScope(scope))))
     const t = useTranslations('Dashboard')
     const apiKeysQuery = useGetApiKeys()
     const apiKeys = apiKeysQuery.data ?? []
@@ -93,9 +99,13 @@ export const ApiKeyWidget: FC = () => {
                                 <Checkbox
                                     id={`api-key-scope-${scope}`}
                                     checked={scopes.has(scope)}
+                                    disabled={!isOwner && isOwnerOnlyScope(scope)}
                                     onCheckedChange={(checked) => toggleScope(scope, checked === true)}
                                 />
-                                <Label htmlFor={`api-key-scope-${scope}`} className="font-mono text-xs">
+                                <Label
+                                    htmlFor={`api-key-scope-${scope}`}
+                                    className={!isOwner && isOwnerOnlyScope(scope) ? 'font-mono text-xs text-text-subtle' : 'font-mono text-xs'}
+                                >
                                     {scope}
                                 </Label>
                             </div>
