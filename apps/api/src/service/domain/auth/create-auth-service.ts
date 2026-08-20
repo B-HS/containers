@@ -84,8 +84,6 @@ type AuthServiceDependencies = {
 
 export type { AuthServiceDb }
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
-
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
 
 export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServiceDependencies) => {
@@ -117,16 +115,6 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
 
         if (!allowedRoles.includes(session.role)) {
             throw createAppError('FORBIDDEN')
-        }
-
-        return session
-    }
-
-    const requireRecentRole = async (headers: Headers, allowedRoles: string[], maxAgeMs: number) => {
-        const session = await requireRole(headers, allowedRoles)
-
-        if (now().getTime() - session.session.createdAt.getTime() > maxAgeMs) {
-            throw createAppError('RECENT_AUTH_REQUIRED')
         }
 
         return session
@@ -192,7 +180,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             }
         },
         createInvitation: async (headers: Headers, input: unknown) => {
-            const session = await requireRecentRole(headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN], RECENT_AUTH_MAX_AGE_MS)
+            const session = await requireRole(headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN])
             const payload = invitationCreateSchema.parse(input)
             const token = randomBytes(32).toString('base64url')
             const createdAt = now()
@@ -253,7 +241,7 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
             )
         },
         deleteUser: async (headers: Headers, targetUserId: string) => {
-            const actor = await requireRecentRole(headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
+            const actor = await requireRole(headers, [USER_ROLE.OWNER])
             const target = await db.findUserWithRole(targetUserId)
 
             if (!target) {
@@ -266,10 +254,9 @@ export const createAuthService = ({ auth, db, invitationBaseUrl, now }: AuthServ
 
             return { email: target.email, id: target.id, role: target.role }
         },
-        requireRecentRole,
         requireRole,
         updateUser: async (headers: Headers, targetUserId: string, input: unknown) => {
-            const actor = await requireRecentRole(headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
+            const actor = await requireRole(headers, [USER_ROLE.OWNER])
             const payload = managedUserUpdateSchema.parse(input)
             const target = await db.findUserWithRole(targetUserId)
 

@@ -14,7 +14,6 @@ import type { MaintenanceService } from '../../service/domain/maintenance/create
 
 const { upgradeWebSocket } = createBunWebSocket()
 const EXEC_ROLES = [USER_ROLE.OWNER]
-const EXEC_RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const EXEC_SESSION_RECHECK_INTERVAL_MS = 15_000
 const EXEC_MAX_BUFFERED_OUTPUT_BYTES = 1_048_576
 const EXEC_MAX_QUEUED_INPUT_BYTES = 65_536
@@ -23,7 +22,7 @@ const containerIdParamSchema = z.object({ containerId: z.string().min(1) })
 
 type InteractiveExecProxyRouteDependencies = {
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     engineAgentClient: Pick<EngineAgentClient, 'createInteractiveExecTicket' | 'getInteractiveExecWebSocketUrl'>
     maintenanceService: Pick<MaintenanceService, 'isEnabled'>
 }
@@ -64,7 +63,7 @@ export const createInteractiveExecProxyRoute = ({
                     }>,
                 ) => {
                     const containerId = context.req.valid('param').containerId
-                    const session = await authService.requireRecentRole(context.req.raw.headers, EXEC_ROLES, EXEC_RECENT_AUTH_MAX_AGE_MS)
+                    const session = await authService.requireRole(context.req.raw.headers, EXEC_ROLES)
                     const actorId = session.user.id
                     const input = context.req.valid('json')
                     await auditService.record({
@@ -110,7 +109,7 @@ export const createInteractiveExecProxyRoute = ({
             '/exec/ws/:ticket',
             upgradeWebSocket(async (context) => {
                 const headers = new Headers(context.req.raw.headers)
-                await authService.requireRecentRole(headers, EXEC_ROLES, EXEC_RECENT_AUTH_MAX_AGE_MS)
+                await authService.requireRole(headers, EXEC_ROLES)
                 if (maintenanceService.isEnabled()) {
                     throw createAppError('MAINTENANCE_MODE')
                 }
@@ -144,9 +143,7 @@ export const createInteractiveExecProxyRoute = ({
                     },
                     onOpen: (_event, websocket) => {
                         sessionCheckTimer = setInterval(() => {
-                            void authService
-                                .requireRecentRole(headers, EXEC_ROLES, EXEC_RECENT_AUTH_MAX_AGE_MS)
-                                .catch(() => websocket.close(1008, 'session revoked'))
+                            void authService.requireRole(headers, EXEC_ROLES).catch(() => websocket.close(1008, 'session revoked'))
                         }, EXEC_SESSION_RECHECK_INTERVAL_MS)
                         upstream = new WebSocket(engineAgentClient.getInteractiveExecWebSocketUrl(ticket))
                         upstream.addEventListener('open', () => {

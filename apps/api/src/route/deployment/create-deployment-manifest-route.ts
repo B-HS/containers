@@ -11,7 +11,6 @@ import type { AuditService } from '../../service/domain/audit/create-audit-servi
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { DeploymentManifestService } from '../../service/domain/deployment/create-deployment-manifest-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const MANIFEST_READ_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const MANIFEST_WRITE_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const manifestIdParamSchema = z.object({ id: z.uuid() })
@@ -23,7 +22,7 @@ const manifestListQuerySchema = z.object({
 type DeploymentManifestRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     deploymentManifestService: DeploymentManifestService
 }
 
@@ -99,7 +98,7 @@ export const createDeploymentManifestRoute = ({
                     actorId = principal.actorId
                     authMethod = principal.authMethod
                 } else {
-                    actorId = (await authService.requireRecentRole(context.req.raw.headers, MANIFEST_WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
+                    actorId = (await authService.requireRole(context.req.raw.headers, MANIFEST_WRITE_ROLES)).user.id
                 }
                 await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
                 try {
@@ -143,7 +142,7 @@ export const createDeploymentManifestRoute = ({
                     actorId = principal.actorId
                     authMethod = principal.authMethod
                 } else {
-                    actorId = (await authService.requireRecentRole(context.req.raw.headers, MANIFEST_WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
+                    actorId = (await authService.requireRole(context.req.raw.headers, MANIFEST_WRITE_ROLES)).user.id
                 }
                 await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
                 try {

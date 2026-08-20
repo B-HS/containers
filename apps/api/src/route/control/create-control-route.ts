@@ -27,11 +27,10 @@ import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { ControlService } from '../../service/domain/control/create-control-service'
 import type { OperationJobService } from '../../service/domain/job/create-operation-job-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const OPERATOR_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR]
 const ADMIN_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
-const RECENT_ADMIN_ACTIONS = ['kill', 'pause', 'remove', 'rename', 'restart', 'start', 'stop', 'unpause', 'update']
+const ADMIN_ONLY_ACTIONS = ['kill', 'pause', 'remove', 'rename', 'restart', 'start', 'stop', 'unpause', 'update']
 
 const containerIdParamSchema = z.object({ containerId: z.string().min(1) })
 const imageIdParamSchema = z.object({ imageId: z.string().min(1) })
@@ -43,7 +42,7 @@ const prunePreviewQuerySchema = z.object({ includeVolumes: z.coerce.boolean().de
 type ControlRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     controlService: ControlService
     operationJobService: Pick<OperationJobService, 'enqueue'>
 }
@@ -153,7 +152,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: [USER_ROLE.OWNER],
                     scope: API_KEY_SCOPE.REGISTRY_CREDENTIAL_WRITE,
                 })
@@ -214,7 +212,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: [USER_ROLE.OWNER],
                         scope: API_KEY_SCOPE.REGISTRY_CREDENTIAL_WRITE,
                     })
@@ -287,7 +284,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: [USER_ROLE.OWNER],
                         scope: API_KEY_SCOPE.REGISTRY_CREDENTIAL_WRITE,
                     })
@@ -391,7 +387,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: [USER_ROLE.OWNER],
                     scope: API_KEY_SCOPE.SYSTEM_PRUNE,
                 })
@@ -484,7 +479,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: ADMIN_ROLES,
                     scope: API_KEY_SCOPE.NETWORK_WRITE,
                 })
@@ -537,7 +531,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: ADMIN_ROLES,
                     scope: API_KEY_SCOPE.VOLUME_WRITE,
                 })
@@ -590,7 +583,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: ADMIN_ROLES,
                     scope: API_KEY_SCOPE.CONTAINER_WRITE,
                 })
@@ -650,13 +642,12 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                     const containerId = context.req.valid('param').containerId
                     const input = context.req.valid('json')
                     const operation = `container.${input.action}`
-                    const isRecentAdminAction = RECENT_ADMIN_ACTIONS.includes(input.action)
+                    const isAdminOnlyAction = ADMIN_ONLY_ACTIONS.includes(input.action)
                     const actor = await authenticateScopeOrRole({
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        ...(isRecentAdminAction ? { recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS } : {}),
-                        roles: isRecentAdminAction ? ADMIN_ROLES : OPERATOR_ROLES,
+                        roles: isAdminOnlyAction ? ADMIN_ROLES : OPERATOR_ROLES,
                         scope: API_KEY_SCOPE.CONTAINER_WRITE,
                     })
                     const actorId = actor.actorId
@@ -710,7 +701,7 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 ) => {
                     const containerId = context.req.valid('param').containerId
                     const input = context.req.valid('json')
-                    const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
+                    const session = await authService.requireRole(context.req.raw.headers, [USER_ROLE.OWNER])
                     const actorId = session.user.id
                     const audit = {
                         actorId,
@@ -758,7 +749,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: ADMIN_ROLES,
                     scope: API_KEY_SCOPE.IMAGE_WRITE,
                 })
@@ -817,7 +807,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: ADMIN_ROLES,
                         scope: API_KEY_SCOPE.IMAGE_WRITE,
                     })
@@ -873,7 +862,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: input.force ? [USER_ROLE.OWNER] : ADMIN_ROLES,
                         scope: API_KEY_SCOPE.IMAGE_WRITE,
                     })
@@ -933,7 +921,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: ADMIN_ROLES,
                         scope: API_KEY_SCOPE.NETWORK_WRITE,
                     })
@@ -993,7 +980,6 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: ADMIN_ROLES,
                         scope: API_KEY_SCOPE.VOLUME_WRITE,
                     })

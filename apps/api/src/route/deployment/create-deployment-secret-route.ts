@@ -15,14 +15,13 @@ import type { DeploymentSecretService } from '../../service/domain/deployment/cr
 import type { OperationJobService } from '../../service/domain/job/create-operation-job-service'
 import type { SecretRotationService } from '../../service/domain/deployment/create-secret-rotation-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const SECRET_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const secretIdParamSchema = z.object({ id: z.string().min(1) })
 
 type DeploymentSecretRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     deploymentSecretService: Pick<DeploymentSecretService, 'list' | 'remove' | 'upsert'>
     operationJobService: Pick<OperationJobService, 'enqueue'>
     secretRotationService: Pick<SecretRotationService, 'getState'>
@@ -71,7 +70,6 @@ export const createDeploymentSecretRoute = ({
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: [USER_ROLE.OWNER],
                     scope: API_KEY_SCOPE.SECRET_WRITE,
                 })
@@ -141,7 +139,6 @@ export const createDeploymentSecretRoute = ({
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: SECRET_ROLES,
                     scope: API_KEY_SCOPE.SECRET_WRITE,
                 })
@@ -183,7 +180,6 @@ export const createDeploymentSecretRoute = ({
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: SECRET_ROLES,
                         scope: API_KEY_SCOPE.SECRET_WRITE,
                     })

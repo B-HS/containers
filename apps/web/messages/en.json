@@ -218,7 +218,6 @@
         "deploymentProgress": "Release progress",
         "deploymentPublished": "Expose on a public domain",
         "deploymentPublishedHelp": "Turn off to deploy an internal service. No nginx route is created and health is observed through the container probe.",
-        "deploymentRecentAuth": "Creating manifests and starting deployments require a login within the last 15 minutes.",
         "deploymentRelease": "Release",
         "deploymentReleaseStart": "Start blue-green deployment",
         "deploymentReleaseStarted": "The release was started.",

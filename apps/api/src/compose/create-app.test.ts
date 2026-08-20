@@ -204,9 +204,6 @@ const createAppTestDependencies = () => ({
         getSessionSummary: async () => undefined,
         isEmailDisabled: async () => false,
         listUsers: async () => [],
-        requireRecentRole: async () => {
-            throw createAppError('AUTH_REQUIRED')
-        },
         requireRole: async () => ({
             role: 'owner' as const,
             session: {
@@ -747,7 +744,6 @@ describe('API 애플리케이션', () => {
         const app = createApp({
             ...dependencies,
             auditService: { ...dependencies.auditService, record: async (record) => void auditRecords.push(record) },
-            authService: { ...dependencies.authService, requireRecentRole: dependencies.authService.requireRole },
             engineAgentClient: {
                 ...dependencies.engineAgentClient,
                 upsertRegistryCredential: async (_credentialId, input) => {
@@ -778,7 +774,6 @@ describe('API 애플리케이션', () => {
         let enqueuedInput: Record<string, unknown> | undefined
         const app = createApp({
             ...dependencies,
-            authService: { ...dependencies.authService, requireRecentRole: dependencies.authService.requireRole },
             operationJobService: {
                 ...dependencies.operationJobService,
                 enqueue: async (input) => {
@@ -854,7 +849,7 @@ describe('API 애플리케이션', () => {
             ...dependencies,
             authService: {
                 ...dependencies.authService,
-                requireRecentRole: async (headers, roles) => {
+                requireRole: async (headers: Headers, roles: string[]) => {
                     void headers
                     recentRoles = roles
                     return dependencies.authService.requireRole()
@@ -901,7 +896,6 @@ describe('API 애플리케이션', () => {
         const dependencies = createAppTestDependencies()
         const app = createApp({
             ...dependencies,
-            authService: { ...dependencies.authService, requireRecentRole: dependencies.authService.requireRole },
         })
         const response = await app.request('/api/system/prune', {
             body: JSON.stringify({
@@ -939,11 +933,9 @@ describe('API 애플리케이션', () => {
 
     test('artifact load 는 이미 loaded 면 200 deployment, 아니면 202 job 을 반환합니다', async () => {
         const dependencies = createAppTestDependencies()
-        const authService = { ...dependencies.authService, requireRecentRole: dependencies.authService.requireRole }
         let enqueuedInput: Record<string, unknown> | undefined
         const jobApp = createApp({
             ...dependencies,
-            authService,
             operationJobService: {
                 ...dependencies.operationJobService,
                 enqueue: async (input) => {
@@ -968,7 +960,6 @@ describe('API 애플리케이션', () => {
         }
         const loadedApp = createApp({
             ...dependencies,
-            authService,
             deploymentService: { ...dependencies.deploymentService, getLoaded: async () => loaded },
         })
 
@@ -1012,7 +1003,6 @@ describe('API 애플리케이션', () => {
         const enqueuedKinds: string[] = []
         const app = createApp({
             ...dependencies,
-            authService: { ...dependencies.authService, requireRecentRole: dependencies.authService.requireRole },
             deploymentReleaseService: {
                 ...dependencies.deploymentReleaseService,
                 create: async () => createRelease('creating'),
@@ -1279,7 +1269,7 @@ describe('API 애플리케이션', () => {
             },
             authService: {
                 ...dependencies.authService,
-                requireRecentRole: async (_headers: Headers, allowedRoles: string[]) => {
+                requireRole: async (_headers: Headers, allowedRoles: string[]) => {
                     requestedRoles.push(allowedRoles)
                     if (!allowedRoles.includes('admin')) {
                         throw createAppError('FORBIDDEN')
@@ -1313,10 +1303,6 @@ describe('API 애플리케이션', () => {
                     requestedScopes.push(scope)
                     return { actorId: 'user-api', apiKeyId: 'api-key-id', authMethod: 'api-key' as const, role: 'owner' }
                 },
-            },
-            authService: {
-                ...dependencies.authService,
-                requireRecentRole: async () => dependencies.authService.requireRole(),
             },
             operationJobService: {
                 ...dependencies.operationJobService,

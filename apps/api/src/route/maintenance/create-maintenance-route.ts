@@ -12,7 +12,6 @@ import type { AuditService } from '../../service/domain/audit/create-audit-servi
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { MaintenanceService } from '../../service/domain/maintenance/create-maintenance-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const MAINTENANCE_WRITE_ROLES = [USER_ROLE.OWNER]
 const DEFAULT_MANUAL_REASON = 'manual'
@@ -20,7 +19,7 @@ const DEFAULT_MANUAL_REASON = 'manual'
 type MaintenanceRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     maintenanceService: Pick<MaintenanceService, 'disable' | 'enable' | 'getStatus'>
 }
 
@@ -67,7 +66,6 @@ export const createMaintenanceRoute = ({ apiKeyService, auditService, authServic
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: MAINTENANCE_WRITE_ROLES,
                     scope: API_KEY_SCOPE.MAINTENANCE_WRITE,
                 })

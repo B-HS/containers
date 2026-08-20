@@ -73,12 +73,6 @@ const createTestApp = (createBehavior: 'created' | 'rejected') =>
                 },
                 auditService: { record: async () => undefined },
                 authService: {
-                    requireRecentRole: async (headers) => {
-                        if (!headers.has('cookie')) {
-                            throw createAppError('AUTH_REQUIRED')
-                        }
-                        return SESSION
-                    },
                     requireRole: async (headers) => {
                         if (!headers.has('cookie')) {
                             throw createAppError('AUTH_REQUIRED')

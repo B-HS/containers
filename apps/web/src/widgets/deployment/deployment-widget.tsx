@@ -85,12 +85,7 @@ export const DeploymentWidget: FC<DeploymentWidgetProps> = ({ role }) => {
     }
 
     return (
-        <WidgetSection
-            id="deployment-control-title"
-            title={t('deploymentControl')}
-            notice={canManage ? t('deploymentRecentAuth') : undefined}
-            badge={manifests.length}
-        >
+        <WidgetSection id="deployment-control-title" title={t('deploymentControl')} badge={manifests.length}>
             {canManage ? (
                 <DeploymentManifestForm images={images} networks={networks} onSubmit={submitManifest} pending={createManifest.isPending} />
             ) : null}

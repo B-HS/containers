@@ -12,14 +12,13 @@ import type { AuditService } from '../../service/domain/audit/create-audit-servi
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { PanelSettingService } from '../../service/domain/panel-setting/create-panel-setting-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const READ_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const WRITE_ROLES = [USER_ROLE.OWNER]
 
 type PanelSettingRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     panelSettingService: Pick<PanelSettingService, 'get' | 'update'>
 }
 
@@ -65,7 +64,6 @@ export const createPanelSettingRoute = ({ apiKeyService, auditService, authServi
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: WRITE_ROLES,
                     scope: API_KEY_SCOPE.PANEL_SETTING_WRITE,
                 })

@@ -14,10 +14,7 @@ const createApp = (openEventStream: (signal: AbortSignal) => Promise<ReadableStr
         apiKeyService: {
             authenticate: async () => ({ actorId: 'user-api', apiKeyId: 'api-key-id', authMethod: 'api-key' as const, role: 'owner' }),
         },
-        authService: {
-            requireRecentRole: async () => ({ role: 'owner', user: { id: 'user-stream' } }) as never,
-            requireRole: async () => ({ role: 'owner', user: { id: 'user-stream' } }) as never,
-        },
+        authService: { requireRole: async () => ({ role: 'owner', user: { id: 'user-stream' } }) as never },
         engineAgentClient: {
             openContainerLogStream: async () => createIdleStream(),
             openContainerStatsStream: async () => createIdleStream(),

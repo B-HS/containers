@@ -82,12 +82,7 @@ export const DeploymentStackWidget: FC<DeploymentStackWidgetProps> = ({ role }) 
     }
 
     return (
-        <WidgetSection
-            id="deployment-stack-title"
-            title={t('deploymentStackControl')}
-            notice={canManage ? t('deploymentRecentAuth') : undefined}
-            badge={stacks.length}
-        >
+        <WidgetSection id="deployment-stack-title" title={t('deploymentStackControl')} badge={stacks.length}>
             {canManage ? (
                 <DeploymentStackForm
                     onPreview={runPreview}

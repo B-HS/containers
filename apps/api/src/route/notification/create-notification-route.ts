@@ -13,7 +13,6 @@ import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { NotificationDeliveryService } from '../../service/domain/notification/create-notification-delivery-service'
 import type { NotificationDestinationService } from '../../service/domain/notification/create-notification-destination-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const NOTIFICATION_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const destinationIdParamSchema = z.object({ id: z.uuid() })
 const setEnabledSchema = z.object({ enabled: z.boolean().optional().default(false) })
@@ -21,7 +20,7 @@ const setEnabledSchema = z.object({ enabled: z.boolean().optional().default(fals
 type NotificationRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     notificationDeliveryService: Pick<NotificationDeliveryService, 'deliverTest'>
     notificationDestinationService: Pick<NotificationDestinationService, 'list' | 'remove' | 'setEnabled' | 'upsert'>
 }
@@ -74,7 +73,6 @@ export const createNotificationRoute = ({
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: NOTIFICATION_ROLES,
                     scope: API_KEY_SCOPE.NOTIFICATION_WRITE,
                 })
@@ -129,7 +127,6 @@ export const createNotificationRoute = ({
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: NOTIFICATION_ROLES,
                         scope: API_KEY_SCOPE.NOTIFICATION_WRITE,
                     })
@@ -175,7 +172,6 @@ export const createNotificationRoute = ({
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: NOTIFICATION_ROLES,
                     scope: API_KEY_SCOPE.NOTIFICATION_WRITE,
                 })
@@ -227,7 +223,6 @@ export const createNotificationRoute = ({
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: NOTIFICATION_ROLES,
                         scope: API_KEY_SCOPE.NOTIFICATION_WRITE,
                     })

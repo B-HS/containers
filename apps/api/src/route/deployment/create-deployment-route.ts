@@ -12,13 +12,12 @@ import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { DeploymentService } from '../../service/domain/deployment/create-deployment-service'
 import type { OperationJobService } from '../../service/domain/job/create-operation-job-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const artifactIdParamSchema = z.object({ artifactId: z.uuid() })
 
 type DeploymentRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole'>
+    authService: Pick<AuthService, 'requireRole'>
     deploymentService: Pick<DeploymentService, 'getLoaded'>
     operationJobService: Pick<OperationJobService, 'enqueue'>
 }
@@ -59,8 +58,7 @@ export const createDeploymentRoute = ({
                 actorId = principal.actorId
                 authMethod = principal.authMethod
             } else {
-                actorId = (await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN], RECENT_AUTH_MAX_AGE_MS))
-                    .user.id
+                actorId = (await authService.requireRole(context.req.raw.headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN])).user.id
             }
             await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
             try {

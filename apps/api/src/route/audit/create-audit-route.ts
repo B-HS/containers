@@ -15,7 +15,7 @@ import type { AuthService } from '../../service/domain/auth/create-auth-service'
 type AuditRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'list' | 'verifyIntegrity'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
 }
 
 const toUnavailable = (error: unknown) => {

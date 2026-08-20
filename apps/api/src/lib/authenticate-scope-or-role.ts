@@ -6,7 +6,6 @@ type ApiKeyAuthenticator = {
 }
 
 type SessionAuthenticator = {
-    requireRecentRole: (headers: Headers, allowedRoles: string[], maxAgeMs: number) => Promise<{ role: string; user: { id: string } }>
     requireRole: (headers: Headers, allowedRoles: string[]) => Promise<{ role: string; user: { id: string } }>
 }
 
@@ -14,7 +13,6 @@ type AuthenticateScopeOrRoleInput = {
     apiKeyService: ApiKeyAuthenticator
     authService: SessionAuthenticator
     headers: Headers
-    recentMaxAgeMs?: number
     roles: string[]
     scope: ApiKeyScope
 }
@@ -22,18 +20,9 @@ type AuthenticateScopeOrRoleInput = {
 /**
  * Authenticates a request as either an API key (Authorization header present,
  * scope required, key holder's current role must satisfy the same role gate)
- * or a session (recentMaxAgeMs switches to the recent-auth check). The session
- * recent requirement is intentionally replaced by scope possession on the API
- * key path.
+ * or a session with the required role.
  */
-export const authenticateScopeOrRole = async ({
-    apiKeyService,
-    authService,
-    headers,
-    recentMaxAgeMs,
-    roles,
-    scope,
-}: AuthenticateScopeOrRoleInput) => {
+export const authenticateScopeOrRole = async ({ apiKeyService, authService, headers, roles, scope }: AuthenticateScopeOrRoleInput) => {
     if (headers.has('authorization')) {
         const key = await apiKeyService.authenticate(headers, scope)
         if (!roles.includes(key.role)) {
@@ -41,10 +30,7 @@ export const authenticateScopeOrRole = async ({
         }
         return { actorId: key.actorId, apiKeyId: key.apiKeyId as string | null, authMethod: key.authMethod as 'api-key' | 'session', role: key.role }
     }
-    const session =
-        recentMaxAgeMs === undefined
-            ? await authService.requireRole(headers, roles)
-            : await authService.requireRecentRole(headers, roles, recentMaxAgeMs)
+    const session = await authService.requireRole(headers, roles)
     return { actorId: session.user.id, apiKeyId: null, authMethod: 'session' as const, role: session.role }
 }
 

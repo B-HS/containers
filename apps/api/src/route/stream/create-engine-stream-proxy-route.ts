@@ -23,7 +23,7 @@ const SSE_HEADERS = {
 
 type EngineStreamProxyRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     engineAgentClient: Pick<EngineAgentClient, 'openContainerLogStream' | 'openContainerStatsStream' | 'openEventStream'>
 }
 

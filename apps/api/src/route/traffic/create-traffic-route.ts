@@ -29,7 +29,7 @@ const jobIdParamSchema = z.object({ jobId: z.uuid() })
 type TrafficRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     operationJobService: Pick<OperationJobService, 'enqueue' | 'get'>
     trafficExportRoot: string
     trafficService: TrafficService

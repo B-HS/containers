@@ -12,14 +12,13 @@ import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { BackupScheduleService } from '../../service/domain/job/create-backup-schedule-service'
 import type { OperationJobService } from '../../service/domain/job/create-operation-job-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const JOB_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const jobIdSchema = z.object({ id: z.uuid() })
 
 type JobRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     backupScheduleService: Pick<BackupScheduleService, 'getSchedule'>
     operationJobService: Pick<OperationJobService, 'get' | 'list' | 'listEvents' | 'requestCancel'>
 }
@@ -39,7 +38,7 @@ export const createJobRoute = ({ apiKeyService, auditService, authService, backu
         if (headers.has('authorization')) {
             return apiKeyService.authenticate(headers, API_KEY_SCOPE.JOB_WRITE)
         }
-        const session = await authService.requireRecentRole(headers, JOB_ROLES, RECENT_AUTH_MAX_AGE_MS)
+        const session = await authService.requireRole(headers, JOB_ROLES)
         return { actorId: session.user.id, authMethod: 'session' as const }
     }
 

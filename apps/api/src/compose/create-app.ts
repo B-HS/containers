@@ -82,7 +82,6 @@ type AppDependencies = {
         | 'getSessionSummary'
         | 'isEmailDisabled'
         | 'listUsers'
-        | 'requireRecentRole'
         | 'requireRole'
         | 'updateUser'
     >

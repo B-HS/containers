@@ -11,7 +11,6 @@ import type { AuditService } from '../../service/domain/audit/create-audit-servi
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { DeploymentStackService } from '../../service/domain/deployment/create-deployment-stack-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const STACK_READ_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const STACK_WRITE_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const stackIdParamSchema = z.object({ id: z.uuid() })
@@ -19,7 +18,7 @@ const stackIdParamSchema = z.object({ id: z.uuid() })
 type DeploymentStackRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     deploymentStackService: DeploymentStackService
 }
 
@@ -40,13 +39,13 @@ const authenticateRead = async (
 const authenticateWrite = async (
     headers: Headers,
     apiKeyService: Pick<ApiKeyService, 'authenticate'>,
-    authService: Pick<AuthService, 'requireRecentRole'>,
+    authService: Pick<AuthService, 'requireRole'>,
 ) => {
     if (headers.has('authorization')) {
         const principal = await apiKeyService.authenticate(headers, API_KEY_SCOPE.DEPLOYMENT_WRITE)
         return { actorId: principal.actorId, authMethod: principal.authMethod }
     }
-    const session = await authService.requireRecentRole(headers, STACK_WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)
+    const session = await authService.requireRole(headers, STACK_WRITE_ROLES)
     return { actorId: session.user.id, authMethod: 'session' as const }
 }
 

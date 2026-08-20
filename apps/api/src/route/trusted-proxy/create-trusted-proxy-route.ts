@@ -12,7 +12,6 @@ import type { AuditService } from '../../service/domain/audit/create-audit-servi
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { TrustedProxyService } from '../../service/domain/trusted-proxy/create-trusted-proxy-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const READ_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const WRITE_ROLES = [USER_ROLE.OWNER]
 
@@ -21,7 +20,7 @@ const addressParamSchema = z.object({ address: proxyAddressSchema })
 type TrustedProxyRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     trustedProxyService: Pick<TrustedProxyService, 'approve' | 'getState' | 'revoke'>
 }
 
@@ -68,7 +67,6 @@ export const createTrustedProxyRoute = ({ apiKeyService, auditService, authServi
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: WRITE_ROLES,
                     scope: API_KEY_SCOPE.TRUSTED_PROXY_WRITE,
                 })
@@ -113,7 +111,6 @@ export const createTrustedProxyRoute = ({ apiKeyService, auditService, authServi
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: WRITE_ROLES,
                     scope: API_KEY_SCOPE.TRUSTED_PROXY_WRITE,
                 })

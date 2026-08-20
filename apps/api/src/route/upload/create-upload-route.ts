@@ -23,11 +23,10 @@ const chunkSha256Schema = z.object({ 'x-chunk-sha256': z.string().regex(/^[a-f0-
 const sessionIdParamSchema = z.object({ sessionId: z.uuid() })
 const artifactIdParamSchema = z.object({ artifactId: z.uuid() })
 const ARTIFACT_REMOVE_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 
 type UploadRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     operationJobService: Pick<OperationJobService, 'enqueue'>
     auditService: Pick<AuditService, 'record'>
     uploadService: Pick<UploadService, 'appendChunk' | 'createSession' | 'getOwnedSession' | 'listArtifacts' | 'removeArtifact'>
@@ -80,7 +79,6 @@ export const createUploadRoute = ({ apiKeyService, auditService, authService, op
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: ARTIFACT_REMOVE_ROLES,
                         scope: API_KEY_SCOPE.ARTIFACT_WRITE,
                     })

@@ -8,7 +8,6 @@ import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-ha
 import { requiresOwnerApiKeyScope, type ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const ADMIN_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const OWNER_ROLES = [USER_ROLE.OWNER]
 
@@ -16,7 +15,7 @@ const apiKeyIdSchema = z.object({ id: z.uuid() })
 
 type ApiKeyRouteDependencies = {
     apiKeyService: ApiKeyService
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
 }
 
 export const createApiKeyRoute = ({ apiKeyService, authService }: ApiKeyRouteDependencies) =>
@@ -44,7 +43,7 @@ export const createApiKeyRoute = ({ apiKeyService, authService }: ApiKeyRouteDep
             withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof apiKeyCreateSchema> }>) => {
                 const payload = context.req.valid('json')
                 const allowedRoles = requiresOwnerApiKeyScope(payload.scopes) ? OWNER_ROLES : ADMIN_ROLES
-                const session = await authService.requireRecentRole(context.req.raw.headers, allowedRoles, RECENT_AUTH_MAX_AGE_MS)
+                const session = await authService.requireRole(context.req.raw.headers, allowedRoles)
                 return context.json(successResponse(await apiKeyService.create({ id: session.user.id, role: session.role }, payload)), 201)
             }),
         )
@@ -57,7 +56,7 @@ export const createApiKeyRoute = ({ apiKeyService, authService }: ApiKeyRouteDep
             }),
             validator('param', apiKeyIdSchema),
             withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof apiKeyIdSchema> }>) => {
-                await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                await authService.requireRole(context.req.raw.headers, ADMIN_ROLES)
                 const { id } = context.req.valid('param')
                 return context.json(successResponse(await apiKeyService.revoke(id)), 200)
             }),

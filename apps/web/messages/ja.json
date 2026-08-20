@@ -218,7 +218,6 @@
         "deploymentProgress": "リリース進行",
         "deploymentPublished": "公開ドメインで公開する",
         "deploymentPublishedHelp": "オフにすると内部サービスとしてデプロイします。nginx ルートを作らず、コンテナ probe のみで観察します。",
-        "deploymentRecentAuth": "Manifest の作成とデプロイ開始には15分以内のログインが必要です。",
         "deploymentRelease": "Release",
         "deploymentReleaseStart": "ブルーグリーンデプロイを開始",
         "deploymentReleaseStarted": "リリースを開始しました。",

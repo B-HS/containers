@@ -174,7 +174,6 @@ const API_ERROR_MESSAGE = {
     [ERROR_CODE.STREAM_LIMIT_REACHED]: '동시 스트림 상한에 도달했습니다.',
     [ERROR_CODE.SECRET_KEY_VERSION_MISSING]: '암호화 키 버전을 찾을 수 없습니다.',
     [ERROR_CODE.SECRET_ROTATE_IN_PROGRESS]: '이미 진행 중인 키 교체 작업이 있습니다.',
-    [ERROR_CODE.RECENT_AUTH_REQUIRED]: '최근 로그인이 필요한 작업입니다.',
     [ERROR_CODE.SIGN_UP_DISABLED]: '공개 가입은 허용되지 않습니다.',
     [ERROR_CODE.TRAFFIC_EXPORT_CREATE_FAILED]: '트래픽 내보내기 작업을 만들 수 없습니다.',
     [ERROR_CODE.TRAFFIC_EXPORT_DOWNLOAD_FAILED]: '내보내기 파일을 찾을 수 없습니다.',

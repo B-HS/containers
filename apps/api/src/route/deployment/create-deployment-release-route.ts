@@ -12,7 +12,6 @@ import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { DeploymentReleaseService } from '../../service/domain/deployment/create-deployment-release-service'
 import type { OperationJobService } from '../../service/domain/job/create-operation-job-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const RELEASE_READ_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const RELEASE_WRITE_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const releaseIdParamSchema = z.object({ id: z.uuid() })
@@ -21,7 +20,7 @@ const manifestIdParamSchema = z.object({ manifestId: z.uuid() })
 type DeploymentReleaseRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     deploymentReleaseService: Pick<DeploymentReleaseService, 'create' | 'get' | 'list' | 'prepareRollback'>
     operationJobService: Pick<OperationJobService, 'enqueue'>
 }
@@ -43,12 +42,12 @@ const authenticateRead = async (
 const authenticateWrite = async (
     headers: Headers,
     apiKeyService: Pick<ApiKeyService, 'authenticate'>,
-    authService: Pick<AuthService, 'requireRecentRole'>,
+    authService: Pick<AuthService, 'requireRole'>,
 ) => {
     if (headers.has('authorization')) {
         return apiKeyService.authenticate(headers, API_KEY_SCOPE.DEPLOYMENT_WRITE)
     }
-    const session = await authService.requireRecentRole(headers, RELEASE_WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)
+    const session = await authService.requireRole(headers, RELEASE_WRITE_ROLES)
     return { actorId: session.user.id, authMethod: 'session' as const }
 }
 

@@ -15,14 +15,13 @@ import type { BackupService } from '../../service/domain/backup/create-backup-se
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { OperationJobService } from '../../service/domain/job/create-operation-job-service'
 
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const BACKUP_ROLES = [USER_ROLE.OWNER]
 const backupIdParamSchema = z.object({ id: backupIdSchema })
 
 type BackupRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     backupService: Pick<BackupService, 'create' | 'list' | 'remove' | 'stageRestoreSecret'>
     operationJobService: Pick<OperationJobService, 'enqueue'>
 }
@@ -35,7 +34,6 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
             apiKeyService,
             authService,
             headers,
-            recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
             roles: BACKUP_ROLES,
             scope,
         })

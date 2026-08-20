@@ -6,10 +6,6 @@ import { createAppError } from './error'
 const OWNER_SESSION = { role: 'owner', user: { id: 'user-session' } }
 
 const createAuthServiceStub = (calls: string[]) => ({
-    requireRecentRole: async () => {
-        calls.push('recent')
-        return OWNER_SESSION
-    },
     requireRole: async () => {
         calls.push('role')
         return OWNER_SESSION
@@ -44,9 +40,9 @@ describe('authenticateScopeOrRole', () => {
         ).rejects.toMatchObject({ code: 'FORBIDDEN' })
     })
 
-    test('세션 경로는 recentMaxAgeMs 유무로 recent 검사를 고른다', async () => {
+    test('Authorization 헤더가 없으면 세션 role 검사로 인증한다', async () => {
         const calls: string[] = []
-        const plain = await authenticateScopeOrRole({
+        const actor = await authenticateScopeOrRole({
             apiKeyService: {
                 authenticate: async () => {
                     throw createAppError('AUTH_REQUIRED')
@@ -57,19 +53,7 @@ describe('authenticateScopeOrRole', () => {
             roles: ['owner'],
             scope: API_KEY_SCOPE.ENGINE_READ,
         })
-        await authenticateScopeOrRole({
-            apiKeyService: {
-                authenticate: async () => {
-                    throw createAppError('AUTH_REQUIRED')
-                },
-            },
-            authService: createAuthServiceStub(calls),
-            headers: new Headers(),
-            recentMaxAgeMs: 1_000,
-            roles: ['owner'],
-            scope: API_KEY_SCOPE.ENGINE_READ,
-        })
-        expect(plain).toEqual({ actorId: 'user-session', apiKeyId: null, authMethod: 'session', role: 'owner' })
-        expect(calls).toEqual(['role', 'recent'])
+        expect(actor).toEqual({ actorId: 'user-session', apiKeyId: null, authMethod: 'session', role: 'owner' })
+        expect(calls).toEqual(['role'])
     })
 })

@@ -218,7 +218,6 @@
         "deploymentProgress": "릴리스 진행",
         "deploymentPublished": "공개 도메인으로 노출",
         "deploymentPublishedHelp": "끄면 내부 서비스로 배포합니다. nginx 라우트를 만들지 않고 컨테이너 probe 로만 관찰합니다.",
-        "deploymentRecentAuth": "Manifest 생성과 배포 시작에는 15분 이내의 로그인이 필요합니다.",
         "deploymentRelease": "Release",
         "deploymentReleaseStart": "블루/그린 배포 시작",
         "deploymentReleaseStarted": "릴리스를 시작했습니다.",

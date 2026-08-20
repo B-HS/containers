@@ -19,7 +19,7 @@ type ControlPlaneRouteDependencies = {
 
 const toUnavailable = (error: unknown) => {
     const code = error instanceof Error ? error.message : ''
-    if (code === 'AUTH_REQUIRED' || code === 'RECENT_AUTH_REQUIRED' || code === 'FORBIDDEN') {
+    if (code === 'AUTH_REQUIRED' || code === 'FORBIDDEN') {
         return error
     }
     return createAppError('CONTROL_PLANE_STATUS_FAILED')

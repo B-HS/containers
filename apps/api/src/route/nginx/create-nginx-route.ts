@@ -15,14 +15,13 @@ import type { NginxProxyRouteService } from '../../service/domain/nginx/create-n
 
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
 const ADMIN_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
-const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1_000
 const nginxRouteIdParamSchema = z.object({ id: z.uuid() })
 const nginxRouteRemoveSchema = z.object({ confirmation: z.string().min(1).max(256) })
 
 type NginxRouteDependencies = {
     apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
+    authService: Pick<AuthService, 'requireRole'>
     nginxService: NginxService
     nginxProxyRouteService: Pick<NginxProxyRouteService, 'create' | 'list' | 'remove' | 'update'>
 }
@@ -98,7 +97,6 @@ export const createNginxRoute = ({ apiKeyService, auditService, authService, ngi
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: ADMIN_ROLES,
                     scope: API_KEY_SCOPE.NGINX_WRITE,
                 })
@@ -167,7 +165,6 @@ export const createNginxRoute = ({ apiKeyService, auditService, authService, ngi
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: ADMIN_ROLES,
                         scope: API_KEY_SCOPE.NGINX_WRITE,
                     })
@@ -236,7 +233,6 @@ export const createNginxRoute = ({ apiKeyService, auditService, authService, ngi
                         apiKeyService,
                         authService,
                         headers: context.req.raw.headers,
-                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                         roles: ADMIN_ROLES,
                         scope: API_KEY_SCOPE.NGINX_WRITE,
                     })
@@ -306,7 +302,6 @@ export const createNginxRoute = ({ apiKeyService, auditService, authService, ngi
                     apiKeyService,
                     authService,
                     headers: context.req.raw.headers,
-                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
                     roles: ADMIN_ROLES,
                     scope: API_KEY_SCOPE.NGINX_WRITE,
                 })
