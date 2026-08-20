@@ -18,15 +18,15 @@ Docker daemon을 제어할 수 있는 주체는 Docker Desktop Linux VM의 root-
 
 ## 3. 위험도 등급
 
-| 등급            | 예                                                                              | 요구 절차                                             |
-| --------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| 조회            | list, inspect, stats, logs, events                                              | session 또는 read scope                               |
-| 일상 변경       | start, stop, restart, pause, route draft 저장                                   | operator 이상, audit                                  |
-| 파괴적          | container rm, image rmi, network·volume rm, prune                               | admin 이상, 영향 미리보기, 대상명 재입력              |
-| root-equivalent | privileged create, host bind, device, host namespaces, shell exec, build secret | owner, 최근 재인증, 시간 제한 break-glass, 별도 audit |
-| 시스템 전체     | system prune all, 다수 삭제, 전체 `nginx.conf` 적용                             | owner, dry-run 결과, 이중 확인, job 취소 지점         |
+| 등급            | 예                                                                              | 요구 절차                                     |
+| --------------- | ------------------------------------------------------------------------------- | --------------------------------------------- |
+| 조회            | list, inspect, stats, logs, events                                              | session 또는 read scope                       |
+| 일상 변경       | start, stop, restart, pause, route draft 저장                                   | operator 이상, audit                          |
+| 파괴적          | container rm, image rmi, network·volume rm, prune                               | admin 이상, 영향 미리보기, 대상명 재입력      |
+| root-equivalent | privileged create, host bind, device, host namespaces, shell exec, build secret | owner 전용, 확인 문구, 별도 audit             |
+| 시스템 전체     | system prune all, 다수 삭제, 전체 `nginx.conf` 적용                             | owner, dry-run 결과, 이중 확인, job 취소 지점 |
 
-API 키에는 root-equivalent scope를 기본 발급하지 않는다. owner가 명시적으로 허용해도 짧은 만료, 낮은 rate limit과 선택적 CIDR을 적용한다. 외부 API에는 Cloudflare Access service token을 요구하지 않는다.
+API 키의 owner 전용 scope(`OWNER_ONLY_API_KEY_SCOPES` 8종)는 발급·사용 모두 owner 를 요구하고, 모든 키에 만료(1~365일)와 분당 rate limit 을 적용한다. 외부 API에는 Cloudflare Access service token을 요구하지 않는다.
 
 ## 4. 인증·세션
 
@@ -34,7 +34,7 @@ API 키에는 root-equivalent scope를 기본 발급하지 않는다. owner가 �
 - 공개 signup은 비활성화하고 초대 token은 단회·짧은 만료로 둔다.
 - 쿠키는 HttpOnly, SameSite=Lax 이며 https 요청에는 `Secure` 가 붙는다. loopback http 도 함께 지원해야 해서 요청별로 결정한다(§16).
 - 비밀번호 재설정·로그인·API key 검증은 rate limit과 audit 대상이다.
-- destructive와 break-glass 작업은 최근 인증 시각을 확인하고 오래된 session이면 재인증한다.
+- destructive와 break-glass 작업은 owner/admin role 게이트와 확인 문구(confirmation)로 보호한다. 최근 인증(세션 나이) 검사는 재인증 플로우 없이 UX 만 깨뜨려 제거했다([acknowledge/0045](./acknowledge/0045-remove-recent-auth.md)).
 - Cloudflare Access는 관리 도메인 외곽 방어선으로 권장하되 애플리케이션 인증·인가를 대체하지 않는다.
 - 초대 링크는 token hash만 저장하고 단회, 짧은 만료, role 상한, 회수와 사용 audit를 제공한다.
 
@@ -46,7 +46,7 @@ API 키에는 root-equivalent scope를 기본 발급하지 않는다. owner가 �
 - resource: `container`, `image`, `network`, `volume`, `nginx`, `traffic`, `deployment`, `user`, `api-key`, `audit`, `system`
 - action: `read`, `create`, `update`, `execute`, `delete`, `prune`, `break-glass`
 
-Route 는 `withErrorHandling` 안에서 `authService.requireRole`·`requireRecentRole`(또는 API key `authenticate`)을 직접 호출한다(`withCapability` HOF 는 존재하지 않는다). Service 도 보호 hostname·보호 컨테이너처럼 도메인 정책을 다시 확인한다. Agent는 API의 판정을 맹신하지 않고 operation별 허용 DTO와 internal service credential을 검증한다.
+Route 는 `withErrorHandling` 안에서 `authenticateScopeOrRole`(세션·API key 겸용) 또는 `authService.requireRole`(세션 전용)을 직접 호출한다(`withCapability` HOF 는 존재하지 않는다). Service 도 보호 hostname·보호 컨테이너처럼 도메인 정책을 다시 확인한다. Agent는 API의 판정을 맹신하지 않고 operation별 허용 DTO와 internal service credential을 검증한다.
 
 ### 5.2 감사 로그 보존과 정렬 (2026-08-05)
 
@@ -68,7 +68,7 @@ Route 는 `withErrorHandling` 안에서 `authService.requireRole`·`requireRecen
 
 - Better Auth API key plugin 또는 동등한 검증된 구현을 사용한다.
 - key 원문은 생성 응답에서 한 번만 노출하고 DB에는 hash만 저장한다.
-- prefix, 이름, actor, scopes, expiresAt, revokedAt, lastUsedAt, rate limit, 선택적 CIDR를 저장한다.
+- prefix, 이름, actor, scopes, expiresAt, revokedAt, lastUsedAt 을 저장하고 분당 rate limit 을 적용한다.
 - query string으로 키를 받지 않고 `Authorization: Bearer` 또는 고정 전용 header 하나만 사용한다.
 - audit에는 key ID와 prefix만 남긴다.
 - key rotation은 신규 발급, 소비자 전환, 구키 revoke 순으로 무중단 수행한다.
@@ -133,7 +133,7 @@ blue-green 릴리스가 실패하면 원인이 컨테이너 안에만 남고 패
 - API와 Agent 사이 credential 은 공유 named volume 의 파일(`/credentials/agent-secret`, mode 0600)로 전달한다. Docker `secrets:` 는 쓰지 않고 정기 rotation 도 자동화돼 있지 않다.
 - private registry 비밀번호·access token은 Agent 전용 named volume에서 AES-256-GCM으로 암호화한다. API 응답·control DB·job payload·audit에는 원문을 기록하지 않는다.
 - deployment secret 과 notification webhook 의 마스터 키는 **keyring** 이다. v1 은 `/data/deployment-secret-key`·`/data/notification-secret-key`, 이후 버전은 같은 경로에 `.v2`, `.v3` 로 쌓인다(모두 `0600`). 쓰기는 항상 활성(최신) 버전으로, 읽기는 행의 `key_version` 으로 한다.
-- 키 교체는 owner 최근 인증이 필요한 `POST /api/deployment-secrets/rotate` 가 `secret.rotate` durable job 을 만들어 수행한다. 새 버전을 keyring 에 추가한 뒤 기존 행을 전부 복호화·재암호화한다. 옛 키를 지우지 않으므로 교체가 중간에 실패해도 어느 버전으로 암호화된 행이든 계속 복호화된다. 현재 버전은 `GET /api/deployment-secrets/key-versions`(owner·admin) 로 확인한다.
+- 키 교체는 owner 전용 `POST /api/deployment-secrets/rotate` 가 `secret.rotate` durable job 을 만들어 수행한다. 새 버전을 keyring 에 추가한 뒤 기존 행을 전부 복호화·재암호화한다. 옛 키를 지우지 않으므로 교체가 중간에 실패해도 어느 버전으로 암호화된 행이든 계속 복호화된다. 현재 버전은 `GET /api/deployment-secrets/key-versions`(owner·admin) 로 확인한다.
 - registry credential은 선택한 image reference의 registry host와 정확히 일치할 때만 Docker Engine `X-Registry-Auth`로 사용한다.
 - Agent 요청은 request ID, timestamp, nonce, body digest를 서명해 replay를 막는다.
 - API, web, worker, nginx는 불필요한 Linux capability를 모두 drop한다.
@@ -175,7 +175,7 @@ blue-green 릴리스가 실패하면 원인이 컨테이너 안에만 남고 패
 - 로컬 백업은 API와 Traffic Worker만 mount한 `backups` named volume에 저장하며 host path를 입력받지 않는다.
 - backup ID는 UUID, 복구·삭제 confirmation도 같은 UUID로 검증해 경로 입력 표면을 제거한다.
 - 생성 전에 live control DB FK를 검사하고, 복구 전에 control SQLite integrity·FK·table·column과 두 파일 SHA-256·byte 수를 모두 검증한다.
-- 복구는 Owner 최근 session 또는 명시적인 `backup:write` API key scope만 허용하고 create·restore·remove를 audit한다.
+- 복구는 Owner session 또는 owner 가 발급한 `backup:restore` API key scope 만 허용하고 create·restore·remove를 audit한다.
 - 복구 직전에 현재 control·traffic DB를 별도 recovery set으로 만든다. 두 DB 복구 중 실패하면 이 set으로 보상 복구를 시도한다.
 - 손상 backup은 복구할 수 없지만 정확한 UUID confirmation으로 삭제할 수 있다.
 - 로컬 snapshot 자체는 별도 파일 암호화를 하지 않는다. deployment secret 값은 DB 안에서 AES-256-GCM ciphertext지만 사용자·세션·password hash 등 민감 metadata가 있으므로 named volume 접근을 secret 수준으로 다룬다.
@@ -192,8 +192,8 @@ blue-green 릴리스가 실패하면 원인이 컨테이너 안에만 남고 패
 
 ### API key 권한 상승 차단
 
-- admin이 `backup:write` scope의 API key를 스스로 발급해 **owner 전용** 백업 복원을 수행할 수 있었다(API key 경로가 role 검사와 최근 인증을 동시에 우회). `backup:write`·`secret:write`는 발급 시 owner + 최근 인증을 요구하고, **사용 시에도 발급자의 현재 role이 owner인지 재확인**한다. 정책 도입 이전 발급분과 강등된 계정의 키는 자동으로 무력화된다.
-- 백업 복원(`POST /api/backups/:id/restore`)은 **session-only**로 전환했다. `authorization` 헤더가 있으면 거부하고 owner 세션 + 최근 인증만 허용한다. API key는 정의상 "최근 인증된 사람의 의사"를 표현할 수 없기 때문이다. 백업 생성·조회·삭제의 API key 경로는 자동화 용도가 있어 유지한다.
+- admin이 `backup:write` scope의 API key를 스스로 발급해 **owner 전용** 백업 복원을 수행할 수 있었다(API key 경로가 role 검사를 우회). owner 전용 scope(`OWNER_ONLY_API_KEY_SCOPES` 8종)는 발급 시 owner 를 요구하고, **사용 시에도 발급자의 현재 role이 owner인지 재확인**한다. 정책 도입 이전 발급분과 강등된 계정의 키는 자동으로 무력화된다.
+- 백업 복원(`POST /api/backups/:id/restore`)은 owner 세션 또는 owner 전용 `backup:restore` scope 의 API key 로 허용한다([acknowledge/0044](./acknowledge/0044-api-key-parity-and-egress-broker.md)). 백업 생성·조회·삭제의 API key 경로도 자동화 용도로 유지한다.
 
 ### 안정성 (가용성 측면)
 

@@ -4,17 +4,17 @@
 
 M1 Max macOS의 Docker Desktop Linux VM 안에서 Docker Compose로 묶인 다중 컨테이너 애플리케이션을 사용한다. 외부에서는 하나의 서버 제품처럼 보이지만 권한과 장애를 분리한다.
 
-| 서비스           | 역할                                                        |                외부 노출 | Docker socket |
-| ---------------- | ----------------------------------------------------------- | -----------------------: | ------------: |
-| `nginx`          | 최초 ingress, 관리·워크로드 라우팅, access log              |  Cloudflare Tunnel에서만 |          없음 |
-| `web`            | Next.js App Router, SSR/RSC, 패널 UI                        |               Nginx 경유 |          없음 |
-| `api`            | Hono RPC, 인증·인가, jobs, 구성 관리                        |               Nginx 경유 |          없음 |
-| `engine-agent`   | Docker Engine 어댑터와 스트림 중계                          |                 내부망만 |     읽기·쓰기 |
-| `traffic-worker` | Nginx JSONL tail, 검증, raw 저장, 조회·live·export          |                 내부망만 |          없음 |
-| `egress-broker`  | DNS 해석·webhook 발송 대행 (유일한 egress 보유 관리 서비스) |                 내부망만 |          없음 |
-| `backup-worker`  | 선택적 R2 업로드·bounded snapshot 전용 worker 후보          |          계획, 아직 없음 |          없음 |
-| `watchdog`       | 관리 plane·Nginx 생존 probe와 last-known-good 복구          |          계획, 아직 없음 |          없음 |
-| `cloudflared`    | remotely-managed outbound-only named tunnel                 | 호스트 배치 계획, 미구현 |          없음 |
+| 서비스           | 역할                                                     |                외부 노출 | Docker socket |
+| ---------------- | -------------------------------------------------------- | -----------------------: | ------------: |
+| `nginx`          | 최초 ingress, 관리·워크로드 라우팅, access log           |  Cloudflare Tunnel에서만 |          없음 |
+| `web`            | Next.js App Router, SSR/RSC, 패널 UI                     |               Nginx 경유 |          없음 |
+| `api`            | Hono RPC, 인증·인가, jobs, 구성 관리                     |               Nginx 경유 |          없음 |
+| `engine-agent`   | Docker Engine 어댑터와 스트림 중계                       |                 내부망만 |     읽기·쓰기 |
+| `traffic-worker` | Nginx JSONL tail, 검증, raw 저장, 조회·live·export       |                 내부망만 |          없음 |
+| `egress-broker`  | DNS 해석·webhook 발송 대행 (유일한 outbound egress 보유) |      인바운드는 내부망만 |          없음 |
+| `backup-worker`  | 선택적 R2 업로드·bounded snapshot 전용 worker 후보       |          계획, 아직 없음 |          없음 |
+| `watchdog`       | 관리 plane·Nginx 생존 probe와 last-known-good 복구       |          계획, 아직 없음 |          없음 |
+| `cloudflared`    | remotely-managed outbound-only named tunnel              | 호스트 배치 계획, 미구현 |          없음 |
 
 Nginx access log, SQLite DB, 업로드 격리소, Nginx 설정 리비전은 각각 명시된 named volume에 둔다. `engine-agent`만 `/var/run/docker.sock`을 가진다.
 

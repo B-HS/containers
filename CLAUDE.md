@@ -35,7 +35,7 @@
 
 - `docker compose down -v`, 광범위 `prune`, 사용자 소유 리소스 추정 삭제 금지.
 - 운영 nginx 설정의 정본은 저장소의 `infra/nginx/nginx.conf` 가 아니라 **관리 볼륨의 `current.conf`** 다. 저장소 파일만 고치고 반영됐다고 판단하지 않는다.
-- 새 workspace 패키지를 추가하면 `apps/*/Dockerfile` 4개에 `COPY` 2줄씩 추가한다.
+- 새 workspace 패키지를 추가하면 `apps/*/Dockerfile` 5개에 `COPY` 2줄씩 추가한다.
 
 ## 4. 보안 불변식은 테스트가 강제한다
 

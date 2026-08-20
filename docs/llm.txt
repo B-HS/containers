@@ -45,7 +45,7 @@ Networks (docker):
   control   internal:true  — api, engine-agent, traffic-worker, nginx, egress-broker
   ingress   internal:true  — web, nginx, api
   probe     internal:true  — engine-agent + deployment staging (healthcheck)
-  edge      (default)      — user workloads + egress-broker (non-internal, internet egress)
+  edge      (default)      — user workloads + nginx + egress-broker (non-internal)
 
 Volumes:
   agent-credentials, artifacts, backups, control-data, egress-credentials,
@@ -205,14 +205,9 @@ Auth: Better Auth email+password. Public sign-up disabled (404). Session cookie.
 Roles: owner > admin > operator > viewer/auditor (auditor = read-only).
   owner immutable, cannot self-modify. Roles assigned via invitations.
 
-Recent-auth (step-up): all DESTRUCTIVE writes require a session <= 15 min old
-  (`requireRecentRole(headers, roles, 15*60*1000)`). Long-lived sessions that
-  pass 15 min get 401 RECENT_AUTH_REQUIRED → re-login. Enforced on:
-  container create/action/exec/remove, image pull/tag/remove, network/volume
-  create+remove, prune, registry-credential CRUD, deployment manifest/release/
-  secret write, backup write/restore, api-key create/revoke, user update,
-  invitation create, nginx route/config, job cancel, maintenance toggle,
-  exec-ticket.
+Recent-auth was REMOVED (acknowledge 0045): a logged-in session with the
+  required role is authorized immediately. Destructive writes rely on role
+  gates, confirmation strings, audit records, and API-key scopes instead.
 
 Encryption keyring: deployment secret / notification webhook master keys live in
   /data/<name>-secret-key (v1) plus .v2/.v3 ... (0600). Writes use the active
@@ -224,14 +219,14 @@ Encryption keyring: deployment secret / notification webhook master keys live in
 API keys: `ctk_` + 32-byte random; only SHA-256 stored; scopes deny-by-default.
   Owner-only scopes (backup:restore, backup:write, maintenance:write,
   panel-setting:write, registry-credential:write, secret:write, system:prune,
-  trusted-proxy:write) are enforced twice: at issue time (owner + recent) and at
+  trusted-proxy:write) are enforced twice: at issue time (owner) and at
   use time (the issuer's current role must still be owner), so keys issued before
   the policy or held by a demoted account stop working.
   authenticate() inner-joins user_role and rejects if disabledAt set or revoked.
   Disabling/demoting a user revokes their api keys + deletes sessions in one txn.
   An API key is the issuer's non-interactive credential: the key holder's current
-  role must satisfy the same role gate as the session path, and the session-side
-  recent-auth (15 min) requirement is replaced by scope possession on the key path.
+  role must satisfy the same role gate as the session path. Recent-auth was
+  removed entirely (acknowledge 0045) — a logged-in session is authorized as-is.
   Session-only (no API key): exec/TTY, /api/api-keys management, accounts and
   invitations and bootstrap.
   Scopes: artifact:read, artifact:upload, artifact:write, audit:read,
@@ -268,10 +263,10 @@ Auth (better-auth): /api/auth/* — sign-in/email, sign-up/email (404), session.
   clears users/roles/accounts/sessions/invitations back to the bootstrap state;
   it is a dry run unless --confirm is passed and copies the control database to
   control.sqlite.pre-reset first.
-  /api/session GET | /api/invitations POST (owner/admin recent) |
+  /api/session GET | /api/invitations POST (owner/admin) |
   /api/invitations/accept POST | /api/users GET (owner/admin) |
-  /api/users/:id PATCH (owner recent, demote/disable revokes keys+sessions) |
-  /api/users/:id DELETE (owner recent, cascades sessions+accounts, revokes keys)
+  /api/users/:id PATCH (owner, demote/disable revokes keys+sessions) |
+  /api/users/:id DELETE (owner, cascades sessions+accounts, revokes keys)
   Only the actor's own account is immutable (SELF_MODIFICATION_FORBIDDEN). Any
   other user including another owner can be demoted, disabled or deleted, so a
   lost owner has a supported remediation path. The last owner survives because
@@ -286,8 +281,8 @@ Auth (better-auth): /api/auth/* — sign-in/email, sign-up/email (404), session.
   is unchanged so existing sessions survive. nginx derives that header from
   the front proxy value, not from $scheme (TLS terminates before nginx).
 
-API keys:        /api/api-keys GET/POST (admin recent; scopes backup:write and
-                 secret:write require owner + recent), /api/api-keys/:id DELETE
+API keys:        /api/api-keys GET/POST (admin; owner-only scopes require an
+                 owner session), /api/api-keys/:id DELETE
 Audit:           /api/audit GET (owner/admin/viewer/auditor, read-only, paginated;
                  server-side filters actorEmail/targetId/operation/result/
                  targetType/from/to + page/limit, default 50 max 200)
@@ -298,58 +293,58 @@ Audit:           /api/audit GET (owner/admin/viewer/auditor, read-only, paginate
                  꼬리를 통째로 자르는 변조는 체인 내부 검증만으로는 못 잡는다
 Backup:          /api/backups GET/POST (owner), /api/backups/:id/restore POST
                  (session-only: an Authorization header is rejected with 403;
-                 owner + recent), /api/backups/:id DELETE (owner + recent)
+                 owner), /api/backups/:id DELETE (owner)
 Control plane:   /api/control-plane/status GET (owner/admin)
-Maintenance:     /api/maintenance GET (all) / POST (owner recent)
+Maintenance:     /api/maintenance GET (all) / POST (owner)
 Engine:          /api/system/engine GET, /api/containers GET,
                  /api/containers/:containerId GET, .../logs GET
                  (engine:read api key or all roles)
 Container ctrl:  /api/containers/:containerId/top|changes GET (all roles),
                  .../wait POST (operator)
-                 /api/containers POST (admin recent, create)
-                 /api/containers/:containerId/actions POST (admin recent:
+                 /api/containers POST (admin, create)
+                 /api/containers/:containerId/actions POST (admin:
                    kill|pause|remove|rename|restart|start|stop|unpause|update)
-                 /api/containers/:containerId/exec POST (owner recent)
-                 /api/exec/ws/:ticket WS (owner recent + maintenance gate)
+                 /api/containers/:containerId/exec POST (owner, session-only)
+                 /api/exec/ws/:ticket WS (owner session-only + maintenance gate)
 Images:          /api/images GET (engine:read or all roles),
                  /api/images/:imageId/removal-impact GET,
-                 /api/images/pull POST (admin recent, durable job),
-                 /api/images/:imageId/tag POST (admin recent),
-                 /api/images/:imageId DELETE (admin recent, confirmation)
-Networks/Volumes:/api/networks GET | POST | /:networkId DELETE (admin recent)
-                 /api/volumes GET | POST | /:volumeName DELETE (admin recent)
+                 /api/images/pull POST (admin, durable job),
+                 /api/images/:imageId/tag POST (admin),
+                 /api/images/:imageId DELETE (admin, confirmation)
+Networks/Volumes:/api/networks GET | POST | /:networkId DELETE (admin)
+                 /api/volumes GET | POST | /:volumeName DELETE (admin)
 Prune:           /api/system/prune-preview GET (admin),
-                 /api/system/prune POST (owner recent, preview-sha required)
+                 /api/system/prune POST (owner, preview-sha required)
 Registry creds:  /api/registry-credentials GET (admin) |
                  POST | /:credentialId POST(수정) | /:credentialId DELETE
-                 (전부 recent owner 전용 — admin 불가)
-Deployment:      /api/artifacts/:artifactId/load POST (image:load or recent admin)
+                 (전부 owner 전용 — admin 불가)
+Deployment:      /api/artifacts/:artifactId/load POST (image:load or admin)
                  /api/deployment-manifests GET | /:id GET | POST | /:id DELETE
-                 (admin recent write). DELETE 는 릴리스나 스택이 참조 중이면
+                 (admin write). DELETE 는 릴리스나 스택이 참조 중이면
                  409 DEPLOYMENT_MANIFEST_IN_USE
                  /api/deployment-releases GET | /:id GET |
                  /api/deployment-releases/:id/rollback POST (deployment:write or
-                 recent owner·admin). 릴리스 생성은 아래 manifest 경로뿐이다
+                 owner·admin). 릴리스 생성은 아래 manifest 경로뿐이다
                  /api/deployment-manifests/:manifestId/releases POST → 202 {job,release}
                  /api/deployment-stacks GET/:id GET (deployment:read) |
                  /api/deployment-stacks/preview POST | /api/deployment-stacks POST |
-                 /api/deployment-stacks/:id DELETE (deployment:write or recent
+                 /api/deployment-stacks/:id DELETE (deployment:write or
                  owner·admin). DELETE 는 releasing 릴리스가 있으면 409
                  DEPLOYMENT_STACK_IN_USE, 없으면 릴리스 이력까지 지운다
                  /api/deployment-stacks/{stackId}/releases POST → 202 {job,stackRelease}
                  /api/deployment-stack-releases GET | /:id GET (deployment:read)
-                 /api/deployment-secrets GET/POST/DELETE (admin recent write),
+                 /api/deployment-secrets GET/POST/DELETE (admin write),
                  /api/deployment-secrets/key-versions GET (owner·admin),
-                 /api/deployment-secrets/rotate POST (recent owner)
+                 /api/deployment-secrets/rotate POST (owner)
 Jobs:            /api/jobs GET, /api/jobs/backup-schedule GET,
                  /api/jobs/:id GET, .../events GET (job:read or owner·admin),
-                 .../cancel POST (job:write or recent owner·admin)
+                 .../cancel POST (job:write or owner·admin)
 Nginx:           /api/nginx/status GET, /api/nginx/config GET,
-                 /api/nginx/config/apply POST (admin recent),
-                 /api/nginx/routes GET | POST/PUT/DELETE (admin recent)
-Notification:    /api/notification-destinations GET/POST (admin recent) |
+                 /api/nginx/config/apply POST (admin),
+                 /api/nginx/routes GET | POST/PUT/DELETE (admin)
+Notification:    /api/notification-destinations GET/POST (admin) |
                  /api/notification-destinations/:id PATCH/DELETE |
-                 /api/notification-destinations/:id/test POST (admin recent)
+                 /api/notification-destinations/:id/test POST (admin)
 Traffic:         /api/traffic/health GET (owner·admin),
                  /api/traffic/analytics GET, /api/traffic/live GET (SSE),
                  /api/traffic/summary GET, /api/traffic/exports POST (owner),
@@ -357,7 +352,7 @@ Traffic:         /api/traffic/health GET (owner·admin),
 Health:          /api/health GET (무인증), /api/readyz GET (요약 무인증,
                  상세는 control-plane:read 또는 owner·admin)
 Upload:          /api/artifacts GET (all), /api/artifacts/:artifactId DELETE
-                 (recent owner·admin, confirmation 은 artifact id. load 진행 중
+                 (owner·admin, confirmation 은 artifact id. load 진행 중
                  (deployment.status='loading')이면 409 ARTIFACT_IN_USE, 끝났으면
                  load 이력의 artifactId 를 null 로 만들고 파일을 회수한다),
                  /api/uploads/sessions POST,
@@ -386,8 +381,8 @@ Route targets:   POST/PUT of an nginx route validates the target on the server.
                  variable proxy_pass, so nginx -t and reload succeed even for a
                  target that does not exist — the mistake would otherwise surface
                  only as a 502.
-Trusted proxy:   /api/trusted-proxies GET (owner|admin), POST (owner recent),
-                 DELETE /api/trusted-proxies/{address} (owner recent).
+Trusted proxy:   /api/trusted-proxies GET (owner|admin), POST (owner),
+                 DELETE /api/trusted-proxies/{address} (owner).
                  nginx set_real_ip_from is driven by this table, not by a config
                  constant. Candidates come from the raw source addresses in the
                  nginx access log (traffic-worker reads the file; the traffic DB
@@ -420,7 +415,7 @@ Shutdown:        SIGINT/SIGTERM stop the job worker and recurring tasks, drain
                  in-flight requests for up to 8s, force close the rest, then
                  close the database. compose stop_grace_period is 20s so a long
                  lived stream cannot turn a clean exit into SIGKILL.
-Panel setting:   /api/panel-settings GET (owner|admin), PUT (owner recent).
+Panel setting:   /api/panel-settings GET (owner|admin), PUT (owner).
                  Stores the public origin and extra trusted origins in panel_setting.
                  Saving also rewrites the panel server block server_name via
                  engine-agent, so a new domain never gets stuck on the catch-all 444.
@@ -450,7 +445,7 @@ Response envelope: { "success": true, "data": ... } |
   { "success": true, "data": [...], "pagination": { page, limit, total, totalPages } }
     (paginated list routes such as /api/audit) |
   { "success": false, "error": { "code": "...", "message": "...", "requestId": "..." } }
-  Codes are UPPER_SNAKE (AUTH_REQUIRED, FORBIDDEN, RECENT_AUTH_REQUIRED,
+  Codes are UPPER_SNAKE (AUTH_REQUIRED, FORBIDDEN,
   MANAGEMENT_RESOURCE_PROTECTED, NGINX_CONFIG_CONFLICT, ...).
 
 
@@ -463,9 +458,9 @@ be full ID, 12-char prefix, or name. Management-plane containers rejected.
 Query:   /v1/containers GET | /v1/containers/:id GET | .../logs|top|changes
          /v1/containers/:id/wait POST | /v1/system/overview GET
 Control: /v1/containers POST (create; rejects host/none net + protected volumes
-           + management labels; validates image registry host via DNS)
+           + management labels; static registry-host guard via net-guard)
          /v1/containers/:id/actions POST (management-guarded; start included)
-         /v1/containers/:id/exec POST (owner recent; management-guarded)
+         /v1/containers/:id/exec POST (owner; management-guarded)
          /v1/containers/:id/networks/connect|disconnect POST
          /v1/containers/:id/probe POST (healthcheck; management-guarded)
          /v1/images GET | /v1/images/:id/tag POST | /v1/images/pull POST
@@ -473,7 +468,7 @@ Control: /v1/containers POST (create; rejects host/none net + protected volumes
          /v1/images/:id/removal-impact GET
          /v1/networks GET/POST | /v1/volumes GET/POST
          /v1/system/prune-preview GET | /v1/system/prune-build-cache POST
-Exec:    /v1/containers/:id/exec-tickets POST (owner recent) → returns ticket
+Exec:    /v1/containers/:id/exec-tickets POST (owner) → returns ticket
          /ws/exec/:ticket WS (NOT HMAC; single-use 32B ticket, 30s TTL,
          10 concurrent sessions, idle/max-duration caps)
 Nginx:   /v1/nginx/config GET | /v1/nginx/config/apply POST
@@ -524,15 +519,17 @@ trailing-slash bypass.
 9. SECURITY MODEL & GUARDS
 ================================================================================
 External attack surface: only nginx 127.0.0.1:18080 (login). All mutation is
-behind session auth + role + recent-auth. No anonymous mutation.
+behind session auth + role gates. No anonymous mutation.
 
-SSRF defenses:
-  - Webhook delivery: https-only, dotted hostname, DNS lookup(all,verbatim) →
-    reject if ANY resolved address is private/loopback/ULA/link-local/
-    6to4/Teredo/::ffff-mapped; public IPv6 allowed; redirect:manual.
-  - Image pull / container create image: host extracted → DNS resolve-all →
-    reject private; blocklist rejects internal hostnames + IPv4 shorthand +
-    IPv6 special prefixes at schema level.
+SSRF defenses (contracts/net-guard + egress-broker):
+  - Webhook delivery: api hands the payload to egress-broker, which enforces
+    https-only, resolves the hostname, rejects if ANY resolved address is
+    private/loopback/ULA/link-local/6to4/Teredo/::ffff-mapped, then POSTs with
+    redirect:manual. api/agent themselves have no egress.
+  - Image pull / container create image: static net-guard checks (localhost,
+    *.local/*.internal, single-label hosts, private IP literals) on api AND
+    agent, plus api-side DNS depth via egress-broker resolve (blocked when any
+    resolved address is private).
   - probeContainer: target restricted to non-management Docker-network
     containers by name (no arbitrary host).
 
@@ -552,7 +549,7 @@ recovery snapshot + compensating rollback. Preserved on restore (security
 invariants): auth tables, api_key, deployment_secret, notification_destination,
 operation_job(+event), upload_session/chunk, artifact, audit_log.
 
-Management-plane: control/ingress/probe/host networks and the 9 protected
+Management-plane: control/ingress/probe/host networks and the 10 protected
 volumes cannot be used by user-created containers or deployment manifests.
 registry-credentials volume is mounted ONLY into engine-agent.
 
@@ -581,7 +578,7 @@ HMAC per-link. All files 0600, auto-generated, no committed .env.
 ================================================================================
 Backup = control.sqlite snapshot + traffic.sqlite snapshot + manifest.json
 (createdAt, digests, sizes). Scheduled via backup_schedule (interval, 24h
-default, retention 7). Restore is OWNER + recent-auth + UUID confirmation,
+default, retention 7). Restore is OWNER + UUID confirmation,
 runs under maintenance mode with pre-restore recovery snapshot and automatic
 rollback on failure. See docs/BACKUP-RESTORE.md.
 
@@ -599,10 +596,10 @@ bun run build            # production build all workspaces
 bun run check            # typecheck + lint + test + build
 
 Docker:
-  ./scripts/setup-macos.sh        # interactive macOS setup + smoke test
+  ./scripts/setup.sh              # interactive setup + smoke test (macOS/Linux)
   docker compose build
   docker compose up -d --wait
-  docker compose ps               # expect 5 healthy services
+  docker compose ps               # expect 6 healthy services
 
 Tests cover: auth/api-key, backup/restore, deployment release state
 machine, nginx config apply + protected contract, upload chunk integrity,

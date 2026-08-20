@@ -1,8 +1,8 @@
-# HANDOFF — 2026-08-06 세션 스냅샷
+# HANDOFF — 2026-08-20 세션 스냅샷
 
-- 대응 커밋: `4192f99`(`fix(notification): 정기 보고를 타이머 대신 마지막 보고 시각 기준으로 보낸다`) 기준 (`dev`, origin/dev 와 동기)
-- 최종 갱신일: 2026-08-06
-- 검증 상태: typecheck 8/8 · lint 0 · **test 532**(+ web 28) · build 8/8 · format · `audit:runtime` 5/5 · 스택 5개 healthy · `foreign_key_check` 0 · `https://hyuns.uk` 200
+- 대응 브랜치: `feat/api-key-parity` (dev 미병합 — API 키 패리티·egress-broker·recent 인증 제거, [acknowledge/0044](./acknowledge/0044-api-key-parity-and-egress-broker.md)·[0045](./acknowledge/0045-remove-recent-auth.md))
+- 최종 갱신일: 2026-08-20
+- 검증 상태(로컬, feat/api-key-parity): typecheck 9/9 · lint 0 · **test 562**(+ web 28) · build 9/9 · format 통과. 실운영 스택은 아직 이 브랜치 이전 상태로 동작 중이며, 호스트 재빌드 후 `audit:runtime`·healthy 6개·라이브 실측을 다시 확인해야 한다
 - **이 문서가 세션 인수인계 단일 진입점이다.** 다른 문서보다 먼저 읽는다.
 - **현재 상태와 검증 수치는 이 문서가 단독으로 소유한다.** `RESUME-CHECKLIST.md` 는 절차·불변식, `HANDOFF-STATUS.md` 는 구현 범위·한계(시점 기록)를 소유한다. 같은 수치를 두 곳에 적지 않는다.
 - **진행 중 작업의 실행 계획 정본은 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 다.**
@@ -155,17 +155,17 @@
 
 ## 7. 환경 & 전제
 
-- **런타임**: Bun 1.3.14 workspace(`apps/*` 4 + `packages/*` 4 = 8), TypeScript strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`.
+- **런타임**: Bun 1.3.14 workspace(`apps/*` 5 + `packages/*` 4 = 9), TypeScript strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`.
 - **스택**: Hono 4.13.0, Next.js 16.3.0 App Router + React 19 + React Compiler + Tailwind v4 + next-intl(ko/en/ja) + TanStack Query v5, Drizzle + SQLite, Better Auth 1.6.25.
 - **접속**: `http://127.0.0.1:18080`. **8080 이 아니다** — macOS Docker Desktop 이 그 포트에서 저속 스트림을 버퍼링한다.
 - **계정**: 실운영 owner 하나(사용자 본인). seed 계정은 남아 있지 않다. **공개 주소가 설정된 스택에서 `bun scripts/seed-e2e.ts` 는 스스로 거부한다** — 개발 스택에서만 쓴다. 계정을 초기 상태로 되돌리는 것은 `bun scripts/reset-accounts.ts --confirm` 이며 파괴적이라 사용자가 직접 실행한다.
-- **재인증 창**: 위험한 쓰기(API key 발급, nginx 설정 적용, 백업 복원, 아티팩트 삭제 등)는 **세션 생성 15분 이내**를 요구한다(`RECENT_AUTH_REQUIRED`). 페이지 새로고침으로는 갱신되지 않고 로그아웃 → 로그인이어야 새 세션이 생긴다. 쿠키는 호스트별이라 `127.0.0.1` 과 `hyuns.uk` 세션은 별개다.
+- **재인증 창은 제거됐다**([acknowledge/0045](./acknowledge/0045-remove-recent-auth.md)): 로그인 세션이면 role 게이트만으로 즉시 인가된다. 쿠키는 호스트별이라 `127.0.0.1` 과 `hyuns.uk` 세션은 별개다.
 - **외부**: `hyuns.uk` 가 Cloudflare 터널로 연결돼 있고 패널 공개 주소도 `https://hyuns.uk` 로 설정돼 있다(패널 설정 화면). nginx 패널 server 블록의 `server_name` 에 자동으로 추가된다. 터널은 스택 밖 호스트 프로세스라 초기화·재배포와 무관하다.
 - **`Bun.YAML.parse` 가 존재한다** — compose 파싱에 새 의존성이 필요 없다. multi-document 는 첫 문서만 쓴다.
 - **SQLite 주의 3가지**: ① `PRAGMA foreign_keys` 는 트랜잭션 안에서 무시된다(테이블 재생성 마이그레이션이 실패한다). ② Drizzle `text({ enum: [...] })` 는 TypeScript 전용이고 CHECK 제약을 만들지 않는다. ③ **`bun:sqlite` 는 연결마다 외래 키가 기본 OFF 다.** 앱은 `database.ts` 에서 켜지만 스크립트는 스스로 켜야 하며, 끄고 지우면 `set null`·`cascade` 가 조용히 실행되지 않는다 → [bug](./bug/2026-08-06-reset-accounts-broke-referential-integrity.md)
 - **시각 컬럼은 초 단위다**: Drizzle `integer({ mode: 'timestamp' })` 는 밀리초를 버린다. 해시·비교에 시각을 넣을 때 밀리초까지 쓰면 저장·재계산이 어긋난다 → [bug](./bug/2026-08-06-audit-chain-hashed-milliseconds.md)
 - **nginx 설정 정본은 관리 볼륨의 `current.conf`** 다. `infra/nginx/nginx.conf` 는 볼륨이 비었을 때 이미지에서 복사되는 기본값이다. **볼륨만 비우고 이미지를 재빌드하지 않으면 옛 기본값이 복사된다**(이번 세션에 CSP 수정이 한 번 유실됐다). 실행 중 반영은 `POST /api/nginx/config/apply`.
-- **새 workspace 패키지**: `apps/*/Dockerfile` 4개에 `COPY` 2줄씩 추가한다.
+- **새 workspace 패키지**: `apps/*/Dockerfile` 5개에 `COPY` 2줄씩 추가한다.
 - **드리즐 마이그레이션**: 손으로 SQL 을 쓰지 말고 `bun run --cwd packages/db-schema generate` 를 쓴다. 최신은 `0026_brave_zarek.sql`.
 - **웹 테스트는 preload 가 달라** raw `bun test` 가 아니라 `bun run test` 를 써야 한다.
 - **브라우저 실측 팁**: MCP `file_upload` 로 `<input type=file>` 에 파일을 넣으면 React state 가 갱신되지 않는다. 페이지 컨텍스트에서 `DataTransfer` 로 `input.files` 를 채우고 `change` 이벤트를 직접 dispatch 해야 폼이 인식한다. 업로드 digest 는 클라이언트가 계산하므로 sha256 불일치는 UI 로 만들 수 없다 — 실패 경로는 잘못된 tar 로 만든다.
@@ -215,7 +215,7 @@
 | `TESTING.md`                                                                                          | 검증 사다리와 checkpoint                                                               |
 | `llm.txt`                                                                                             | AI용 자족 레퍼런스. `packages/db-schema/src/llm-reference.test.ts` 가 드리프트를 강제  |
 | `README.md`                                                                                           | docs 디렉터리 안내                                                                     |
-| `acknowledge/`                                                                                        | 결정 기록(ADR). **최신 0043**                                                          |
+| `acknowledge/`                                                                                        | 결정 기록(ADR). **최신 0045**                                                          |
 | `bug/`                                                                                                | 결함 기록 9건. 2026-08-06 만 6건이고 전부 라이브 실측이 잡았다(정적 검사는 통과했다)   |
 | `quality-assurance/`                                                                                  | 감사·드릴 실행 기록                                                                    |
 | `history/`                                                                                            | 세션별 이력. 2026-08-06 브랜치 정리 기록 포함(지운 브랜치 SHA)                         |

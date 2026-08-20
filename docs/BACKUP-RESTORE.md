@@ -18,12 +18,12 @@
 
 ## 2. API와 권한
 
-| Method   | Path                       | 요구 권한                                      |
-| -------- | -------------------------- | ---------------------------------------------- |
-| `GET`    | `/api/backups`             | Owner session 또는 `backup:read` API key       |
-| `POST`   | `/api/backups`             | 최근 Owner session 또는 `backup:write` API key |
-| `POST`   | `/api/backups/:id/restore` | 최근 Owner session만 + `confirmation`이 `:id`  |
-| `DELETE` | `/api/backups/:id`         | 동일 + body의 `confirmation`이 `:id`와 일치    |
+| Method   | Path                       | 요구 권한                                                            |
+| -------- | -------------------------- | -------------------------------------------------------------------- |
+| `GET`    | `/api/backups`             | Owner session 또는 `backup:read` API key                             |
+| `POST`   | `/api/backups`             | Owner session 또는 `backup:write` API key                            |
+| `POST`   | `/api/backups/:id/restore` | Owner session 또는 `backup:restore` API key + `confirmation`이 `:id` |
+| `DELETE` | `/api/backups/:id`         | 동일 + body의 `confirmation`이 `:id`와 일치                          |
 
 - 생성 body: `{ "label": string | null, "passphrase": string | null }` — `passphrase`(12자 이상)를 주면 마스터 키 2종을 봉인해 함께 저장한다.
 - 복구 body: `{ "confirmation": "backup UUID", "mode": "preserve-host" | "full", "passphrase": string | null }` — `mode` 기본값은 `preserve-host`다.

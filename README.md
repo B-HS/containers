@@ -112,6 +112,7 @@ bun run build
 ```
 apps/
   api/            Hono control-plane API + DB + auth
+  egress-broker/  DNS resolution + webhook delivery broker (only egress holder)
   engine-agent/   Docker Engine API client, exec, streams, nginx apply
   traffic-worker/ access-log ingestion, analytics, export
   web/            Next.js panel
@@ -119,6 +120,7 @@ packages/
   contracts/      shared Zod schemas / RPC types
   db-schema/      Drizzle schema + migrations
   config/         env + trusted origin + secret loading
+  nginx-config/   nginx tokenizer/serializer (GUI editor + protected contract)
 infra/nginx/      edge nginx (rate limits, security headers)
 ```
 

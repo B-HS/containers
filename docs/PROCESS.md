@@ -930,3 +930,5 @@ HANDOFF §6 을 "미해결 질문"에서 "결정 완료"로 바꿨다. 사용자
 - [x] h. 테스트 — net-guard 12건·egress 서비스 6건·헬퍼 3건·control 이미지 검증 6건 + 기존 스텁 갱신 (총 590 pass)
 - [x] i. 문서 — API-DATA-AUTH 인증 표 재작성, bug 2건(egress 사문화·api-key 위젯), llm.txt·ARCHITECTURE 서비스 지도 (compose-security 불변식은 신규 서비스가 기존 규칙을 그대로 만족해 변경 불필요)
 - [x] j. 검증 — typecheck(9 workspace)→lint→format:check→test(562+28)→build 전체 통과. 실배포·런타임 실측은 호스트 재빌드 후 별도 진행(0044 결정 4)
+- [x] k. 최근 인증(recent auth) 제거 — 사용자 결정([acknowledge/0045](./acknowledge/0045-remove-recent-auth.md)): requireRecentRole·RECENT_AUTH_REQUIRED 삭제, 전 라우트 requireRole 통일, 웹 15분 안내 문구 제거, BREAKING CHANGE 커밋
+- [x] l. docs↔코드 정합성 전수 정리 — 라우트·문서 전수 조사 후 현재상태 문서 20여 곳 수정(HANDOFF·HANDOFF-STATUS·RUNBOOK·SECURITY·BACKUP-RESTORE·DOCKER-CONTROL·NGINX-TRAFFIC·TESTING·TECH-STACK·RESUME-CHECKLIST·CONTROL-PLANE-UPGRADE·README 2종·llm.txt·API-DATA-AUTH·API-PARITY-PLAN 상태 헤더). 시점 고정 기록(history·과거 acknowledge·날짜 박힌 QA·PLAN-UX-REMEDIATION·PROCESS 이력)은 관례대로 미수정. 조사 중 발견한 코드 결함 — 보호 볼륨 목록에 egress-credentials 누락(agent·api), setup.sh 기대 healthy 5→6 — 도 함께 수정

@@ -102,7 +102,7 @@ API는 `containerId`, `cmd: string[]`, `workingDir`, `user`, `env`, `timeoutMs`,
 
 ### 5.2 대화형 TTY
 
-1. API가 capability와 최근 재인증을 확인하고 짧은 수명의 exec ticket을 발급한다.
+1. API가 owner 세션을 확인하고 짧은 수명의 exec ticket을 발급한다 (exec 은 세션 전용).
 2. 브라우저가 Hono WebSocket endpoint에 ticket으로 연결한다.
 3. API가 Agent의 attach stream과 양방향 중계한다.
 4. 입력, resize, heartbeat, detach를 명시 JSON message type으로 구분한다.
@@ -123,7 +123,7 @@ API는 `containerId`, `cmd: string[]`, `workingDir`, `user`, `env`, `timeoutMs`,
 
 Compose project name 또는 고정 label `managed-by=containers-control-plane`으로 관리 plane 리소스를 식별한다.
 
-- 현재 Compose의 nginx, api, web, engine-agent, traffic-worker는 project label로 보호한다. backup-worker, watchdog, cloudflared를 추가하면 같은 보호 집합에 포함한다.
+- 현재 Compose의 nginx, api, web, engine-agent, traffic-worker, egress-broker는 project label로 보호한다. backup-worker, watchdog, cloudflared를 추가하면 같은 보호 집합에 포함한다.
 - 기본 operator는 이 보호 집합을 remove·pause·kill·rename할 수 없다.
 - owner maintenance mode에서만 순서가 정해진 upgrade·restart를 실행한다.
 - Nginx와 Agent를 동시에 중지하는 bulk operation은 거부한다.

@@ -6,7 +6,7 @@
 
 프로젝트는 단순 scaffold가 아니라 실제 Docker Compose에서 동작하는 중간 완성 control plane이다. 현재 안정된 중단점은 다음과 같다.
 
-- Nginx, Next.js SSR web, Hono API, Engine Agent, Traffic Worker 5개 서비스가 모두 healthy다.
+- Nginx, Next.js SSR web, Hono API, Engine Agent, Traffic Worker, Egress Broker 6개 서비스로 구성된다 (egress-broker 는 feat/api-key-parity 에서 추가, 실운영 반영 전).
 - macOS Docker Desktop의 Docker socket은 Engine Agent만 mount한다.
 - 로그인·다중 운영자·role·초대·API key, Docker 제어, Nginx 설정·route, traffic 분석, artifact upload·image load, immutable blue-green 배포·자동/수동 rollback, encrypted deployment secret, 로컬 DB backup·restore가 실제 런타임까지 동작한다.
 - durable operation job queue(상태 machine·재시도·취소·timeline·boot reconciliation)가 구현됐고 자동 backup 이 첫 소비자다. [acknowledge/0014](./acknowledge/0014-durable-operation-job-queue.md)
@@ -16,7 +16,7 @@
 - `bun audit` 취약점 0건이다. 제품 코드에 `any`·`eslint-disable`·`as never` 가 없다. (2026-08-05)
 - container kill·update·rename·wait·top·changes 와 image pull(durable job)·tag 가 agent E2E 로 실측 검증됐다. [acknowledge/0017](./acknowledge/0017-docker-command-completeness.md)
 - Compose project label 기반 관리 plane container·image·network·volume 보호, 자체 prune dry-run preview, image 삭제 dependency impact와 force owner 제한이 구현됐다. [acknowledge/0018](./acknowledge/0018-prune-preview-management-protection.md)
-- owner 최근 인증·preview SHA 재검증·volume opt-in·후보별 보호·취소 지점·단일 attempt를 적용한 `system.prune` durable job과 패널이 구현됐다. [acknowledge/0019](./acknowledge/0019-durable-system-prune.md)
+- owner 전용·preview SHA 재검증·volume opt-in·후보별 보호·취소 지점·단일 attempt를 적용한 `system.prune` durable job과 패널이 구현됐다. [acknowledge/0019](./acknowledge/0019-durable-system-prune.md)
 - registry credential을 Agent 전용 volume에 AES-256-GCM으로 저장하고 host-bound `X-Registry-Auth`로만 사용하는 인증 image pull과 관리 패널이 구현됐다. [acknowledge/0020](./acknowledge/0020-registry-authenticated-image-pull.md)
 - inode checkpoint·rotation 복구, masked live SSE, 24시간 제한 CSV/NDJSON durable export가 구현됐다. [acknowledge/0021](./acknowledge/0021-traffic-checkpoint-live-export.md)
 - maintenance mode 가 mutation 을 503 으로 차단·drain 하며, backup restore 는 maintenance 오케스트레이션이 포함된 `backup.restore` durable job 으로 실행된다. [acknowledge/0016](./acknowledge/0016-maintenance-restore-job.md)
@@ -59,13 +59,14 @@ API + Traffic Worker -> containers_backups named volume
 
 Compose 서비스와 권한 경계:
 
-| Service          | Network                | Writable state                     | 특권 경계                  |
-| ---------------- | ---------------------- | ---------------------------------- | -------------------------- |
-| `nginx`          | ingress, control, edge | managed config·logs named volume   | 외부 localhost ingress     |
-| `web`            | ingress                | tmpfs                              | Docker 접근 없음           |
-| `api`            | ingress, control       | control, artifacts, backups volume | Agent·Worker 조정          |
-| `engine-agent`   | control                | credentials, managed config        | 유일한 Docker socket mount |
-| `traffic-worker` | control                | traffic, backups volume            | access log read-only       |
+| Service          | Network                | Writable state                     | 특권 경계                                                |
+| ---------------- | ---------------------- | ---------------------------------- | -------------------------------------------------------- |
+| `nginx`          | ingress, control, edge | managed config·logs named volume   | 외부 localhost ingress                                   |
+| `web`            | ingress                | tmpfs                              | Docker 접근 없음                                         |
+| `api`            | ingress, control       | control, artifacts, backups volume | Agent·Worker 조정                                        |
+| `engine-agent`   | control, probe         | credentials, managed config        | 유일한 Docker socket mount                               |
+| `traffic-worker` | control                | traffic, backups volume            | access log read-only                                     |
+| `egress-broker`  | control, edge          | egress-credentials volume          | 유일한 인터넷 egress 보유 관리 서비스 (DNS·webhook 대행) |
 
 모든 서비스는 read-only root filesystem과 `no-new-privileges`를 사용한다. Nginx 외 host 공개 port는 없다.
 
@@ -78,9 +79,9 @@ Compose 서비스와 권한 경계:
 - 단회·만료·회수 초대 링크와 owner/admin/operator/viewer/auditor role
 - 사용자 disable·role 변경
 - API key 원문 단회 노출, SHA-256 hash 저장, expiry·revoke·last-used
-- API key scope 13종(`packages/contracts/src/api-key.ts` 가 정본): artifact read/upload, image:load, deployment read/write, secret read/write, backup read/write, control-plane:read, engine:read, job read/write
+- API key scope 35종(`packages/contracts/src/api-key.ts` 의 `API_KEY_SCOPE_VALUES` 가 정본): 도메인별 read/write 로 웹 세션 조작 전체를 커버한다. owner 전용 8종은 같은 파일 `OWNER_ONLY_API_KEY_SCOPES`. 세션 전용은 exec·API 키 관리·계정/초대/bootstrap 뿐 ([acknowledge/0044](./acknowledge/0044-api-key-parity-and-egress-broker.md))
 - API key별 minute rate limit
-- 중요 mutation의 최근 15분 인증
+- 중요 mutation 의 role 게이트·확인 문구 (최근 15분 인증은 [acknowledge/0045](./acknowledge/0045-remove-recent-auth.md) 로 제거)
 
 배포에는 seed 계정이 없다. 최초 1회 로컬 이름(`http://127.0.0.1:18080`)에서 bootstrap 으로 owner 를 만들고, 이후 사용자는 초대로 늘린다. 공개 주소에서는 bootstrap 이 403 이다.
 
@@ -98,7 +99,7 @@ Compose 서비스와 권한 경계:
 - one-time TTY WebSocket ticket, stdin·resize·detach·idle/max timeout·concurrency limit
 - destructive confirmation과 자원 상한. 런타임 제약은 2026-08-05 부터 프로필(standard 기본 / hardened 옵트인)이며 기본값은 표준 이미지가 그대로 뜨도록 열려 있다 → [acknowledge/0037](./acknowledge/0037-container-runtime-profile.md)
 
-실제 prune은 owner 최근 인증과 정확한 확인 문구를 요구하는 `system.prune` durable job으로 노출한다. enqueue 전·worker 실행 직전 preview SHA를 재검증하고, volume은 별도 opt-in이며, Agent가 후보별 관리 plane 보호를 다시 적용한다. job은 부분 삭제 자동 재시도를 막기 위해 단일 attempt다.
+실제 prune은 owner 전용에 정확한 확인 문구를 요구하는 `system.prune` durable job으로 노출한다. enqueue 전·worker 실행 직전 preview SHA를 재검증하고, volume은 별도 opt-in이며, Agent가 후보별 관리 plane 보호를 다시 적용한다. job은 부분 삭제 자동 재시도를 막기 위해 단일 attempt다.
 
 ### Nginx·traffic
 
@@ -166,7 +167,7 @@ compose 스택은 구현됐다 — 계약·변환기(`packages/contracts/src/dep
 - 상태: queued→running→succeeded / failed / cancelled, 협조 취소는 running→cancelling→cancelled
 - 60초×attempt backoff 재시도(기본 3회), boot `reconcileInterrupted()` 재큐/실패 확정, 14일 종결 job GC
 - API in-process worker 1초 poll, 실행 중 30초 heartbeat
-- `GET /api/jobs`·`GET /api/jobs/:id`·`GET /api/jobs/:id/events`·`POST /api/jobs/:id/cancel` (owner·admin session 또는 `job:read`/`job:write` API key, 취소는 최근 15분 인증 + audit)
+- `GET /api/jobs`·`GET /api/jobs/:id`·`GET /api/jobs/:id/events`·`POST /api/jobs/:id/cancel` (owner·admin session 또는 `job:read`/`job:write` API key, 취소는 audit 기록)
 - 자동 backup 이 첫 소비자: 1분 due-check(최신 backup 시각 + interval 로 next-run 유도, 재시작 안전), unique enqueue 로 중복 방지
 - `GET /api/jobs/backup-schedule` 와 패널 작업 큐 위젯(owner·admin)이 job 목록·취소·interval·last success/failure·next run 을 노출한다
 - 외부 enqueue endpoint 없음. api·engine-agent·traffic-worker 세 앱 모두 `lib/error.ts` 의 `createAppError` 로 오류를 던진다.
@@ -345,7 +346,7 @@ rg -n "durable|job|events|stats|logs|backup" apps packages docs
 현재 서비스 재빌드가 필요하면 변경 서비스만 대상으로 한다.
 
 ```sh
-docker compose build api web traffic-worker engine-agent nginx
+docker compose build api web traffic-worker engine-agent egress-broker nginx
 docker compose up -d --wait
 ```
 
@@ -360,7 +361,7 @@ docker compose up -d --wait
 - raw Nginx 설정 보호 token을 약화하지 않는다.
 - 외부 workload route에서 control network에 접근시키지 않는다.
 - artifact를 검사 전에 load·extract·execute하지 않는다.
-- 파괴 작업은 대상명 또는 UUID confirmation과 최근 인증·audit를 유지한다.
+- 파괴 작업은 대상명 또는 UUID confirmation과 audit 를 유지한다.
 - 테스트 fixture는 고유 prefix를 쓰고 생성한 정확한 대상만 정리한다.
 - 사용자 Docker resource와 named volume을 추정으로 삭제하지 않는다.
 

@@ -5,15 +5,15 @@
 
 ## 0. 공통 전제
 
-- compose 프로젝트 루트에서 실행한다. 서비스는 `nginx`, `api`, `web`, `engine-agent`, `traffic-worker` 5개이며 선택적으로 `cloudflared`가 있다.
-- 볼륨은 `containers_control-data`, `containers_artifacts`, `containers_backups`, `containers_nginx-config`, `containers_nginx-logs`, `containers_traffic-data`, `containers_agent-credentials`, `containers_traffic-credentials`, `containers_registry-credentials`다.
+- compose 프로젝트 루트에서 실행한다. 서비스는 `nginx`, `api`, `web`, `engine-agent`, `traffic-worker`, `egress-broker` 6개이며 선택적으로 `cloudflared`가 있다.
+- 볼륨은 `containers_control-data`, `containers_artifacts`, `containers_backups`, `containers_nginx-config`, `containers_nginx-logs`, `containers_traffic-data`, `containers_agent-credentials`, `containers_egress-credentials`, `containers_traffic-credentials`, `containers_registry-credentials`다.
 - 패널·API는 기본적으로 `${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-8080}`에만 publish된다. 아래 `curl` 예시는 호스트에서 실행한다.
 - 조회 API는 세션 쿠키 또는 API key로 호출한다. API key는 `authorization: Bearer ctk_...`이며 필요한 scope는 [API-DATA-AUTH.md](./API-DATA-AUTH.md) 2.1절 표를 본다.
 - 상태 판단의 1차 소스는 세 가지다.
 
 | 확인 대상             | 명령                                                                  | 의미                                                                                |
 | --------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 컨테이너 생존·healthy | `docker compose ps`                                                   | 5개 서비스가 `Up (healthy)`인지                                                     |
+| 컨테이너 생존·healthy | `docker compose ps`                                                   | 6개 서비스가 `Up (healthy)`인지                                                     |
 | API 프로세스 생존     | `curl -s localhost:18080/api/health`                                  | 프로세스만 확인한다. downstream은 보지 않는다                                       |
 | 의존 구성요소 준비도  | `curl -s -o /dev/null -w '%{http_code}\n' localhost:18080/api/readyz` | `200`=ok, `503`=degraded. 상세는 owner·admin 세션 또는 `control-plane:read` API key |
 
@@ -35,11 +35,11 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:18080/api/readyz
 
 **조치**
 
-1. 5개 서비스는 `restart: unless-stopped`이므로 Docker 데몬이 뜨면 자동 기동한다. 데몬 자체가 안 떠 있으면 먼저 Docker Desktop 로그인 시 자동 시작(또는 Linux `systemctl enable --now docker`)을 확인한다.
+1. 6개 서비스는 `restart: unless-stopped`이므로 Docker 데몬이 뜨면 자동 기동한다. 데몬 자체가 안 떠 있으면 먼저 Docker Desktop 로그인 시 자동 시작(또는 Linux `systemctl enable --now docker`)을 확인한다.
 2. 이전에 `docker compose stop`으로 명시적으로 멈춘 서비스는 `unless-stopped` 정책상 자동 기동하지 않는다. 이 경우에만 운영자가 기동한다.
 3. `api` 기동 시 startup task가 중단 작업을 스스로 정리한다: 중단된 release 조정, 중단 job 재큐잉, nginx route 재조정, 만료 upload 세션 정리, 백업 due-check.
 
-**확인** — `docker compose ps`가 5개 모두 healthy, `/api/readyz`가 200, `GET /api/deployment-releases`에 `creating`·`probing`·`switching`·`observing`·`rolling-back` 상태로 멈춰 있는 release가 없어야 한다.
+**확인** — `docker compose ps`가 6개 모두 healthy, `/api/readyz`가 200, `GET /api/deployment-releases`에 `creating`·`probing`·`switching`·`observing`·`rolling-back` 상태로 멈춰 있는 release가 없어야 한다.
 
 ---
 
@@ -200,7 +200,7 @@ curl -s localhost:18080/api/control-plane/status | jq '{integrity: .data.databas
 
 1. restore job은 `maxAttempts 1`이라 자동 재시도하지 않는다. api가 중간에 죽었다면 기동 시 reconcile이 해당 job을 `failed`로 확정한다.
 2. 복구 트랜잭션은 `PRAGMA foreign_key_check` 위반 시 통째로 롤백된다. 즉 실패한 restore는 DB를 반쯤 바꿔 놓지 않는다. job event의 실패 코드로 원인을 확인한다.
-3. 점검 모드가 남아 있으면 owner가 최근 인증 상태로 해제한다: `POST /api/maintenance` body `{"enabled": false}`. (job이 켠 점검 모드는 job 종료 시 자동 해제되지만, 프로세스가 죽으면 남을 수 있다.)
+3. 점검 모드가 남아 있으면 owner 세션으로 해제한다: `POST /api/maintenance` body `{"enabled": false}`. (job이 켠 점검 모드는 job 종료 시 자동 해제되지만, 프로세스가 죽으면 남을 수 있다.)
 4. passphrase로 봉인한 백업을 복원하는 중 api가 재시작했다면 passphrase는 메모리에서 사라진다. 키 복원이 필요하면 **처음부터 다시** 복구를 요청한다.
 5. 다시 시도하기 전에 `GET /api/backups`로 대상 백업의 manifest가 온전한지 확인한다.
 
@@ -225,7 +225,7 @@ curl -s localhost:18080/api/deployment-releases | jq '.data[] | select(.status !
 **조치**
 
 1. worker는 30초마다 heartbeat를 쓴다. heartbeat가 90초 이상 멈춘 job은 60초 주기 sweep이 잡아 재큐잉하거나(재시도 여유가 있을 때) `failed`로 확정한다. 즉 진짜 교착은 스스로 풀린다. 최소 2~3분은 기다린다.
-2. 그래도 안 풀리면 취소한다: `POST /api/jobs/<jobId>/cancel`. 최근 인증한 owner·admin 세션 또는 `job:write` scope API key가 필요하다. 취소는 즉시 종료가 아니라 `cancelling`으로 표시되고 handler가 체크포인트에서 중단한다.
+2. 그래도 안 풀리면 취소한다: `POST /api/jobs/<jobId>/cancel`. owner·admin 세션 또는 `job:write` scope API key가 필요하다. 취소는 즉시 종료가 아니라 `cancelling`으로 표시되고 handler가 체크포인트에서 중단한다.
 3. release가 활성 상태로 남아 새 배포를 막으면, 그 release의 job이 끝난 뒤 상태를 다시 확인한다. api 재기동 시 reconcile이 `switching`·`observing`·`rolling-back`에 걸린 release를 이전 라우트로 되돌린다.
 4. 같은 대상에 대한 중복 job은 `resourceKey`로 단일화된다. 재요청이 새 job을 만들지 않고 기존 job을 돌려주는 것은 정상이다.
 
@@ -248,7 +248,7 @@ curl -s 'localhost:18080/api/audit?limit=100' | jq '.data[] | select(.authMethod
 
 **조치**
 
-1. **먼저 폐기한다**: `DELETE /api/api-keys/<id>` (최근 인증한 owner·admin 세션). 폐기 즉시 rate limit 창도 삭제되고 이후 인증이 실패한다.
+1. **먼저 폐기한다**: `DELETE /api/api-keys/<id>` (owner·admin 세션 — 키 관리는 세션 전용). 폐기 즉시 rate limit 창도 삭제되고 이후 인증이 실패한다.
 2. 노출 구간을 정리한다. GitHub Secrets에 있던 값이면 Secret을 교체하고, 로그·아티팩트에 남았으면 해당 실행 로그를 삭제한다.
 3. 새 키를 최소 scope로 발급한다. CI 배포용은 `artifact:upload`, `image:load`, `deployment:read`, `deployment:write`, `job:read`가 기본이고, 배포 후 검증까지 돌리면 `engine:read`를 더한다(`docs/ci-examples/containers-deploy.sh`). `backup:write`·`secret:write`는 owner만 발급 가능하므로 CI에 넣지 않는다.
 4. 유출 기간의 감사 로그를 훑어 실제 사용 흔적(`lastUsedAt`, `authMethod: api-key` 이벤트)을 확인하고, 의심스러운 배포가 있으면 8번·해당 release rollback 절차로 되돌린다.
@@ -330,7 +330,7 @@ docker compose up -d --wait
 
 컨테이너가 네트워크에서만 분리된 중간 상태로 남아 `up` 도 `restart` 도 받지 않으면(`is not connected to the network ...`), 그 컨테이너만 `docker rm` 으로 지운 뒤 `down` 을 실행한다.
 
-**확인** — 5개 서비스 healthy, `docker volume ls | grep containers` 로 볼륨 보존 확인.
+**확인** — 6개 서비스 healthy, `docker volume ls | grep containers` 로 볼륨 보존 확인.
 
 상세는 [bug/2026-08-18-edge-subnet-mismatch-blocks-startup.md](./bug/2026-08-18-edge-subnet-mismatch-blocks-startup.md).
 

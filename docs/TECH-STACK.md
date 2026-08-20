@@ -54,10 +54,16 @@ apps/
         src/ingest/
         src/rollup/          # 후속 목표
         src/db/
+    egress-broker/
+        src/route/
+        src/service/domain/
+        src/middleware/
+        src/lib/
 packages/
     db-schema/
     contracts/
     config/
+    nginx-config/
 infra/
     nginx/
     compose/

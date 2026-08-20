@@ -1,5 +1,7 @@
 # API 키 패리티 — 갭분석과 고도화 계획
 
+> **상태: 구현 완료 (2026-08-20, feat/api-key-parity).** 본문은 착수 시점의 갭분석·계획 원문이다. 최종 결정과 구현 결과는 [acknowledge/0044](./acknowledge/0044-api-key-parity-and-egress-broker.md) 를, 레지스트리 검증은 §2.4 의 정적 검증안 대신 egress-broker 신설(0044 결정 3)로, 세션의 recent 인증은 [acknowledge/0045](./acknowledge/0045-remove-recent-auth.md) 로 아예 제거됐다. 현재 인증 표는 [API-DATA-AUTH.md](./API-DATA-AUTH.md) 가 정본이다.
+
 2026-08-20 Forgejo+MySQL 배포 시도에서 드러난 결함을 근본 수정하고, 웹 세션으로 가능한 모든 조작을 API 키로도 가능하게 만드는 계획이다. 라우트 전수 조사(109개 엔드포인트)를 기반으로 한다.
 
 ## 1. 발견된 결함

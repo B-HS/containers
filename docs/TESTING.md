@@ -149,7 +149,7 @@ fixture image는 작은 multi-platform test image를 digest로 고정한다.
 - query hydration 뒤 중복 fetch 여부
 - loading, background refresh, empty, partial error, offline, unknown 상태
 - Data Table filter·sort·pagination·column visibility URL 보존
-- 위험 작업 대상명 확인과 재인증
+- 위험 작업 대상명 확인(confirmation)
 - upload 재접속과 진행률
 - terminal keyboard, resize, disconnect, reconnect 불가 안내
 - Dialog·Sheet focus trap과 focus restore
@@ -235,7 +235,7 @@ Phase 0 baseline에서 M1 Max의 CPU·memory와 랜 회선 조건을 함께 기�
 - 웹은 러너가 아니라 preload 가 달라 루트 `test` 스크립트가 두 단계다. raw `bun test` 로는 웹 테스트가 실패하므로 CI 예시는 `bun run test` 를 쓴다(계약 테스트가 강제)
 - workspace typecheck·ESLint·Prettier 통과
 - Next.js production SSR build와 Bun API·Agent·Worker bundle 통과
-- Docker Compose 5개 서비스 health 통과
+- Docker Compose 6개 서비스 health 통과
 - Nginx 보안 header·429, dashboard hydration, backup panel Chromium 검증
 - blue-green·자동/수동 rollback, encrypted secret injection, control·traffic 실제 restore drill 통과
 - live control SQLite integrity `ok`, FK violation 0

@@ -1,6 +1,6 @@
 # Control Plane Upgrade·Rollback Runbook
 
-control plane(nginx·web·api·engine-agent·traffic-worker)은 compose 로 단일 호스트에 배포된다. 이 문서는 호스트 터미널에서 수행하는 upgrade·rollback 절차와, 그 전에 확인해야 할 준비 상태를 정의한다.
+control plane(nginx·web·api·engine-agent·traffic-worker·egress-broker)은 compose 로 단일 호스트에 배포된다. 이 문서는 호스트 터미널에서 수행하는 upgrade·rollback 절차와, 그 전에 확인해야 할 준비 상태를 정의한다.
 
 > **권한 경계**: 이 문서의 모든 호스트 명령은 **사용자가 직접** 수행한다. API·Web 은 준비 상태를 읽기 전용으로 보고할 뿐 컨테이너 생성·재시작·이미지 pull 을 실행하지 않는다 (SECURITY.md §11 불변식).
 

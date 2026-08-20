@@ -66,7 +66,7 @@ container IP를 설정에 고정하지 않는다. 사용자 container를 관리 
 
 owner는 구조화 모델 대신 전체 config tree를 편집할 수 있다. 이는 단순 syntax editor가 아니라 관리 plane의 생존을 바꾸는 break-glass 작업이다.
 
-- owner와 최근 재인증, 변경 사유, 대상명 재입력, 만료형 break-glass grant를 요구한다.
+- owner·admin role(또는 `nginx:write` API key)과 대상명 재입력을 요구한다. 변경 사유·만료형 break-glass grant 는 미구현 설계 목표다.
 - include path escape, 사용 불가 module, 외부 listener, log destination, resolver, executable extension을 정적 검사한다.
 - 패널 SSR, 브라우저 API, 외부 API, WebSocket, SSE, workload, JSON access log, status, rollback hook에 필요한 보호 계약을 AST 또는 rendered-config 검사로 강제한다.
 - 실행 중 인스턴스와 동일한 image·module·environment의 shadow container를 실제 기동해 전체 probe를 통과시킨다.

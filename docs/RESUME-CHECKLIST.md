@@ -14,7 +14,7 @@
     - 신뢰 프록시·API 키·라우트는 비어 있다. 감사 로그와 배포 이력은 그 뒤 실측으로 다시 쌓였고, 정리 후 릴리스 이력 일부와 그 manifest 만 남아 있다.
     - **알림 대상이 0건이다.** `system.report` 를 구독하는 대상이 없으면 감사 체인 head 가 호스트 밖으로 나가지 않아 꼬리 자르기를 탐지할 수 없다 → [HANDOFF.md](./HANDOFF.md) §8-1.
     - `/data/ingest-checkpoint.json` 은 **첫 트래픽 인입 뒤에 생성된다.** 초기화 직후 `stat` 실패는 정상이다.
-- Compose 5개 서비스 `nginx`·`web`·`api`·`engine-agent`·`traffic-worker` 가 healthy 여야 한다.
+- Compose 6개 서비스 `nginx`·`web`·`api`·`engine-agent`·`traffic-worker`·`egress-broker` 가 healthy 여야 한다.
 
 아래 §3의 읽기 전용 점검으로 현재 값을 직접 확인한다. 서비스 uptime, traffic row 수, schedule 시각, job 목록은 정상적으로 변한다.
 
@@ -49,7 +49,7 @@ docker compose exec -T traffic-worker stat -c '%a %U:%G %n' /data/ingest-checkpo
 
 기대 핵심 결과는 두 integrity check의 `ok`, `activeJobs: 0`, checkpoint의 `600 bun:bun`이다. Docker Desktop socket 승인이 없는 shell에서는 명령이 실패할 수 있으므로 권한을 우회하지 말고 승인 가능한 환경에서 다시 실행한다.
 
-- [ ] 5개 서비스가 모두 `healthy`인지 확인한다. `starting`이면 healthcheck 제한 시간만큼 기다린 뒤 다시 확인한다.
+- [ ] 6개 서비스가 모두 `healthy`인지 확인한다. `starting`이면 healthcheck 제한 시간만큼 기다린 뒤 다시 확인한다.
 - [ ] 활성 job이 없는지 control DB를 읽기 전용으로 확인한다. 활성 job이 있으면 종료·실패·사용자 승인 필요 상태를 먼저 판단하고 새 mutation을 시작하지 않는다.
 - [ ] DB integrity를 읽기 전용으로 확인한다. `ok`가 아니면 구현을 중단하고 backup·복구 문서로 전환한다.
 - [ ] `.env`, secret file, registry credential, cookie store의 내용을 읽지 않는다.
@@ -76,7 +76,7 @@ docker compose ps
 
 - [ ] `docker compose down -v`, broad `docker system prune`, broad image/container/network/volume 삭제를 실행하지 않는다.
 - [ ] 사용자 소유 Docker resource는 이름이나 사용 여부를 추정해 정리하지 않는다.
-- [ ] 실제 prune은 owner 최근 인증, 최신 preview SHA, 정확한 확인 문구가 있어도 사용자 resource 삭제 영향이 확인되지 않으면 실행하지 않는다.
+- [ ] 실제 prune은 owner 세션, 최신 preview SHA, 정확한 확인 문구가 있어도 사용자 resource 삭제 영향이 확인되지 않으면 실행하지 않는다.
 - [ ] restore는 live control·traffic 상태를 되돌린다. **사용자의 명시 승인과 직전 recovery backup 없이는 실행하지 않는다.**
 - [ ] API·Web에 Docker socket을 mount하지 않는다. Agent만 socket을 가진다.
 - [ ] `.env`를 만들거나 수정하지 않고 secret 원문을 문서·log·audit·테스트 출력에 넣지 않는다.
@@ -151,7 +151,7 @@ Phase 18(control plane upgrade 준비 상태 검증)은 구현·테스트·재�
 
 - [ ] 새 mutation이나 durable job enqueue를 멈춘다.
 - [ ] `queued`, `running`, `cancelling` job이 0인지 확인한다. 작업 중이면 임의 kill하지 말고 정상 종결 또는 안전한 협조 취소를 확인한다.
-- [ ] `docker compose ps`에서 5개 서비스 healthy를 확인한다.
+- [ ] `docker compose ps`에서 6개 서비스 healthy를 확인한다.
 - [ ] control·traffic DB integrity를 읽기 전용으로 확인한다.
 - [ ] 임시 credential·cookie·fixture가 남지 않았는지 확인하되 secret 내용은 읽지 않는다.
 - [ ] 실행한 파괴적 작업, 생성한 정확한 fixture ID, 보존해야 할 artifact/backup을 기록한다.
