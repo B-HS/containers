@@ -122,6 +122,7 @@ const PROTECTED_VOLUME_PREFIX = 'containers_'
 const PROTECTED_VOLUMES = [
     `${PROTECTED_VOLUME_PREFIX}agent-credentials`,
     `${PROTECTED_VOLUME_PREFIX}artifacts`,
+    `${PROTECTED_VOLUME_PREFIX}egress-credentials`,
     `${PROTECTED_VOLUME_PREFIX}backups`,
     `${PROTECTED_VOLUME_PREFIX}control-data`,
     `${PROTECTED_VOLUME_PREFIX}nginx-config`,

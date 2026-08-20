@@ -13,7 +13,7 @@ DEFAULT_TRAFFIC_RAW_RETENTION_DAYS=14
 DEFAULT_DOCKER_GID=0
 DOCKER_SOCKET_PATH=/var/run/docker.sock
 MIN_FREE_DISK_GB=10
-EXPECTED_HEALTHY_SERVICES=5
+EXPECTED_HEALTHY_SERVICES=6
 CURL_TIMEOUT_SECONDS=5
 MIN_COMPOSE_MAJOR=2
 MIN_COMPOSE_MINOR=24
@@ -314,7 +314,7 @@ else
     exit 1
 fi
 
-for dockerfile in apps/api/Dockerfile apps/web/Dockerfile apps/engine-agent/Dockerfile apps/traffic-worker/Dockerfile infra/nginx/Dockerfile; do
+for dockerfile in apps/api/Dockerfile apps/egress-broker/Dockerfile apps/web/Dockerfile apps/engine-agent/Dockerfile apps/traffic-worker/Dockerfile infra/nginx/Dockerfile; do
     if [ -f "$REPO_ROOT/$dockerfile" ]; then
         ok "$dockerfile 존재"
     else

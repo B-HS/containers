@@ -20,6 +20,7 @@ const PROTECTED_NETWORKS = ['containers_control', 'containers_ingress', 'contain
 const PROTECTED_VOLUMES = [
     'containers_agent-credentials',
     'containers_artifacts',
+    'containers_egress-credentials',
     'containers_backups',
     'containers_control-data',
     'containers_nginx-config',
