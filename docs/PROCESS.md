@@ -913,8 +913,8 @@ HANDOFF §6 을 "미해결 질문"에서 "결정 완료"로 바꿨다. 사용자
 - [x] b. 이미지 준비 — `mysql:9` 는 패널 pull 성공. `codeberg.org/forgejo/forgejo:16` 은 `REGISTRY_RESOLVE_FAILED`(engine-agent 가 internal control 네트워크라 레지스트리 호스트 DNS 해석 불가 — 호스트 붙은 참조는 pull 불가, bug 기록 필요) → 로컬 docker save + artifact upload + image load 로 우회 (digest `sha256:2fdfe28b...`)
 - [ ] c. `forgejo-mysql` 컨테이너 생성 — env 로 forgejo DB·계정 초기화, `containers_edge`, 볼륨 `forgejo-mysql-data:/var/lib/mysql`
 - [x] c-2. deployment secrets 9개 생성, Forgejo 16 이미지를 로컬 docker save + artifact upload + load 로 원격 엔진에 적재
-- [ ] d. deployment secrets 생성 + forgejo 스택 preview·생성·릴리스 (route `forge.hyuns.uk`, health `/api/healthz`, `INSTALL_LOCK=true`, SSH 비활성) — **API 패리티 배포 후 재개**
-- [ ] e. 실측 검증 — 스택 릴리스 healthy, `https://forge.hyuns.uk` 응답 확인, 결과 보고 — **API 패리티 배포 후 재개**
+- [x] d. deployment secrets 생성 + forgejo 스택 preview·생성·릴리스 (route `forge.hyuns.uk`, health `/api/healthz`, `INSTALL_LOCK=true`, SSH 비활성) — 1차 릴리스는 프로브 네트워크 격리 결함으로 실패, 수정 배포 후 재릴리스 healthy
+- [x] e. 실측 검증 — 스택 릴리스 healthy, `https://forge.hyuns.uk` 200 + `/api/healthz` pass(DB ping 포함), MySQL 9·Forgejo 컨테이너 running, 실패 릴리스 잔여 컨테이너 정리. 전 과정을 API 키만으로 완주
 
 ## 작업: 2026-08-20 API 키 패리티·egress-broker (feat/api-key-parity)
 
