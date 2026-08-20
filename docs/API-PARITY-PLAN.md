@@ -18,22 +18,22 @@
 
 세션 전용(mutating) 엔드포인트 전수:
 
-| 그룹 | 엔드포인트 | 현재 세션 요구 |
-| --- | --- | --- |
-| 컨테이너 | POST /containers, POST /containers/:id/actions, POST /containers/:id/wait | recent admin (wait 는 operator) |
-| 이미지 | POST /images/pull, POST /images/:id/tag, DELETE /images/:id | recent admin (force 삭제는 owner) |
-| 네트워크·볼륨 | POST·DELETE /networks, /volumes | recent admin |
-| nginx | POST·PUT·DELETE /nginx/routes, POST /nginx/config/apply | recent admin |
-| 레지스트리 자격증명 | POST·DELETE /registry-credentials | recent owner |
-| prune | POST /system/prune | recent owner |
-| 백업 복원 | POST /backups/:id/restore | recent owner (API 키는 명시적 FORBIDDEN) |
-| secret 회전 | POST /deployment-secrets/rotate | recent owner |
-| artifact 삭제 | DELETE /artifacts/:id | recent admin |
-| traffic export | POST /traffic/exports, GET /traffic/exports/:jobId/download | admin |
-| notification | /notification-destinations CUD·test | recent admin |
-| maintenance | POST /maintenance | recent owner |
-| panel-settings·trusted-proxies | PUT·POST·DELETE | recent owner |
-| 조회 계열 | nginx·traffic·audit·stream SSE·top/changes·prune-preview 등 | 세션만 (engine:read 급인데 키 불가) |
+| 그룹                           | 엔드포인트                                                                | 현재 세션 요구                           |
+| ------------------------------ | ------------------------------------------------------------------------- | ---------------------------------------- |
+| 컨테이너                       | POST /containers, POST /containers/:id/actions, POST /containers/:id/wait | recent admin (wait 는 operator)          |
+| 이미지                         | POST /images/pull, POST /images/:id/tag, DELETE /images/:id               | recent admin (force 삭제는 owner)        |
+| 네트워크·볼륨                  | POST·DELETE /networks, /volumes                                           | recent admin                             |
+| nginx                          | POST·PUT·DELETE /nginx/routes, POST /nginx/config/apply                   | recent admin                             |
+| 레지스트리 자격증명            | POST·DELETE /registry-credentials                                         | recent owner                             |
+| prune                          | POST /system/prune                                                        | recent owner                             |
+| 백업 복원                      | POST /backups/:id/restore                                                 | recent owner (API 키는 명시적 FORBIDDEN) |
+| secret 회전                    | POST /deployment-secrets/rotate                                           | recent owner                             |
+| artifact 삭제                  | DELETE /artifacts/:id                                                     | recent admin                             |
+| traffic export                 | POST /traffic/exports, GET /traffic/exports/:jobId/download               | admin                                    |
+| notification                   | /notification-destinations CUD·test                                       | recent admin                             |
+| maintenance                    | POST /maintenance                                                         | recent owner                             |
+| panel-settings·trusted-proxies | PUT·POST·DELETE                                                           | recent owner                             |
+| 조회 계열                      | nginx·traffic·audit·stream SSE·top/changes·prune-preview 등               | 세션만 (engine:read 급인데 키 불가)      |
 
 ### 1.4 웹 UI 결함 (P1)
 
@@ -50,7 +50,7 @@
 
 ### 2.2 신규 scope (도메인별 read/write, 기존 네이밍 유지)
 
-`artifact:write`, `audit:read`, `backup:restore`*, `container:write`, `image:write`, `maintenance:read`, `maintenance:write`*, `network:write`, `nginx:read`, `nginx:write`, `notification:read`, `notification:write`, `panel-setting:read`, `panel-setting:write`*, `registry-credential:read`, `registry-credential:write`*, `system:prune`*, `traffic:read`, `traffic:export`, `trusted-proxy:read`, `trusted-proxy:write`*, `volume:write`
+`artifact:write`, `audit:read`, `backup:restore`_, `container:write`, `image:write`, `maintenance:read`, `maintenance:write`_, `network:write`, `nginx:read`, `nginx:write`, `notification:read`, `notification:write`, `panel-setting:read`, `panel-setting:write`_, `registry-credential:read`, `registry-credential:write`_, `system:prune`_, `traffic:read`, `traffic:export`, `trusted-proxy:read`, `trusted-proxy:write`_, `volume:write`
 
 `*` = owner 전용 발급·사용 (기존 `OWNER_ONLY_API_KEY_SCOPES` 확장). 조회 계열(top/changes·prune-preview·stream SSE)은 기존 `engine:read` 로 흡수한다.
 

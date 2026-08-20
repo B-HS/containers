@@ -45,7 +45,7 @@ For CI and unattended provisioning it also runs without prompts. Non-interactive
 
 Exposing the panel on a domain? Run the tunnel or reverse proxy however you like — the stack never holds its token. Point it at the published port, then approve the proxy address and the public origin from the panel itself: both screens list what actually hit the access log, so you pick from observed values instead of typing them. See [`docs/EXPOSURE.md`](docs/EXPOSURE.md) §2.
 
-Two things bite people here. A wildcard record (`*.example.com`) does **not** cover the apex (`example.com`) — the apex needs its own hostname or DNS record, otherwise it fails DNS resolution while every subdomain works. And whichever hostname you give the panel becomes a *protected* hostname, so you cannot later point it at a workload container. Put the panel on a subdomain and leave the apex free if you want to serve something else from it.
+Two things bite people here. A wildcard record (`*.example.com`) does **not** cover the apex (`example.com`) — the apex needs its own hostname or DNS record, otherwise it fails DNS resolution while every subdomain works. And whichever hostname you give the panel becomes a _protected_ hostname, so you cannot later point it at a workload container. Put the panel on a subdomain and leave the apex free if you want to serve something else from it.
 
 `--start-mode` picks `build` (build then start, the default), `up` (start without building) or `skip` (checks only). An existing `compose.override.yaml` is kept as is unless you pass `--replace-override`, which backs it up to `compose.override.yaml.bak` first.
 
