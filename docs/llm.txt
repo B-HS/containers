@@ -28,7 +28,7 @@ TABLE OF CONTENTS
 ================================================================================
 1. ARCHITECTURE
 ================================================================================
-5 containers via docker-compose. All internal services authenticate to each
+6 containers via docker-compose. All internal services authenticate to each
 other with HMAC-SHA256 shared secrets (nonce + timestamp, 30s skew). Docker
 Engine API is accessed ONLY through the engine-agent.
 
@@ -38,17 +38,19 @@ Engine API is accessed ONLY through the engine-agent.
       └── nginx.conf managed by engine-agent via /v1/nginx/config/apply
 
   api (:3001) ──► engine-agent (:3002, HMAC) ──► Docker Engine (socket)
-             └─► traffic-worker (:3003, HMAC)
+             ├─► traffic-worker (:3003, HMAC)
+             └─► egress-broker (:3004, HMAC) ──► public internet (DNS + webhook)
 
 Networks (docker):
-  control   internal:true  — api, engine-agent, traffic-worker, nginx
+  control   internal:true  — api, engine-agent, traffic-worker, nginx, egress-broker
   ingress   internal:true  — web, nginx, api
   probe     internal:true  — engine-agent + deployment staging (healthcheck)
-  edge      (default)      — user workloads (non-internal, internet egress)
+  edge      (default)      — user workloads + egress-broker (non-internal, internet egress)
 
 Volumes:
-  agent-credentials, artifacts, backups, control-data, nginx-config,
-  nginx-logs, registry-credentials, traffic-credentials, traffic-data
+  agent-credentials, artifacts, backups, control-data, egress-credentials,
+  nginx-config, nginx-logs, registry-credentials, traffic-credentials,
+  traffic-data
 
 Secrets are file-backed (mode 0600), auto-generated on first boot, mounted at
 /credentials, /traffic-credentials, /registry-credentials, /data. No .env.
@@ -59,6 +61,8 @@ Key source layout:
   apps/engine-agent/   Docker Engine client: containers, exec, streams, stats,
                        image pull/load, nginx config apply, registry creds
   apps/traffic-worker/ Access-log ingestion, analytics aggregation, export
+  apps/egress-broker/  DNS resolution + webhook delivery broker (the only
+                       management-plane service with internet egress)
   apps/web/            Next.js App Router panel (ko/en/ja)
   packages/contracts/  Shared Zod schemas (single source of DTO truth)
   packages/db-schema/  Drizzle schema + SQLite migrations
@@ -76,6 +80,9 @@ engine-agent   Port 3002 (internal). Docker socket owner. Routes under /v1/*
                HMAC-guarded; /ws/exec/* is ticket-gated (not HMAC).
 traffic-worker Port 3003 (internal). Reads nginx access.log JSONL, ingests to
                traffic.sqlite, serves analytics.
+egress-broker  Port 3004 (control + edge). HMAC under /v1. Resolves hostnames
+               and delivers webhooks on behalf of api (SSRF guard via
+               contracts/net-guard); api/agent stay internal-only.
 web            Port 3000 (internal). Next.js SSR + client, proxied by nginx.
 nginx          Port 8080/8081. Edge reverse proxy; 8081 is stub_status.
 
@@ -83,7 +90,7 @@ Internal auth (packages/contracts/src/internal-auth.ts):
   Header X-Internal-Timestamp (ms) + X-Internal-Nonce (uuid) +
   X-Internal-Signature = HMAC-SHA256(secret, `${method}\n${path}\n${timestamp}\n${nonce}\n${body}`).
   Nonce dedup + timestamp skew <= 30s. Secrets differ per link (api↔agent,
-  api↔traffic) in separate volume files.
+  api↔traffic, api↔egress) in separate volume files.
 
 
 ================================================================================

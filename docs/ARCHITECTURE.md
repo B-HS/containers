@@ -11,13 +11,14 @@ M1 Max macOS의 Docker Desktop Linux VM 안에서 Docker Compose로 묶인 다�
 | `api`            | Hono RPC, 인증·인가, jobs, 구성 관리               |               Nginx 경유 |          없음 |
 | `engine-agent`   | Docker Engine 어댑터와 스트림 중계                 |                 내부망만 |     읽기·쓰기 |
 | `traffic-worker` | Nginx JSONL tail, 검증, raw 저장, 조회·live·export |                 내부망만 |          없음 |
+| `egress-broker`  | DNS 해석·webhook 발송 대행 (유일한 egress 보유 관리 서비스) |                 내부망만 |          없음 |
 | `backup-worker`  | 선택적 R2 업로드·bounded snapshot 전용 worker 후보 |          계획, 아직 없음 |          없음 |
 | `watchdog`       | 관리 plane·Nginx 생존 probe와 last-known-good 복구 |          계획, 아직 없음 |          없음 |
 | `cloudflared`    | remotely-managed outbound-only named tunnel        | 호스트 배치 계획, 미구현 |          없음 |
 
 Nginx access log, SQLite DB, 업로드 격리소, Nginx 설정 리비전은 각각 명시된 named volume에 둔다. `engine-agent`만 `/var/run/docker.sock`을 가진다.
 
-현재 Compose에 실제 존재하는 서비스는 `nginx`, `web`, `api`, `engine-agent`, `traffic-worker` 다섯 개다. 로컬 backup 조정은 API와 Traffic Worker가 shared named volume에서 담당하며 별도 `backup-worker`는 아직 없다.
+현재 Compose에 실제 존재하는 서비스는 `nginx`, `web`, `api`, `engine-agent`, `traffic-worker`, `egress-broker` 여섯 개다. 로컬 backup 조정은 API와 Traffic Worker가 shared named volume에서 담당하며 별도 `backup-worker`는 아직 없다.
 
 ## 2. 논리 구성
 

@@ -921,12 +921,12 @@ HANDOFF §6 을 "미해결 질문"에서 "결정 완료"로 바꿨다. 사용자
 기준 문서: [API-PARITY-PLAN.md](./API-PARITY-PLAN.md), [acknowledge/0044](./acknowledge/0044-api-key-parity-and-egress-broker.md). MySQL 컨테이너 생성이 세션 전용에 막히고 codeberg pull 이 REGISTRY_RESOLVE_FAILED 로 죽는 것을 계기로, 웹 세션 조작 전체의 API 키 패리티와 egress 계층을 근본 수정한다.
 
 - [x] a. 라우트 109개 인증 방식 전수 조사, 갭분석·플랜 작성, 사용자 결정 수신(0044)
-- [ ] b. contracts — API_KEY_SCOPE 22종 추가, egress-broker 계약 신설
-- [ ] c. api — authenticate 가 role 반환, authenticateScopeOrRole 헬퍼, OWNER_ONLY 확장
-- [ ] d. api — 라우트 패리티 적용 (control·nginx·backup·secret·artifact·traffic·audit·notification·maintenance·panel-setting·trusted-proxy·stream)
-- [ ] e. egress-broker 앱 신설 (resolve·webhook 대행, shared-secret 인증, Dockerfile·compose)
-- [ ] f. 레지스트리 검증 재설계 — api 측 broker resolve + 정적 검증, agent 는 정적 검증 유지, webhook 발송 broker 경유
-- [ ] g. web — 컨테이너 생성 폼 env·volumes·entrypoint, api-key 위젯 role 인지 기본값
-- [ ] h. 테스트 — 헬퍼·라우트 통합·broker·정적 검증 + 기존 회귀
-- [ ] i. 문서 — API-DATA-AUTH 인증 표, bug 3건(레지스트리 DNS·webhook egress·api-key 위젯), compose-security 불변식
-- [ ] j. 검증 — typecheck→lint→test→build 전체 통과
+- [x] b. contracts — API_KEY_SCOPE 22종 추가, net-guard·egress 계약 신설, OWNER_ONLY_API_KEY_SCOPES 승격
+- [x] c. api — authenticate 가 role 반환, authenticateScopeOrRole 헬퍼, OWNER_ONLY 8종 확장, audit 에 apiKeyId 병합
+- [x] d. api — 라우트 패리티 적용 (control·nginx·backup·secret·artifact·traffic·audit·notification·maintenance·panel-setting·trusted-proxy·stream) — exec·api-keys·계정은 세션 전용 유지
+- [x] e. egress-broker 앱 신설 (resolve·webhook 대행, shared-secret 인증, Dockerfile·compose, egress-credentials 볼륨)
+- [x] f. 레지스트리 검증 재설계 — api 측 broker resolve + 정적 검증, agent 는 정적 검증만, webhook 발송 broker 경유 (IPv4-embedded IPv6 파싱 결함도 수정)
+- [x] g. web — 컨테이너 생성 폼 env·volumes 입력(3개 언어), api-key 위젯 isOwner 기본값·비활성화
+- [x] h. 테스트 — net-guard 12건·egress 서비스 6건·헬퍼 3건·control 이미지 검증 6건 + 기존 스텁 갱신 (총 590 pass)
+- [x] i. 문서 — API-DATA-AUTH 인증 표 재작성, bug 2건(egress 사문화·api-key 위젯), llm.txt·ARCHITECTURE 서비스 지도 (compose-security 불변식은 신규 서비스가 기존 규칙을 그대로 만족해 변경 불필요)
+- [x] j. 검증 — typecheck(9 workspace)→lint→format:check→test(562+28)→build 전체 통과. 실배포·런타임 실측은 호스트 재빌드 후 별도 진행(0044 결정 4)
