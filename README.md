@@ -6,6 +6,8 @@ A self-hosted Docker management panel that runs entirely on your own machine —
 
 It lets you control Docker containers, create and deploy them, inspect live traffic, and manage the Nginx reverse proxy (including a GUI config editor) — all through a single web panel on your own machine. It ships with role-based access control, encrypted credentials, automated backups, and rate limiting, so it behaves like a small production control plane rather than an admin toy.
 
+Everything the panel can do is also scriptable: the whole control surface — containers, images, networks, volumes, nginx routes, deployments, backups, traffic, audit — is exposed through scoped API keys (per-domain read/write scopes, owner-only for the sensitive ones), so CI and scripts automate the same operations end to end. Only interactive exec, API-key management, and account flows stay session-only.
+
 <details>
 <summary>More screens</summary>
 
@@ -143,6 +145,8 @@ and security model, and the deployment pipeline, tuned for LLM consumption.
       wrappers that call that script, so the three CI systems cannot drift apart.
       The runner must be able to reach the panel, so use a self-hosted runner on the same
       host or expose the API over HTTPS through a tunnel. API keys expire in at most 365 days.
+      Automation beyond this script is a curl away — see the scope-per-route table in
+      [`docs/API-DATA-AUTH.md`](docs/API-DATA-AUTH.md).
 - `docs/README.md` — human-facing documentation index
 
 Human-facing documentation lives in [`docs/`](docs/README.md).
