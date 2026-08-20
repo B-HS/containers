@@ -468,6 +468,7 @@ export const createDeploymentReleaseService = ({
                     volumes: manifest.volumes,
                 })
                 containerId = created.targetId
+                await engineAgentClient.connectContainerNetwork(containerId, { network: manifest.network })
                 await update(id, { containerId, status: 'probing' })
                 if (manifest.healthcheck.startPeriodSeconds > 0) {
                     await sleep(manifest.healthcheck.startPeriodSeconds * 1_000)
@@ -491,7 +492,6 @@ export const createDeploymentReleaseService = ({
                     throw createAppError('DEPLOYMENT_HEALTHCHECK_FAILED')
                 }
 
-                await engineAgentClient.connectContainerNetwork(containerId, { network: manifest.network })
                 if (isPublished(manifest)) {
                     await engineAgentClient.disconnectContainerNetwork(containerId, { network: probeNetwork })
                 }

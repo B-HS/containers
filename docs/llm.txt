@@ -567,7 +567,8 @@ HMAC per-link. All files 0600, auto-generated, no committed .env.
    secrets (by reference), volumes, port, protocol, healthcheck, route,
    rollout params. protectedNetworks/hostnames rejected.
 3. Release (deploy.release job): engine-agent creates container on `probe`
-   network → healthcheck probe → connect manifest.network + disconnect probe →
+   network → connect manifest.network (so cross-network deps like a DB resolve
+   during the probe) → healthcheck probe via probe network → disconnect probe →
    nginx route upsert → observe → mark healthy. Old container stopped.
 4. Rollback: connect previous release, switch route, verify, disconnect.
    Failed/interrupted releases are disconnected from probe/control and stopped.

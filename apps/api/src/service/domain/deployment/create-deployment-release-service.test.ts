@@ -267,7 +267,7 @@ describe('blue-green deployment release', () => {
 
         expect(result.status).toBe('failed')
         expect(result.failureCode).toBe('DEPLOYMENT_HEALTHCHECK_FAILED')
-        expect(operations).toEqual(['create', 'stop', 'disconnect-probe'])
+        expect(operations).toEqual(['create', 'connect-edge', 'stop', 'disconnect-probe'])
         sqlite.close()
     })
 
