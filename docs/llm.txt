@@ -292,8 +292,8 @@ Audit:           /api/audit GET (owner/admin/viewer/auditor, read-only, paginate
                  headHash 는 하루 1회 알림(system.report)으로 호스트 밖에 남긴다 —
                  꼬리를 통째로 자르는 변조는 체인 내부 검증만으로는 못 잡는다
 Backup:          /api/backups GET/POST (owner), /api/backups/:id/restore POST
-                 (session-only: an Authorization header is rejected with 403;
-                 owner), /api/backups/:id DELETE (owner)
+                 (owner session or owner-issued backup:restore API key),
+                 /api/backups/:id DELETE (owner)
 Control plane:   /api/control-plane/status GET (owner/admin)
 Maintenance:     /api/maintenance GET (all) / POST (owner)
 Engine:          /api/system/engine GET, /api/containers GET,

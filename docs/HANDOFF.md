@@ -1,8 +1,8 @@
 # HANDOFF — 2026-08-20 세션 스냅샷
 
-- 대응 브랜치: `feat/api-key-parity` (dev 미병합 — API 키 패리티·egress-broker·recent 인증 제거, [acknowledge/0044](./acknowledge/0044-api-key-parity-and-egress-broker.md)·[0045](./acknowledge/0045-remove-recent-auth.md))
+- 대응 커밋: `dev` = `origin/dev` (2026-08-20 — API 키 패리티·egress-broker·recent 인증 제거·릴리스 네트워크 순서·라우트 인증 헤더 수정, [acknowledge/0044](./acknowledge/0044-api-key-parity-and-egress-broker.md)·[0045](./acknowledge/0045-remove-recent-auth.md))
 - 최종 갱신일: 2026-08-20
-- 검증 상태(로컬, feat/api-key-parity): typecheck 9/9 · lint 0 · **test 562**(+ web 28) · build 9/9 · format 통과. 실운영 스택은 아직 이 브랜치 이전 상태로 동작 중이며, 호스트 재빌드 후 `audit:runtime`·healthy 6개·라이브 실측을 다시 확인해야 한다
+- 검증 상태: typecheck 9/9 · lint 0 · **test 562**(+ web 28) · build 9/9 · format 통과. 실운영 호스트는 이 코드로 재빌드됐고 첫 외부 워크로드(Forgejo 16.1 + MySQL 9, `forge.hyuns.uk`)가 API 키만으로 배포되어 동작 중이다. `audit:runtime` 은 호스트에서 실행하는 검사라 이 세션(원격)에서는 미실행
 - **이 문서가 세션 인수인계 단일 진입점이다.** 다른 문서보다 먼저 읽는다.
 - **현재 상태와 검증 수치는 이 문서가 단독으로 소유한다.** `RESUME-CHECKLIST.md` 는 절차·불변식, `HANDOFF-STATUS.md` 는 구현 범위·한계(시점 기록)를 소유한다. 같은 수치를 두 곳에 적지 않는다.
 - **진행 중 작업의 실행 계획 정본은 [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 다.**
@@ -17,6 +17,7 @@
 - **현재 마일스톤**: 패널 UX 감사 후속 처리(원본 64건 → 검증 44건 → 원인 12개) + 라이브 실측 결함 + compose 스택 본격 지원.
 - **직전 작업(2026-08-06)**: 2.2 → 1.3 → 3.1 → **3.2 → 3.3 → 3.4 → 4.1~~4.7 → 5.1~~5.3 → 6.1~6.4 완료.** [PLAN-UX-REMEDIATION.md](./PLAN-UX-REMEDIATION.md) 체크리스트를 전부 닫았다. 중간에 사용자 지시로 실운영 전 전체 초기화를 했고, 그 뒤 실측으로 결함 4건을 더 찾아 3건 수정·1건 기록했다.
 - **2026-08-06 후반**: 공개 주소(`https://hyuns.uk`) 복구 후 보안 강화(계정 잠금·API key 만료 필수·세션 12시간·감사 해시 체인·CSP nonce)와 headless API 완주(업로드→배포→롤백·compose 스택·backup/restore)를 마쳤다. 라이브 실측이 결함 3건을 잡았다 — 감사 체인 해시 정밀도, 재배포 409, **백업 전면 불가(critical)**. 전부 수정·검증했다.
+- **2026-08-20**: 웹 세션 전용이던 조작 전체를 API 키로 열었다(scope 35종, 예외: exec·키 관리·계정). egress-broker(6번째 서비스)가 DNS 검증·webhook 발송을 대행한다. recent 인증(15분)은 제거했다. 실배포 검증에서 결함 3건을 근본 수정했다 — 프로브 단계 네트워크 격리(DB 의존 릴리스 전멸), 라우트 템플릿의 Cookie·Authorization 제거(세션 앱 전멸), Forgejo SECRET_KEY 미생성. 첫 외부 워크로드로 Forgejo 16.1 + MySQL 9 를 `forge.hyuns.uk` 에 배포했다. 상태ful 단일 인스턴스 앱은 재배포 전 구 컨테이너를 먼저 정지해야 한다(공유 볼륨 락, [bug](./bug/2026-08-20-route-template-strips-cookie-authorization.md)).
 - **실운영 owner 계정은 확보됐다.** 사용자가 계정을 초기화하고 bootstrap 으로 실계정을 만들었으며, 공개 주소도 패널 설정에서 `https://hyuns.uk` 로 복구했다. seed 계정은 남아 있지 않다.
 - **다음 한 줄**: **계획서도 결정도 전부 닫았다.** 남은 것은 결정이 아니라 **아직 해보지 않은 검증**(알림 실전송·새 머신 설치·부하·장애 주입)이다. 새 마일스톤은 §8 에서 고른다.
 

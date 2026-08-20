@@ -162,7 +162,7 @@ Hono RPC는 JSON control endpoint 타입을 제공한다. 대용량 binary chunk
 - 같은 reference를 다시 저장하면 rotation version이 증가한다. release 시작과 실행 직전에 최신 reference를 확인하며, 참조 중인 secret 삭제를 거부한다.
 - 일반 `environmentKeys`는 값 저장 정책이 없으므로 release를 계속 거부하고, secret binding만 Docker environment로 전달한다. container inspect는 값 없이 key만 반환한다.
 - release는 `creating → probing → switching → observing → healthy` 상태를 저장하며 실패 시 `failed` 또는 `rolled-back`으로 종료한다. 수동 롤백은 `rolling-back` 을 경유한다.
-- 신규 container는 **`containers_probe`**(환경변수 `PROBE_NETWORK_NAME`)에서 먼저 health probe를 통과하고 목표 network에 연결한다. 공개 라우트가 있으면 그때 probe network 에서 분리하고, **라우트가 없는 내부 서비스(`route: null`)는 관찰 probe 까지 마친 뒤 분리한다** — engine-agent 가 관찰 probe 를 보내려면 probe network 가 필요하기 때문이다([bug](./bug/2026-08-06-internal-service-observation-unreachable.md)).
+- 신규 container는 **`containers_probe`**(환경변수 `PROBE_NETWORK_NAME`)에서 생성되고, health probe 전에 목표 network 를 먼저 연결한다 — probe 단계에서도 다른 network 의 의존(DB 등)을 DNS 로 찾을 수 있어야 하기 때문이다([bug](./bug/2026-08-20-probe-network-blocks-db-dependent-releases.md)). 공개 라우트가 있으면 probe 통과 후 probe network 에서 분리하고, **라우트가 없는 내부 서비스(`route: null`)는 관찰 probe 까지 마친 뒤 분리한다** — engine-agent 가 관찰 probe 를 보내려면 probe network 가 필요하기 때문이다([bug](./bug/2026-08-06-internal-service-observation-unreachable.md)).
 - 내부 서비스는 nginx upsert·라우트 probe·라우트 관찰을 모두 건너뛰고 컨테이너 probe 로 관찰한다.
 - 구조화 Nginx route는 apply 성공 뒤에만 DB target을 갱신한다. reload 직후 이전 worker 응답은 health retry 정책으로 흡수한다.
 - route observation 실패는 이전 healthy release로 route를 복원한다. 이전 release가 없으면 새 route를 제거하고 신규 container를 중지한다.
