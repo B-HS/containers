@@ -12,6 +12,7 @@
         "./deployment": "./src/deployment.ts",
         "./deployment-secret": "./src/deployment-secret.ts",
         "./deployment-stack": "./src/deployment-stack.ts",
+        "./egress": "./src/egress.ts",
         "./engine": "./src/engine.ts",
         "./engine-control": "./src/engine-control.ts",
         "./engine-error": "./src/engine-error.ts",
@@ -19,6 +20,7 @@
         "./health": "./src/health.ts",
         "./internal-auth": "./src/internal-auth.ts",
         "./maintenance": "./src/maintenance.ts",
+        "./net-guard": "./src/net-guard.ts",
         "./nginx": "./src/nginx.ts",
         "./notification": "./src/notification.ts",
         "./operation-job": "./src/operation-job.ts",
@@ -30,7 +32,7 @@
         "./user-management": "./src/user-management.ts"
     },
     "scripts": {
-        "build": "bun build src/api-key.ts src/audit.ts src/backup.ts src/control-plane.ts src/deployment.ts src/deployment-secret.ts src/engine.ts src/engine-control.ts src/engine-error.ts src/engine-stream.ts src/health.ts src/internal-auth.ts src/maintenance.ts src/nginx.ts src/operation-job.ts src/registry-credential.ts src/traffic.ts src/upload.ts src/notification.ts src/user-management.ts --outdir dist --target bun",
+        "build": "bun build src/api-key.ts src/audit.ts src/backup.ts src/control-plane.ts src/deployment.ts src/deployment-secret.ts src/egress.ts src/engine.ts src/engine-control.ts src/engine-error.ts src/engine-stream.ts src/health.ts src/internal-auth.ts src/maintenance.ts src/net-guard.ts src/nginx.ts src/operation-job.ts src/registry-credential.ts src/traffic.ts src/upload.ts src/notification.ts src/user-management.ts --outdir dist --target bun",
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {

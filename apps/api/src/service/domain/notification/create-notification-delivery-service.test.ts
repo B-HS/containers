@@ -55,6 +55,17 @@ const createTestContext = async (fetchStatus: number | ((url: string) => Promise
     let jobService: ReturnType<typeof createOperationJobService> | null = null
     const deliveryService = createNotificationDeliveryService({
         db: buildNotificationDeliveryServiceDb(database.db),
+        deliverWebhook: async (input) => {
+            const response = await fetch(input.url, {
+                body: input.body,
+                headers: { 'content-type': 'application/json' },
+                method: 'POST',
+                redirect: 'manual',
+                signal: AbortSignal.timeout(input.timeoutMs),
+            })
+            const retryAfter = Number.parseInt(response.headers.get('retry-after') ?? '', 10)
+            return { retryAfterSeconds: Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter : null, status: response.status }
+        },
         destinationService,
         enqueue: (input) => {
             if (jobService === null) {

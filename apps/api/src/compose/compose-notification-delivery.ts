@@ -3,6 +3,7 @@ import type { ControlDatabase } from '@containers/db-schema/database'
 import { notificationDelivery } from '@containers/db-schema/schema'
 import { OPERATION_JOB_KIND, type OperationJob } from '@containers/contracts/operation-job'
 import type { NotificationDeliverJobPayload } from '@containers/contracts/notification'
+import type { EgressBrokerClient } from '../service/shared/egress-broker-client/create-egress-broker-client'
 import type { NotificationDestinationService } from '../service/domain/notification/create-notification-destination-service'
 import {
     createNotificationDeliveryService,
@@ -17,6 +18,7 @@ type EnqueueJob = (input: {
 
 type ComposeNotificationDeliveryDependencies = {
     db: ControlDatabase
+    egressBrokerClient: Pick<EgressBrokerClient, 'deliverWebhook'>
     destinationService: Pick<NotificationDestinationService, 'list' | 'resolveWebhook'>
     enqueue: EnqueueJob
 }
@@ -35,9 +37,10 @@ export const buildNotificationDeliveryServiceDb = (db: ControlDatabase): Notific
     },
 })
 
-export const composeNotificationDelivery = ({ db, destinationService, enqueue }: ComposeNotificationDeliveryDependencies) => ({
+export const composeNotificationDelivery = ({ db, destinationService, egressBrokerClient, enqueue }: ComposeNotificationDeliveryDependencies) => ({
     notificationDeliveryService: createNotificationDeliveryService({
         db: buildNotificationDeliveryServiceDb(db),
+        deliverWebhook: (input) => egressBrokerClient.deliverWebhook(input),
         destinationService,
         enqueue,
         now: () => new Date(),

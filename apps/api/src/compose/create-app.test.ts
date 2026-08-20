@@ -144,6 +144,9 @@ const createAppTestDependencies = () => ({
             nextRunAt: '2026-01-01T00:00:00.000Z',
         }),
     },
+    egressBrokerClient: {
+        resolveHostname: async (hostname: string) => ({ addresses: ['203.0.113.10'], blocked: false, hostname }),
+    },
     apiKeyService: {
         authenticate: async () => {
             throw createAppError('AUTH_REQUIRED')

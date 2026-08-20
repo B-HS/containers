@@ -112,6 +112,8 @@ services:
         environment:
             AGENT_INTERNAL_URL: http://engine-agent:3002
             AGENT_SHARED_SECRET_FILE: /credentials/agent-secret
+            EGRESS_BROKER_INTERNAL_URL: http://egress-broker:3004
+            EGRESS_SHARED_SECRET_FILE: /egress-credentials/egress-secret
             ARTIFACT_ROOT: /artifacts
             ARTIFACT_RETENTION_DAYS: ${ARTIFACT_RETENTION_DAYS:-30}
             ARTIFACT_RETENTION_MINIMUM_COUNT: ${ARTIFACT_RETENTION_MINIMUM_COUNT:-5}
@@ -149,6 +151,7 @@ services:
             - /tmp
         volumes:
             - agent-credentials:/credentials
+            - egress-credentials:/egress-credentials
             - traffic-credentials:/traffic-credentials
             - artifacts:/artifacts
             - backups:/backups
@@ -257,6 +260,44 @@ services:
         networks:
             - control
 
+    egress-broker:
+        restart: unless-stopped
+        stop_grace_period: 20s
+        logging:
+            driver: json-file
+            options:
+                max-size: '10m'
+                max-file: '3'
+        deploy:
+            resources:
+                limits:
+                    memory: 256M
+        build:
+            context: .
+            dockerfile: apps/egress-broker/Dockerfile
+        environment:
+            EGRESS_BROKER_PORT: 3004
+            EGRESS_SHARED_SECRET_FILE: /credentials/egress-secret
+        healthcheck:
+            test:
+                - CMD
+                - bun
+                - -e
+                - fetch('http://127.0.0.1:3004/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        read_only: true
+        security_opt:
+            - no-new-privileges:true
+        tmpfs:
+            - /tmp
+        volumes:
+            - egress-credentials:/credentials
+        networks:
+            - control
+            - edge
+
 networks:
     control:
         internal: true
@@ -273,6 +314,7 @@ networks:
 
 volumes:
     agent-credentials:
+    egress-credentials:
     artifacts:
     backups:
     control-data:

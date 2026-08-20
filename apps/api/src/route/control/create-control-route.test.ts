@@ -46,6 +46,7 @@ const unsupported = (): never => {
 }
 
 const controlService: ControlService = {
+    assertPublicImageReference: async () => undefined,
     createContainer: async () => unsupported(),
     createNetwork: async () => unsupported(),
     createVolume: async () => unsupported(),

@@ -13,6 +13,7 @@ import { createApp } from './compose/create-app'
 import { createNginxStatusClient } from './service/shared/nginx/create-nginx-status-client'
 import { createNginxRouteProbeClient } from './service/shared/nginx/create-nginx-route-probe-client'
 import { createTrafficWorkerClient } from './service/shared/traffic-worker-client/create-traffic-worker-client'
+import { createEgressBrokerClient } from './service/shared/egress-broker-client/create-egress-broker-client'
 import { compose } from './compose/compose'
 import { buildPanelSettingServiceDb } from './compose/compose-panel-setting'
 import { runStartupTasks, startRecurringTask } from './boot/run-startup-tasks'
@@ -37,6 +38,8 @@ const envSchema = z
         API_PORT: z.coerce.number().int().positive().default(3001),
         AGENT_INTERNAL_URL: z.url(),
         AGENT_SHARED_SECRET_FILE: z.string().min(1),
+        EGRESS_BROKER_INTERNAL_URL: z.url(),
+        EGRESS_SHARED_SECRET_FILE: z.string().min(1),
         ARTIFACT_ROOT: z.string().min(1),
         BACKUP_INTERVAL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
         BACKUP_RETENTION_COUNT: z.coerce.number().int().min(2).max(90).default(7),
@@ -101,6 +104,10 @@ const trafficWorkerClient = createTrafficWorkerClient({
     baseUrl: env.TRAFFIC_WORKER_INTERNAL_URL,
     secret: await loadOrCreateSecret(env.TRAFFIC_WORKER_SHARED_SECRET_FILE),
 })
+const egressBrokerClient = createEgressBrokerClient({
+    baseUrl: env.EGRESS_BROKER_INTERNAL_URL,
+    secret: await loadOrCreateSecret(env.EGRESS_SHARED_SECRET_FILE),
+})
 
 const composed = compose({
     core: { db, sqlite },
@@ -140,7 +147,7 @@ const composed = compose({
         workerId: randomUUID(),
         apiKeyRateLimitPerMinute: env.API_KEY_RATE_LIMIT_PER_MINUTE,
     },
-    clients: { engineAgentClient, nginxStatusClient, nginxRouteProbeClient, trafficWorkerClient },
+    clients: { egressBrokerClient, engineAgentClient, nginxStatusClient, nginxRouteProbeClient, trafficWorkerClient },
 })
 
 const {
@@ -238,6 +245,7 @@ const recurringTasks = [
 ]
 
 const app = createApp({
+    egressBrokerClient,
     apiKeyService,
     loginLockoutService,
     backupScheduleService,

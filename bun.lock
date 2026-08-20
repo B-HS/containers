@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "containers",
@@ -32,6 +33,16 @@
       },
       "devDependencies": {
         "@types/tar-stream": "3.1.4",
+      },
+    },
+    "apps/egress-broker": {
+      "name": "@containers/egress-broker",
+      "version": "0.1.0",
+      "dependencies": {
+        "@containers/config": "workspace:*",
+        "@containers/contracts": "workspace:*",
+        "hono": "4.13.0",
+        "zod": "4.4.3",
       },
     },
     "apps/engine-agent": {
@@ -167,6 +178,8 @@
     "@containers/contracts": ["@containers/contracts@workspace:packages/contracts"],
 
     "@containers/db-schema": ["@containers/db-schema@workspace:packages/db-schema"],
+
+    "@containers/egress-broker": ["@containers/egress-broker@workspace:apps/egress-broker"],
 
     "@containers/engine-agent": ["@containers/engine-agent@workspace:apps/engine-agent"],
 

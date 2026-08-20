@@ -775,6 +775,7 @@ export const createControlRoute = ({ apiKeyService, auditService, authService, c
                 }
                 await auditService.record({ ...audit, result: 'attempt' })
                 try {
+                    await controlService.assertPublicImageReference(input.reference)
                     const job = await operationJobService.enqueue({
                         createdBy: actorId,
                         kind: OPERATION_JOB_KIND.IMAGE_PULL,

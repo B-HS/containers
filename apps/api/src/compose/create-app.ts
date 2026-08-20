@@ -36,6 +36,7 @@ import { createTrafficRoute } from '../route/traffic/create-traffic-route'
 import { createUploadRoute } from '../route/upload/create-upload-route'
 import type { AuditService } from '../service/domain/audit/create-audit-service'
 import type { ApiKeyService } from '../service/domain/api-key/create-api-key-service'
+import type { EgressBrokerClient } from '../service/shared/egress-broker-client/create-egress-broker-client'
 import type { BackupService } from '../service/domain/backup/create-backup-service'
 import type { AuthService } from '../service/domain/auth/create-auth-service'
 import type { LoginLockoutService } from '../service/domain/auth/create-login-lockout-service'
@@ -64,6 +65,7 @@ import type { UploadService } from '../service/domain/upload/create-upload-servi
 
 type AppDependencies = {
     apiKeyService: ApiKeyService
+    egressBrokerClient: Pick<EgressBrokerClient, 'resolveHostname'>
     backupScheduleService: Pick<BackupScheduleService, 'getSchedule'>
     auditService: Pick<AuditService, 'list' | 'record' | 'verifyIntegrity'>
     backupService: BackupService
@@ -116,6 +118,7 @@ const UNAUTHORIZED_STATUS = 401
 export const createApp = ({
     auditService,
     apiKeyService,
+    egressBrokerClient,
     auth,
     backupScheduleService,
     authService,
@@ -151,7 +154,7 @@ export const createApp = ({
     const engineRoute = createEngineRoute({ apiKeyService, authService, engineService })
     const engineStreamProxyRoute = createEngineStreamProxyRoute({ apiKeyService, authService, engineAgentClient })
     const authRoute = createAuthRoute({ auditService, authService })
-    const controlService = createControlService({ engineAgentClient })
+    const controlService = createControlService({ egressBrokerClient, engineAgentClient })
     const controlRoute = createControlRoute({ apiKeyService, auditService, authService, controlService, operationJobService })
     const interactiveExecProxyRoute = createInteractiveExecProxyRoute({ auditService, authService, engineAgentClient, maintenanceService })
     const trafficService = createTrafficService({ trafficWorkerClient })

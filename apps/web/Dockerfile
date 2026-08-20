@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY package.json bun.lock tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
+COPY apps/egress-broker/package.json apps/egress-broker/package.json
 COPY apps/engine-agent/package.json apps/engine-agent/package.json
 COPY apps/traffic-worker/package.json apps/traffic-worker/package.json
 COPY apps/web/package.json apps/web/package.json

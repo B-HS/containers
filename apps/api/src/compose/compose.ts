@@ -3,6 +3,7 @@ import type { SecretKeyring } from '@containers/config/keyring'
 import type { Database } from 'bun:sqlite'
 import type { ControlDatabase } from '@containers/db-schema/database'
 import { createEngineAgentClient } from '../service/shared/engine-agent-client/create-engine-agent-client'
+import type { createEgressBrokerClient } from '../service/shared/egress-broker-client/create-egress-broker-client'
 import { createAuth } from '../auth/create-auth'
 import { createNginxStatusClient } from '../service/shared/nginx/create-nginx-status-client'
 import { createNginxRouteProbeClient } from '../service/shared/nginx/create-nginx-route-probe-client'
@@ -78,6 +79,7 @@ type ComposeEnv = {
 }
 
 type ComposeClients = {
+    egressBrokerClient: ReturnType<typeof createEgressBrokerClient>
     engineAgentClient: ReturnType<typeof createEngineAgentClient>
     nginxStatusClient: ReturnType<typeof createNginxStatusClient>
     nginxRouteProbeClient: ReturnType<typeof createNginxRouteProbeClient>
@@ -203,6 +205,7 @@ export const compose = ({ core, secrets, env, clients }: ComposeDependencies) =>
     const { notificationDeliveryService } = composeNotificationDelivery({
         db,
         destinationService: notificationDestinationService,
+        egressBrokerClient: clients.egressBrokerClient,
         enqueue: (input) => {
             if (operationJobService === null) {
                 throw createAppError('JOB_ENQUEUE_UNAVAILABLE')
