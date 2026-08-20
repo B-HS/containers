@@ -45,13 +45,13 @@ describe('Nginx 구조화 route renderer', () => {
         expect(renderNginxProxyRoutes(BASE_CONFIG, [first, second])).toBe(renderNginxProxyRoutes(BASE_CONFIG, [second, first]))
     })
 
-    test('이전 managed block을 교체하고 관리 header를 upstream에 전달하지 않습니다', () => {
+    test('이전 managed block을 교체하고 인증 header를 upstream에 그대로 전달합니다', () => {
         const first = renderNginxProxyRoutes(BASE_CONFIG, [route()])
         const second = renderNginxProxyRoutes(first, [route({ protocol: 'websocket', targetPort: 8080 })])
 
         expect(second.match(/containers-routes:start/g)).toHaveLength(1)
-        expect(second).toContain('proxy_set_header Cookie "";')
-        expect(second).toContain('proxy_set_header Authorization "";')
+        expect(second).not.toContain('proxy_set_header Cookie')
+        expect(second).not.toContain('proxy_set_header Authorization')
         expect(second).toContain('proxy_set_header Upgrade $http_upgrade;')
         expect(second).toContain('example-app:8080')
         expect(second).not.toContain('example-app:3000')
