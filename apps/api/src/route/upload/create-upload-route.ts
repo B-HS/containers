@@ -7,6 +7,7 @@ import { artifactDeleteSchema, uploadSessionCreateSchema } from '@containers/con
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
+import { authenticateScopeOrRole } from '../../lib/authenticate-scope-or-role'
 import { toStreamChunks } from '../../lib/stream-chunks'
 import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
@@ -75,9 +76,18 @@ export const createUploadRoute = ({ apiKeyService, auditService, authService, op
             withErrorHandling(
                 async (context: ApiRouteContext<{ param: z.infer<typeof artifactIdParamSchema>; json: z.infer<typeof artifactDeleteSchema> }>) => {
                     const { artifactId } = context.req.valid('param')
-                    const session = await authService.requireRecentRole(context.req.raw.headers, ARTIFACT_REMOVE_ROLES, RECENT_AUTH_MAX_AGE_MS)
+                    const actor = await authenticateScopeOrRole({
+                        apiKeyService,
+                        authService,
+                        headers: context.req.raw.headers,
+                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                        roles: ARTIFACT_REMOVE_ROLES,
+                        scope: API_KEY_SCOPE.ARTIFACT_WRITE,
+                    })
                     const audit = {
-                        actorId: session.user.id,
+                        actorId: actor.actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
                         operation: 'artifact.remove',
                         requestId: context.get('requestId'),
                         sourceIp: context.req.raw.headers.get('x-real-ip')?.trim() || undefined,

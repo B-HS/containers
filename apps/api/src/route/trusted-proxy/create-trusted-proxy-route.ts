@@ -1,10 +1,13 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
+import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { proxyAddressSchema, trustedProxyApproveSchema } from '@containers/contracts/trusted-proxy'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
+import { authenticateScopeOrRole } from '../../lib/authenticate-scope-or-role'
 import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
+import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { TrustedProxyService } from '../../service/domain/trusted-proxy/create-trusted-proxy-service'
@@ -16,6 +19,7 @@ const WRITE_ROLES = [USER_ROLE.OWNER]
 const addressParamSchema = z.object({ address: proxyAddressSchema })
 
 type TrustedProxyRouteDependencies = {
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     trustedProxyService: Pick<TrustedProxyService, 'approve' | 'getState' | 'revoke'>
@@ -23,7 +27,7 @@ type TrustedProxyRouteDependencies = {
 
 const sourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-export const createTrustedProxyRoute = ({ auditService, authService, trustedProxyService }: TrustedProxyRouteDependencies) =>
+export const createTrustedProxyRoute = ({ apiKeyService, auditService, authService, trustedProxyService }: TrustedProxyRouteDependencies) =>
     new Hono()
         .get(
             '/trusted-proxies',
@@ -33,7 +37,13 @@ export const createTrustedProxyRoute = ({ auditService, authService, trustedProx
                 tags: ['TrustedProxy'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, READ_ROLES)
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: READ_ROLES,
+                    scope: API_KEY_SCOPE.TRUSTED_PROXY_READ,
+                })
                 return context.json(successResponse(await trustedProxyService.getState()), 200)
             }),
         )
@@ -54,15 +64,30 @@ export const createTrustedProxyRoute = ({ auditService, authService, trustedProx
                     targetId: payload.address,
                     targetType: 'trusted-proxy' as const,
                 }
-                const actorId = (await authService.requireRecentRole(context.req.raw.headers, WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
+                const actor = await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                    roles: WRITE_ROLES,
+                    scope: API_KEY_SCOPE.TRUSTED_PROXY_WRITE,
+                })
+                const actorId = actor.actorId
+                await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'attempt' })
                 try {
                     await trustedProxyService.approve(actorId, payload)
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                    await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'success' })
                     return context.json(successResponse(await trustedProxyService.getState()), 201)
                 } catch (error) {
                     const code = error instanceof Error ? error.message : 'TRUSTED_PROXY_APPROVE_FAILED'
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                    await auditService.record({
+                        ...audit,
+                        actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
+                        detail: { code },
+                        result: 'failure',
+                    })
                     throw error
                 }
             }),
@@ -84,15 +109,30 @@ export const createTrustedProxyRoute = ({ auditService, authService, trustedProx
                     targetId: address,
                     targetType: 'trusted-proxy' as const,
                 }
-                const actorId = (await authService.requireRecentRole(context.req.raw.headers, WRITE_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
+                const actor = await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                    roles: WRITE_ROLES,
+                    scope: API_KEY_SCOPE.TRUSTED_PROXY_WRITE,
+                })
+                const actorId = actor.actorId
+                await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'attempt' })
                 try {
                     await trustedProxyService.revoke(address)
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                    await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'success' })
                     return context.json(successResponse(await trustedProxyService.getState()), 200)
                 } catch (error) {
                     const code = error instanceof Error ? error.message : 'TRUSTED_PROXY_REVOKE_FAILED'
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                    await auditService.record({
+                        ...audit,
+                        actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
+                        detail: { code },
+                        result: 'failure',
+                    })
                     throw error
                 }
             }),

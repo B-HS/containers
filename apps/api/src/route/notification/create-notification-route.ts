@@ -1,10 +1,13 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
+import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { notificationDestinationDeleteSchema, notificationDestinationUpsertSchema } from '@containers/contracts/notification'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
+import { authenticateScopeOrRole } from '../../lib/authenticate-scope-or-role'
 import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
+import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { NotificationDeliveryService } from '../../service/domain/notification/create-notification-delivery-service'
@@ -16,6 +19,7 @@ const destinationIdParamSchema = z.object({ id: z.uuid() })
 const setEnabledSchema = z.object({ enabled: z.boolean().optional().default(false) })
 
 type NotificationRouteDependencies = {
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     notificationDeliveryService: Pick<NotificationDeliveryService, 'deliverTest'>
@@ -25,6 +29,7 @@ type NotificationRouteDependencies = {
 const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 export const createNotificationRoute = ({
+    apiKeyService,
     auditService,
     authService,
     notificationDeliveryService,
@@ -39,7 +44,13 @@ export const createNotificationRoute = ({
                 tags: ['Notification'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, NOTIFICATION_ROLES)
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: NOTIFICATION_ROLES,
+                    scope: API_KEY_SCOPE.NOTIFICATION_READ,
+                })
                 return context.json(successResponse(await notificationDestinationService.list()), 200)
             }),
         )
@@ -59,15 +70,37 @@ export const createNotificationRoute = ({
                     targetId: 'notification-destination',
                     targetType: 'notification-destination' as const,
                 }
-                const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
+                const actor = await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                    roles: NOTIFICATION_ROLES,
+                    scope: API_KEY_SCOPE.NOTIFICATION_WRITE,
+                })
+                const actorId = actor.actorId
+                await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'attempt' })
                 try {
                     const destination = await notificationDestinationService.upsert(actorId, context.req.valid('json'))
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', targetId: destination.id, result: 'success' })
+                    await auditService.record({
+                        ...audit,
+                        actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
+                        targetId: destination.id,
+                        result: 'success',
+                    })
                     return context.json(successResponse(destination), 201)
                 } catch (error) {
                     const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_UPSERT_FAILED'
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                    await auditService.record({
+                        ...audit,
+                        actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
+                        detail: { code },
+                        result: 'failure',
+                    })
                     throw error
                 }
             }),
@@ -92,15 +125,30 @@ export const createNotificationRoute = ({
                         targetId,
                         targetType: 'notification-destination' as const,
                     }
-                    const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
+                    const actor = await authenticateScopeOrRole({
+                        apiKeyService,
+                        authService,
+                        headers: context.req.raw.headers,
+                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                        roles: NOTIFICATION_ROLES,
+                        scope: API_KEY_SCOPE.NOTIFICATION_WRITE,
+                    })
+                    const actorId = actor.actorId
+                    await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'attempt' })
                     try {
                         const destination = await notificationDestinationService.setEnabled(targetId, enabled)
-                        await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                        await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'success' })
                         return context.json(successResponse(destination), 200)
                     } catch (error) {
                         const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_ENABLED_FAILED'
-                        await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                        await auditService.record({
+                            ...audit,
+                            actorId,
+                            apiKeyId: actor.apiKeyId,
+                            authMethod: actor.authMethod,
+                            detail: { code },
+                            result: 'failure',
+                        })
                         throw error
                     }
                 },
@@ -123,15 +171,30 @@ export const createNotificationRoute = ({
                     targetId,
                     targetType: 'notification-destination' as const,
                 }
-                const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
+                const actor = await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                    roles: NOTIFICATION_ROLES,
+                    scope: API_KEY_SCOPE.NOTIFICATION_WRITE,
+                })
+                const actorId = actor.actorId
+                await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'attempt' })
                 try {
                     const delivery = await notificationDeliveryService.deliverTest(targetId)
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                    await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'success' })
                     return context.json(successResponse(delivery), 202)
                 } catch (error) {
                     const code = error instanceof Error ? error.message : 'NOTIFICATION_TEST_FAILED'
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                    await auditService.record({
+                        ...audit,
+                        actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
+                        detail: { code },
+                        result: 'failure',
+                    })
                     throw error
                 }
             }),
@@ -160,15 +223,30 @@ export const createNotificationRoute = ({
                         targetId,
                         targetType: 'notification-destination' as const,
                     }
-                    const actorId = (await authService.requireRecentRole(context.req.raw.headers, NOTIFICATION_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                    await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'attempt' })
+                    const actor = await authenticateScopeOrRole({
+                        apiKeyService,
+                        authService,
+                        headers: context.req.raw.headers,
+                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                        roles: NOTIFICATION_ROLES,
+                        scope: API_KEY_SCOPE.NOTIFICATION_WRITE,
+                    })
+                    const actorId = actor.actorId
+                    await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'attempt' })
                     try {
                         const removed = await notificationDestinationService.remove(targetId, context.req.valid('json'))
-                        await auditService.record({ ...audit, actorId, authMethod: 'session', result: 'success' })
+                        await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'success' })
                         return context.json(successResponse(removed), 200)
                     } catch (error) {
                         const code = error instanceof Error ? error.message : 'NOTIFICATION_DESTINATION_REMOVE_FAILED'
-                        await auditService.record({ ...audit, actorId, authMethod: 'session', detail: { code }, result: 'failure' })
+                        await auditService.record({
+                            ...audit,
+                            actorId,
+                            apiKeyId: actor.apiKeyId,
+                            authMethod: actor.authMethod,
+                            detail: { code },
+                            result: 'failure',
+                        })
                         throw error
                     }
                 },

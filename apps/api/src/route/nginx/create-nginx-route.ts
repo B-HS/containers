@@ -1,10 +1,13 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
+import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { nginxConfigApplySchema, nginxProxyRouteInputSchema } from '@containers/contracts/nginx'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
+import { authenticateScopeOrRole } from '../../lib/authenticate-scope-or-role'
 import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
+import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { NginxService } from '../../service/domain/nginx/create-nginx-service'
@@ -17,6 +20,7 @@ const nginxRouteIdParamSchema = z.object({ id: z.uuid() })
 const nginxRouteRemoveSchema = z.object({ confirmation: z.string().min(1).max(256) })
 
 type NginxRouteDependencies = {
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
     authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     nginxService: NginxService
@@ -25,7 +29,7 @@ type NginxRouteDependencies = {
 
 const getSourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
-export const createNginxRoute = ({ auditService, authService, nginxProxyRouteService, nginxService }: NginxRouteDependencies) =>
+export const createNginxRoute = ({ apiKeyService, auditService, authService, nginxProxyRouteService, nginxService }: NginxRouteDependencies) =>
     new Hono()
         .get(
             '/nginx/status',
@@ -35,7 +39,13 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                 tags: ['Nginx'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, ALL_ROLES)
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: ALL_ROLES,
+                    scope: API_KEY_SCOPE.NGINX_READ,
+                })
                 return context.json(successResponse(await nginxService.getStatus()), 200)
             }),
         )
@@ -47,7 +57,13 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                 tags: ['Nginx'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, ALL_ROLES)
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: ALL_ROLES,
+                    scope: API_KEY_SCOPE.NGINX_READ,
+                })
                 return context.json(successResponse(await nginxService.getConfig()), 200)
             }),
         )
@@ -59,7 +75,13 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                 tags: ['Nginx'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, ALL_ROLES)
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: ALL_ROLES,
+                    scope: API_KEY_SCOPE.NGINX_READ,
+                })
                 return context.json(successResponse(await nginxProxyRouteService.list()), 200)
             }),
         )
@@ -72,11 +94,20 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
             }),
             validator('json', nginxProxyRouteInputSchema),
             withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof nginxProxyRouteInputSchema> }>) => {
-                const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
+                const actor = await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                    roles: ADMIN_ROLES,
+                    scope: API_KEY_SCOPE.NGINX_WRITE,
+                })
+                const actorId = actor.actorId
                 const input = context.req.valid('json')
                 await auditService.record({
                     actorId,
+                    apiKeyId: actor.apiKeyId,
+                    authMethod: actor.authMethod,
                     operation: 'nginx.route.create',
                     requestId: context.get('requestId'),
                     result: 'attempt',
@@ -88,6 +119,8 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                     const result = await nginxProxyRouteService.create(input)
                     await auditService.record({
                         actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
                         detail: { configSha256: result.configSha256 },
                         operation: 'nginx.route.create',
                         requestId: context.get('requestId'),
@@ -101,6 +134,8 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                     const code = error instanceof Error ? error.message : 'NGINX_ROUTE_CREATE_FAILED'
                     await auditService.record({
                         actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
                         detail: { code },
                         operation: 'nginx.route.create',
                         requestId: context.get('requestId'),
@@ -128,10 +163,19 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                 ) => {
                     const targetId = context.req.valid('param').id
                     const input = context.req.valid('json')
-                    const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                    const actorId = session.user.id
+                    const actor = await authenticateScopeOrRole({
+                        apiKeyService,
+                        authService,
+                        headers: context.req.raw.headers,
+                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                        roles: ADMIN_ROLES,
+                        scope: API_KEY_SCOPE.NGINX_WRITE,
+                    })
+                    const actorId = actor.actorId
                     await auditService.record({
                         actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
                         operation: 'nginx.route.update',
                         requestId: context.get('requestId'),
                         result: 'attempt',
@@ -143,6 +187,8 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                         const result = await nginxProxyRouteService.update(targetId, input)
                         await auditService.record({
                             actorId,
+                            apiKeyId: actor.apiKeyId,
+                            authMethod: actor.authMethod,
                             detail: { configSha256: result.configSha256, enabled: result.route.enabled, hostname: result.route.hostname },
                             operation: 'nginx.route.update',
                             requestId: context.get('requestId'),
@@ -156,6 +202,8 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                         const code = error instanceof Error ? error.message : 'NGINX_ROUTE_UPDATE_FAILED'
                         await auditService.record({
                             actorId,
+                            apiKeyId: actor.apiKeyId,
+                            authMethod: actor.authMethod,
                             detail: { code },
                             operation: 'nginx.route.update',
                             requestId: context.get('requestId'),
@@ -184,10 +232,19 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                 ) => {
                     const targetId = context.req.valid('param').id
                     const confirmation = context.req.valid('json').confirmation
-                    const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                    const actorId = session.user.id
+                    const actor = await authenticateScopeOrRole({
+                        apiKeyService,
+                        authService,
+                        headers: context.req.raw.headers,
+                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                        roles: ADMIN_ROLES,
+                        scope: API_KEY_SCOPE.NGINX_WRITE,
+                    })
+                    const actorId = actor.actorId
                     await auditService.record({
                         actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
                         operation: 'nginx.route.remove',
                         requestId: context.get('requestId'),
                         result: 'attempt',
@@ -199,6 +256,8 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                         const result = await nginxProxyRouteService.remove(targetId, confirmation)
                         await auditService.record({
                             actorId,
+                            apiKeyId: actor.apiKeyId,
+                            authMethod: actor.authMethod,
                             detail: { configSha256: result.configSha256 },
                             operation: 'nginx.route.remove',
                             requestId: context.get('requestId'),
@@ -212,6 +271,8 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                         const code = error instanceof Error ? error.message : 'NGINX_ROUTE_REMOVE_FAILED'
                         await auditService.record({
                             actorId,
+                            apiKeyId: actor.apiKeyId,
+                            authMethod: actor.authMethod,
                             detail: { code },
                             operation: 'nginx.route.remove',
                             requestId: context.get('requestId'),
@@ -241,16 +302,37 @@ export const createNginxRoute = ({ auditService, authService, nginxProxyRouteSer
                     targetId: 'current',
                     targetType: 'nginx-config' as const,
                 }
-                const session = await authService.requireRecentRole(context.req.raw.headers, ADMIN_ROLES, RECENT_AUTH_MAX_AGE_MS)
-                const actorId = session.user.id
-                await auditService.record({ ...audit, actorId, result: 'attempt' })
+                const actor = await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                    roles: ADMIN_ROLES,
+                    scope: API_KEY_SCOPE.NGINX_WRITE,
+                })
+                const actorId = actor.actorId
+                await auditService.record({ ...audit, actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod, result: 'attempt' })
                 try {
                     const result = await nginxService.applyConfig(context.req.valid('json'))
-                    await auditService.record({ ...audit, actorId, detail: { sha256: result.sha256 }, result: 'success' })
+                    await auditService.record({
+                        ...audit,
+                        actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
+                        detail: { sha256: result.sha256 },
+                        result: 'success',
+                    })
                     return context.json(successResponse(result), 200)
                 } catch (error) {
                     const code = error instanceof Error ? error.message : 'NGINX_CONFIG_APPLY_FAILED'
-                    await auditService.record({ ...audit, actorId, detail: { code: code.slice(0, 512) }, result: 'failure' })
+                    await auditService.record({
+                        ...audit,
+                        actorId,
+                        apiKeyId: actor.apiKeyId,
+                        authMethod: actor.authMethod,
+                        detail: { code: code.slice(0, 512) },
+                        result: 'failure',
+                    })
                     throw error
                 }
             }),

@@ -146,18 +146,18 @@ export const createApp = ({
     const healthService = createHealthService({ now: () => new Date() })
     const healthRoute = createHealthRoute({ healthService })
     const readinessRoute = createReadinessRoute({ apiKeyService, authService, readinessService })
-    const auditRoute = createAuditRoute({ auditService, authService })
+    const auditRoute = createAuditRoute({ apiKeyService, auditService, authService })
     const engineService = createEngineService({ engineAgentClient })
     const engineRoute = createEngineRoute({ apiKeyService, authService, engineService })
-    const engineStreamProxyRoute = createEngineStreamProxyRoute({ authService, engineAgentClient })
+    const engineStreamProxyRoute = createEngineStreamProxyRoute({ apiKeyService, authService, engineAgentClient })
     const authRoute = createAuthRoute({ auditService, authService })
     const controlService = createControlService({ engineAgentClient })
     const controlRoute = createControlRoute({ apiKeyService, auditService, authService, controlService, operationJobService })
     const interactiveExecProxyRoute = createInteractiveExecProxyRoute({ auditService, authService, engineAgentClient, maintenanceService })
     const trafficService = createTrafficService({ trafficWorkerClient })
-    const trafficRoute = createTrafficRoute({ auditService, authService, operationJobService, trafficExportRoot, trafficService })
+    const trafficRoute = createTrafficRoute({ apiKeyService, auditService, authService, operationJobService, trafficExportRoot, trafficService })
     const nginxService = createNginxService({ engineAgentClient, nginxStatusClient })
-    const nginxRoute = createNginxRoute({ auditService, authService, nginxProxyRouteService, nginxService })
+    const nginxRoute = createNginxRoute({ apiKeyService, auditService, authService, nginxProxyRouteService, nginxService })
     const uploadRoute = createUploadRoute({ apiKeyService, auditService, authService, operationJobService, uploadService })
     const deploymentRoute = createDeploymentRoute({ apiKeyService, auditService, authService, deploymentService, operationJobService })
     const deploymentManifestRoute = createDeploymentManifestRoute({ apiKeyService, auditService, authService, deploymentManifestService })
@@ -187,15 +187,16 @@ export const createApp = ({
     const apiKeyRoute = createApiKeyRoute({ apiKeyService, authService })
     const backupRoute = createBackupRoute({ apiKeyService, auditService, authService, backupService, operationJobService })
     const notificationRoute = createNotificationRoute({
+        apiKeyService,
         auditService,
         authService,
         notificationDeliveryService,
         notificationDestinationService,
     })
     const jobRoute = createJobRoute({ apiKeyService, auditService, authService, backupScheduleService, operationJobService })
-    const maintenanceRoute = createMaintenanceRoute({ auditService, authService, maintenanceService })
-    const panelSettingRoute = createPanelSettingRoute({ auditService, authService, panelSettingService })
-    const trustedProxyRoute = createTrustedProxyRoute({ auditService, authService, trustedProxyService })
+    const maintenanceRoute = createMaintenanceRoute({ apiKeyService, auditService, authService, maintenanceService })
+    const panelSettingRoute = createPanelSettingRoute({ apiKeyService, auditService, authService, panelSettingService })
+    const trustedProxyRoute = createTrustedProxyRoute({ apiKeyService, auditService, authService, trustedProxyService })
     const controlPlaneRoute = createControlPlaneRoute({ apiKeyService, authService, controlPlaneStatusService })
     const loginRateWindows = new Map<string, { count: number; startedAt: number }>()
     const isLoginRateLimited = (headers: Headers) => {

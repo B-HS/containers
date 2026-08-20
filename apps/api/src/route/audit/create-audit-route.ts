@@ -1,17 +1,21 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
+import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { auditIntegritySchema, auditQuerySchema } from '@containers/contracts/audit'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { paginatedResponse, successResponse } from '../../lib/response'
+import { authenticateScopeOrRole } from '../../lib/authenticate-scope-or-role'
 import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
+import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
 type AuditRouteDependencies = {
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'list' | 'verifyIntegrity'>
-    authService: Pick<AuthService, 'requireRole'>
+    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
 }
 
 const toUnavailable = (error: unknown) => {
@@ -22,7 +26,7 @@ const toUnavailable = (error: unknown) => {
     return createAppError('AUDIT_UNAVAILABLE')
 }
 
-export const createAuditRoute = ({ auditService, authService }: AuditRouteDependencies) =>
+export const createAuditRoute = ({ apiKeyService, auditService, authService }: AuditRouteDependencies) =>
     new Hono()
         .get(
             '/audit/integrity',
@@ -32,7 +36,13 @@ export const createAuditRoute = ({ auditService, authService }: AuditRouteDepend
                 tags: ['Audit'],
             }),
             withErrorHandling(async (context: ApiRouteContext) => {
-                await authService.requireRole(context.req.raw.headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.AUDITOR])
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.AUDITOR],
+                    scope: API_KEY_SCOPE.AUDIT_READ,
+                })
                 try {
                     return context.json(successResponse(auditIntegritySchema.parse(await auditService.verifyIntegrity())), 200)
                 } catch (error) {
@@ -51,7 +61,13 @@ export const createAuditRoute = ({ auditService, authService }: AuditRouteDepend
             }),
             validator('query', auditQuerySchema),
             withErrorHandling(async (context: ApiRouteContext<{ query: z.infer<typeof auditQuerySchema> }>) => {
-                await authService.requireRole(context.req.raw.headers, [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.VIEWER, USER_ROLE.AUDITOR])
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.VIEWER, USER_ROLE.AUDITOR],
+                    scope: API_KEY_SCOPE.AUDIT_READ,
+                })
                 try {
                     const page = await auditService.list(context.req.valid('query'))
                     return context.json(paginatedResponse(page.data, page.pagination), 200)

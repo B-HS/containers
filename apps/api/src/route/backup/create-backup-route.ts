@@ -7,6 +7,7 @@ import { OPERATION_JOB_KIND } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
+import { authenticateScopeOrRole } from '../../lib/authenticate-scope-or-role'
 import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
@@ -29,21 +30,21 @@ type BackupRouteDependencies = {
 const sourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 export const createBackupRoute = ({ apiKeyService, auditService, authService, backupService, operationJobService }: BackupRouteDependencies) => {
-    const authenticateWrite = async (headers: Headers) => {
-        if (headers.has('authorization')) {
-            return apiKeyService.authenticate(headers, API_KEY_SCOPE.BACKUP_WRITE)
-        }
-        const session = await authService.requireRecentRole(headers, BACKUP_ROLES, RECENT_AUTH_MAX_AGE_MS)
-        return { actorId: session.user.id, authMethod: 'session' as const }
+    const authenticateBackup = async (headers: Headers, scope: typeof API_KEY_SCOPE.BACKUP_WRITE | typeof API_KEY_SCOPE.BACKUP_RESTORE) => {
+        const actor = await authenticateScopeOrRole({
+            apiKeyService,
+            authService,
+            headers,
+            recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+            roles: BACKUP_ROLES,
+            scope,
+        })
+        return { actorId: actor.actorId, apiKeyId: actor.apiKeyId, authMethod: actor.authMethod }
     }
 
-    const authenticateRestore = async (headers: Headers) => {
-        if (headers.has('authorization')) {
-            throw createAppError('FORBIDDEN')
-        }
-        const session = await authService.requireRecentRole(headers, BACKUP_ROLES, RECENT_AUTH_MAX_AGE_MS)
-        return { actorId: session.user.id, authMethod: 'session' as const }
-    }
+    const authenticateWrite = async (headers: Headers) => authenticateBackup(headers, API_KEY_SCOPE.BACKUP_WRITE)
+
+    const authenticateRestore = async (headers: Headers) => authenticateBackup(headers, API_KEY_SCOPE.BACKUP_RESTORE)
 
     return new Hono()
         .get(
@@ -54,11 +55,13 @@ export const createBackupRoute = ({ apiKeyService, auditService, authService, ba
                 tags: ['Backup'],
             }),
             withErrorHandling(async (context) => {
-                if (context.req.raw.headers.has('authorization')) {
-                    await apiKeyService.authenticate(context.req.raw.headers, API_KEY_SCOPE.BACKUP_READ)
-                } else {
-                    await authService.requireRole(context.req.raw.headers, BACKUP_ROLES)
-                }
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: BACKUP_ROLES,
+                    scope: API_KEY_SCOPE.BACKUP_READ,
+                })
                 return context.json(successResponse(await backupService.list()), 200)
             }),
         )

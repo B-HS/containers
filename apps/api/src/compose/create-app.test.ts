@@ -1298,11 +1298,19 @@ describe('API 애플리케이션', () => {
         expect(requestedRoles).toEqual([['owner', 'admin'], ['owner'], ['owner']])
     })
 
-    test('백업 복원은 API key 경로를 거부하고 세션만 허용합니다', async () => {
+    test('백업 복원은 backup:restore scope 의 owner 키와 owner 세션을 허용합니다', async () => {
         const dependencies = createAppTestDependencies()
         const backupId = '374f1798-c75f-4152-938d-be2d09d12d51'
+        const requestedScopes: string[] = []
         const app = createApp({
             ...dependencies,
+            apiKeyService: {
+                ...dependencies.apiKeyService,
+                authenticate: async (_headers, scope) => {
+                    requestedScopes.push(scope)
+                    return { actorId: 'user-api', apiKeyId: 'api-key-id', authMethod: 'api-key' as const, role: 'owner' }
+                },
+            },
             authService: {
                 ...dependencies.authService,
                 requireRecentRole: async () => dependencies.authService.requireRole(),
@@ -1319,9 +1327,8 @@ describe('API 애플리케이션', () => {
                 method: 'POST',
             })
 
-        const denied = await restore({ authorization: 'Bearer ctk_test' })
-        expect(denied.status).toBe(403)
-        expect((await denied.json()).error.code).toBe('FORBIDDEN')
+        expect((await restore({ authorization: 'Bearer ctk_test' })).status).toBe(202)
+        expect(requestedScopes).toEqual(['backup:restore'])
         expect((await restore({})).status).toBe(202)
     })
 })

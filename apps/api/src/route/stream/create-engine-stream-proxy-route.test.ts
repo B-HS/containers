@@ -11,7 +11,13 @@ const createIdleStream = () => new ReadableStream<Uint8Array<ArrayBuffer>>({ sta
 
 const createApp = (openEventStream: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array<ArrayBuffer>>>) => {
     const route = createEngineStreamProxyRoute({
-        authService: { requireRole: async () => undefined as never },
+        apiKeyService: {
+            authenticate: async () => ({ actorId: 'user-api', apiKeyId: 'api-key-id', authMethod: 'api-key' as const, role: 'owner' }),
+        },
+        authService: {
+            requireRecentRole: async () => ({ role: 'owner', user: { id: 'user-stream' } }) as never,
+            requireRole: async () => ({ role: 'owner', user: { id: 'user-stream' } }) as never,
+        },
         engineAgentClient: {
             openContainerLogStream: async () => createIdleStream(),
             openContainerStatsStream: async () => createIdleStream(),

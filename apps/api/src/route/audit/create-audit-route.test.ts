@@ -92,7 +92,11 @@ const createTestApp = (db: ControlDatabase, allowed: boolean) =>
                     now: () => new Date(BASE_TIME_MS),
                     retentionDays: 365,
                 }),
+                apiKeyService: {
+                    authenticate: async () => ({ actorId: 'user-api', apiKeyId: 'api-key-id', authMethod: 'api-key' as const, role: 'owner' }),
+                },
                 authService: {
+                    requireRecentRole: async () => AUTHORIZED_SESSION,
                     requireRole: async () => {
                         if (!allowed) {
                             throw createAppError('FORBIDDEN')

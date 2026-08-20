@@ -6,6 +6,7 @@ import { deploymentSecretDeleteSchema, deploymentSecretUpsertSchema } from '@con
 import { OPERATION_JOB_KIND, secretRotateJobPayloadSchema } from '@containers/contracts/operation-job'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { successResponse } from '../../lib/response'
+import { authenticateScopeOrRole } from '../../lib/authenticate-scope-or-role'
 import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
@@ -46,7 +47,13 @@ export const createDeploymentSecretRoute = ({
                 tags: ['Deployment'],
             }),
             withErrorHandling(async (context) => {
-                await authService.requireRole(context.req.raw.headers, SECRET_ROLES)
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: SECRET_ROLES,
+                    scope: API_KEY_SCOPE.SECRET_READ,
+                })
                 return context.json(successResponse(secretRotationService.getState()), 200)
             }),
         )
@@ -60,9 +67,18 @@ export const createDeploymentSecretRoute = ({
             validator('json', secretRotateJobPayloadSchema),
             withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof secretRotateJobPayloadSchema> }>) => {
                 const input = context.req.valid('json')
-                const session = await authService.requireRecentRole(context.req.raw.headers, [USER_ROLE.OWNER], RECENT_AUTH_MAX_AGE_MS)
+                const actor = await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                    roles: [USER_ROLE.OWNER],
+                    scope: API_KEY_SCOPE.SECRET_WRITE,
+                })
                 const audit = {
-                    actorId: session.user.id,
+                    actorId: actor.actorId,
+                    apiKeyId: actor.apiKeyId,
+                    authMethod: actor.authMethod,
                     operation: 'deployment.secret.rotate',
                     requestId: context.get('requestId'),
                     sourceIp: getSourceIp(context.req.raw.headers),
@@ -72,7 +88,7 @@ export const createDeploymentSecretRoute = ({
                 await auditService.record({ ...audit, result: 'attempt' })
                 try {
                     const job = await operationJobService.enqueue({
-                        createdBy: session.user.id,
+                        createdBy: actor.actorId,
                         kind: OPERATION_JOB_KIND.SECRET_ROTATE,
                         maxAttempts: 1,
                         payload: input,
@@ -95,11 +111,13 @@ export const createDeploymentSecretRoute = ({
                 tags: ['Deployment'],
             }),
             withErrorHandling(async (context) => {
-                if (context.req.raw.headers.has('authorization')) {
-                    await apiKeyService.authenticate(context.req.raw.headers, API_KEY_SCOPE.SECRET_READ)
-                } else {
-                    await authService.requireRole(context.req.raw.headers, SECRET_ROLES)
-                }
+                await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    roles: SECRET_ROLES,
+                    scope: API_KEY_SCOPE.SECRET_READ,
+                })
                 return context.json(successResponse(await deploymentSecretService.list()), 200)
             }),
         )
@@ -119,23 +137,23 @@ export const createDeploymentSecretRoute = ({
                     targetId: 'secret',
                     targetType: 'deployment-secret' as const,
                 }
-                let actorId: string | undefined
-                let authMethod: 'api-key' | 'session' = 'session'
-                if (context.req.raw.headers.has('authorization')) {
-                    const principal = await apiKeyService.authenticate(context.req.raw.headers, API_KEY_SCOPE.SECRET_WRITE)
-                    actorId = principal.actorId
-                    authMethod = principal.authMethod
-                } else {
-                    actorId = (await authService.requireRecentRole(context.req.raw.headers, SECRET_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                }
-                await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
+                const actor = await authenticateScopeOrRole({
+                    apiKeyService,
+                    authService,
+                    headers: context.req.raw.headers,
+                    recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                    roles: SECRET_ROLES,
+                    scope: API_KEY_SCOPE.SECRET_WRITE,
+                })
+                const { actorId, apiKeyId, authMethod } = actor
+                await auditService.record({ ...audit, actorId, apiKeyId, authMethod, result: 'attempt' })
                 try {
                     const secret = await deploymentSecretService.upsert(actorId, context.req.valid('json'))
-                    await auditService.record({ ...audit, actorId, authMethod, targetId: secret.id, result: 'success' })
+                    await auditService.record({ ...audit, actorId, apiKeyId, authMethod, targetId: secret.id, result: 'success' })
                     return context.json(successResponse(secret), 201)
                 } catch (error) {
                     const code = error instanceof Error ? error.message : 'DEPLOYMENT_SECRET_UPSERT_FAILED'
-                    await auditService.record({ ...audit, actorId, authMethod, detail: { code }, result: 'failure' })
+                    await auditService.record({ ...audit, actorId, apiKeyId, authMethod, detail: { code }, result: 'failure' })
                     throw error
                 }
             }),
@@ -161,23 +179,23 @@ export const createDeploymentSecretRoute = ({
                         targetId,
                         targetType: 'deployment-secret' as const,
                     }
-                    let actorId: string | undefined
-                    let authMethod: 'api-key' | 'session' = 'session'
-                    if (context.req.raw.headers.has('authorization')) {
-                        const principal = await apiKeyService.authenticate(context.req.raw.headers, API_KEY_SCOPE.SECRET_WRITE)
-                        actorId = principal.actorId
-                        authMethod = principal.authMethod
-                    } else {
-                        actorId = (await authService.requireRecentRole(context.req.raw.headers, SECRET_ROLES, RECENT_AUTH_MAX_AGE_MS)).user.id
-                    }
-                    await auditService.record({ ...audit, actorId, authMethod, result: 'attempt' })
+                    const actor = await authenticateScopeOrRole({
+                        apiKeyService,
+                        authService,
+                        headers: context.req.raw.headers,
+                        recentMaxAgeMs: RECENT_AUTH_MAX_AGE_MS,
+                        roles: SECRET_ROLES,
+                        scope: API_KEY_SCOPE.SECRET_WRITE,
+                    })
+                    const { actorId, apiKeyId, authMethod } = actor
+                    await auditService.record({ ...audit, actorId, apiKeyId, authMethod, result: 'attempt' })
                     try {
                         const removed = await deploymentSecretService.remove(targetId, context.req.valid('json'))
-                        await auditService.record({ ...audit, actorId, authMethod, result: 'success' })
+                        await auditService.record({ ...audit, actorId, apiKeyId, authMethod, result: 'success' })
                         return context.json(successResponse(removed), 200)
                     } catch (error) {
                         const code = error instanceof Error ? error.message : 'DEPLOYMENT_SECRET_REMOVE_FAILED'
-                        await auditService.record({ ...audit, actorId, authMethod, detail: { code }, result: 'failure' })
+                        await auditService.record({ ...audit, actorId, apiKeyId, authMethod, detail: { code }, result: 'failure' })
                         throw error
                     }
                 },

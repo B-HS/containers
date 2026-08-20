@@ -1,11 +1,14 @@
 import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { z } from 'zod'
+import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { containerLogStreamQuerySchema, MAX_CONCURRENT_ENGINE_STREAMS, SSE_STREAM_OPEN_COMMENT } from '@containers/contracts/engine-stream'
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
+import { authenticateScopeOrRole } from '../../lib/authenticate-scope-or-role'
 import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
 import type { EngineAgentClient } from '../../service/shared/engine-agent-client/create-engine-agent-client'
+import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 
 const ALL_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN, USER_ROLE.OPERATOR, USER_ROLE.VIEWER, USER_ROLE.AUDITOR]
@@ -19,16 +22,19 @@ const SSE_HEADERS = {
 } as const
 
 type EngineStreamProxyRouteDependencies = {
-    authService: Pick<AuthService, 'requireRole'>
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>
+    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     engineAgentClient: Pick<EngineAgentClient, 'openContainerLogStream' | 'openContainerStatsStream' | 'openEventStream'>
 }
 
-export const createEngineStreamProxyRoute = ({ authService, engineAgentClient }: EngineStreamProxyRouteDependencies) => {
+export const createEngineStreamProxyRoute = ({ apiKeyService, authService, engineAgentClient }: EngineStreamProxyRouteDependencies) => {
+    const authenticateStream = (headers: Headers) =>
+        authenticateScopeOrRole({ apiKeyService, authService, headers, roles: ALL_ROLES, scope: API_KEY_SCOPE.ENGINE_READ })
     let activeStreams = 0
 
     const proxy = async (request: Request, open: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array>>) => {
         const headers = request.headers
-        await authService.requireRole(headers, ALL_ROLES)
+        await authenticateStream(headers)
         if (activeStreams >= MAX_CONCURRENT_ENGINE_STREAMS) {
             throw createAppError('STREAM_LIMIT_REACHED')
         }
@@ -68,7 +74,7 @@ export const createEngineStreamProxyRoute = ({ authService, engineAgentClient }:
             start: (controller) => {
                 controller.enqueue(new TextEncoder().encode(SSE_STREAM_OPEN_COMMENT))
                 recheck = setInterval(() => {
-                    authService.requireRole(headers, ALL_ROLES).catch(() => upstreamController.abort())
+                    authenticateStream(headers).catch(() => upstreamController.abort())
                 }, SESSION_RECHECK_INTERVAL_MS)
             },
             pull: async (controller) => {

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { describeRoute, validator } from 'hono-openapi'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { API_KEY_SCOPE } from '@containers/contracts/api-key'
 import { OPERATION_JOB_KIND, trafficExportJobPayloadSchema } from '@containers/contracts/operation-job'
 import {
     trafficAnalyticsQuerySchema,
@@ -12,7 +13,9 @@ import {
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../lib/error'
 import { successResponse } from '../../lib/response'
+import { authenticateScopeOrRole } from '../../lib/authenticate-scope-or-role'
 import { withErrorHandling, type ApiRouteContext } from '../../lib/with-error-handling'
+import type { ApiKeyService } from '../../service/domain/api-key/create-api-key-service'
 import type { AuthService } from '../../service/domain/auth/create-auth-service'
 import type { TrafficService } from '../../service/domain/traffic/create-traffic-service'
 import type { AuditService } from '../../service/domain/audit/create-audit-service'
@@ -24,8 +27,9 @@ const EXPORT_ROLES = [USER_ROLE.OWNER, USER_ROLE.ADMIN]
 const jobIdParamSchema = z.object({ jobId: z.uuid() })
 
 type TrafficRouteDependencies = {
+    apiKeyService: Pick<ApiKeyService, 'authenticate'>
     auditService: Pick<AuditService, 'record'>
-    authService: Pick<AuthService, 'requireRole'>
+    authService: Pick<AuthService, 'requireRecentRole' | 'requireRole'>
     operationJobService: Pick<OperationJobService, 'enqueue' | 'get'>
     trafficExportRoot: string
     trafficService: TrafficService
@@ -34,14 +38,19 @@ type TrafficRouteDependencies = {
 const sourceIp = (headers: Headers) => headers.get('x-real-ip')?.trim() || undefined
 
 export const createTrafficRoute = ({
+    apiKeyService,
     auditService,
     authService,
     operationJobService,
     trafficExportRoot,
     trafficService,
 }: TrafficRouteDependencies) => {
-    const authorize = (headers: Headers) => authService.requireRole(headers, ALL_ROLES)
-    const authorizeExport = (headers: Headers) => authService.requireRole(headers, EXPORT_ROLES)
+    const authorize = (headers: Headers) =>
+        authenticateScopeOrRole({ apiKeyService, authService, headers, roles: ALL_ROLES, scope: API_KEY_SCOPE.TRAFFIC_READ })
+    const authorizeExport = (headers: Headers) =>
+        authenticateScopeOrRole({ apiKeyService, authService, headers, roles: EXPORT_ROLES, scope: API_KEY_SCOPE.TRAFFIC_EXPORT })
+    const authorizeHealth = (headers: Headers) =>
+        authenticateScopeOrRole({ apiKeyService, authService, headers, roles: EXPORT_ROLES, scope: API_KEY_SCOPE.TRAFFIC_READ })
 
     return new Hono()
         .get(
@@ -66,7 +75,7 @@ export const createTrafficRoute = ({
                 tags: ['Traffic'],
             }),
             withErrorHandling(async (context) => {
-                await authorizeExport(context.req.raw.headers)
+                await authorizeHealth(context.req.raw.headers)
                 return context.json(successResponse(await trafficService.getHealthState()), 200)
             }),
         )
@@ -137,17 +146,18 @@ export const createTrafficRoute = ({
             }),
             validator('json', trafficExportJobPayloadSchema),
             withErrorHandling(async (context: ApiRouteContext<{ json: z.infer<typeof trafficExportJobPayloadSchema> }>) => {
-                const session = await authorizeExport(context.req.raw.headers)
+                const actor = await authorizeExport(context.req.raw.headers)
                 const payload = context.req.valid('json')
                 const job = await operationJobService.enqueue({
-                    createdBy: session.user.id,
+                    createdBy: actor.actorId,
                     kind: OPERATION_JOB_KIND.TRAFFIC_EXPORT,
                     maxAttempts: 1,
                     payload,
                 })
                 await auditService.record({
-                    actorId: session.user.id,
-                    authMethod: 'session',
+                    actorId: actor.actorId,
+                    apiKeyId: actor.apiKeyId,
+                    authMethod: actor.authMethod,
                     detail: payload,
                     operation: 'traffic.export.create',
                     requestId: context.get('requestId'),
@@ -168,7 +178,7 @@ export const createTrafficRoute = ({
             }),
             validator('param', jobIdParamSchema),
             withErrorHandling(async (context: ApiRouteContext<{ param: z.infer<typeof jobIdParamSchema> }>) => {
-                const session = await authorizeExport(context.req.raw.headers)
+                const actor = await authorizeExport(context.req.raw.headers)
                 const jobId = context.req.valid('param').jobId
                 const job = await operationJobService.get(jobId)
                 if (job.kind !== OPERATION_JOB_KIND.TRAFFIC_EXPORT) throw createAppError('TRAFFIC_EXPORT_NOT_FOUND')
@@ -180,8 +190,9 @@ export const createTrafficRoute = ({
                 const file = Bun.file(join(trafficExportRoot, result.fileName))
                 if (!(await file.exists())) throw createAppError('TRAFFIC_EXPORT_EXPIRED')
                 await auditService.record({
-                    actorId: session.user.id,
-                    authMethod: 'session',
+                    actorId: actor.actorId,
+                    apiKeyId: actor.apiKeyId,
+                    authMethod: actor.authMethod,
                     operation: 'traffic.export.download',
                     requestId: context.get('requestId'),
                     result: 'success',
