@@ -3,7 +3,16 @@ import { API_KEY_SCOPE, apiKeyCreateResultSchema, apiKeyCreateSchema, apiKeyList
 import { USER_ROLE } from '@containers/db-schema/schema'
 import { createAppError } from '../../../lib/error'
 
-const OWNER_ONLY_API_KEY_SCOPES: readonly ApiKeyScope[] = [API_KEY_SCOPE.BACKUP_WRITE, API_KEY_SCOPE.SECRET_WRITE]
+const OWNER_ONLY_API_KEY_SCOPES: readonly ApiKeyScope[] = [
+    API_KEY_SCOPE.BACKUP_RESTORE,
+    API_KEY_SCOPE.BACKUP_WRITE,
+    API_KEY_SCOPE.MAINTENANCE_WRITE,
+    API_KEY_SCOPE.PANEL_SETTING_WRITE,
+    API_KEY_SCOPE.REGISTRY_CREDENTIAL_WRITE,
+    API_KEY_SCOPE.SECRET_WRITE,
+    API_KEY_SCOPE.SYSTEM_PRUNE,
+    API_KEY_SCOPE.TRUSTED_PROXY_WRITE,
+]
 
 export const requiresOwnerApiKeyScope = (scopes: readonly ApiKeyScope[]) => scopes.some((scope) => OWNER_ONLY_API_KEY_SCOPES.includes(scope))
 
@@ -112,7 +121,7 @@ export const createApiKeyService = ({ db, now, rateLimitPerMinute = 120 }: ApiKe
             }
 
             await db.touchLastUsed(record.id, currentTime)
-            return { actorId: record.createdBy, apiKeyId: record.id, authMethod: 'api-key' as const }
+            return { actorId: record.createdBy, apiKeyId: record.id, authMethod: 'api-key' as const, role: joined.user_role.role }
         },
         create: async (actor: { id: string; role: string }, input: unknown) => {
             const payload = apiKeyCreateSchema.parse(input)

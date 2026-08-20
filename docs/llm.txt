@@ -215,14 +215,27 @@ Encryption keyring: deployment secret / notification webhook master keys live in
   Backups seal every key version in secrets.enc under the operator passphrase.
 
 API keys: `ctk_` + 32-byte random; only SHA-256 stored; scopes deny-by-default.
-  Owner-only scopes (backup:write, secret:write) are enforced twice: at issue time
-  (owner + recent) and at use time (the issuer's current role must still be owner),
-  so keys issued before the policy or held by a demoted account stop working.
+  Owner-only scopes (backup:restore, backup:write, maintenance:write,
+  panel-setting:write, registry-credential:write, secret:write, system:prune,
+  trusted-proxy:write) are enforced twice: at issue time (owner + recent) and at
+  use time (the issuer's current role must still be owner), so keys issued before
+  the policy or held by a demoted account stop working.
   authenticate() inner-joins user_role and rejects if disabledAt set or revoked.
   Disabling/demoting a user revokes their api keys + deletes sessions in one txn.
-  Scopes: artifact:read, artifact:upload, backup:read, backup:write,
+  An API key is the issuer's non-interactive credential: the key holder's current
+  role must satisfy the same role gate as the session path, and the session-side
+  recent-auth (15 min) requirement is replaced by scope possession on the key path.
+  Session-only (no API key): exec/TTY, /api/api-keys management, accounts and
+  invitations and bootstrap.
+  Scopes: artifact:read, artifact:upload, artifact:write, audit:read,
+          backup:read, backup:restore, backup:write, container:write,
           control-plane:read, deployment:read, deployment:write, engine:read,
-          image:load, job:read, job:write, secret:read, secret:write.
+          image:load, image:write, job:read, job:write, maintenance:read,
+          maintenance:write, network:write, nginx:read, nginx:write,
+          notification:read, notification:write, panel-setting:read,
+          panel-setting:write, registry-credential:read, registry-credential:write,
+          secret:read, secret:write, system:prune, traffic:export, traffic:read,
+          trusted-proxy:read, trusted-proxy:write, volume:write.
   Per-key rate limit 120/min (in-memory).
 
 Management-plane boundary (engine-agent): resources labeled

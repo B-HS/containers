@@ -81,6 +81,7 @@ type AuditServiceDb = {
 
 type AuditRecord = {
     actorId: string
+    apiKeyId?: string | null
     authMethod?: 'api-key' | 'bootstrap' | 'invitation' | 'session'
     detail?: Record<string, unknown>
     operation: string
@@ -255,7 +256,8 @@ export const createAuditService = ({ archiveRoot, db, now, retentionDays }: Audi
         }
     },
     record: async (record: AuditRecord) => {
-        const detail = record.detail ? JSON.stringify(record.detail) : undefined
+        const mergedDetail = record.apiKeyId ? { ...(record.detail ?? {}), apiKeyId: record.apiKeyId } : record.detail
+        const detail = mergedDetail ? JSON.stringify(mergedDetail) : undefined
         const sourceIp = record.sourceIp
         return db.record({
             actorId: record.actorId,

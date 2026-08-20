@@ -117,7 +117,7 @@ const createTestApp = () =>
                     if (!scopes.includes(requiredScope)) {
                         throw createAppError('FORBIDDEN')
                     }
-                    return { actorId: 'user-api', apiKeyId: 'api-key-id', authMethod: 'api-key' as const }
+                    return { actorId: 'user-api', apiKeyId: 'api-key-id', authMethod: 'api-key' as const, role: 'owner' }
                 },
             },
             authService: {
